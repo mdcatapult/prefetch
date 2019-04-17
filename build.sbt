@@ -46,7 +46,9 @@ lazy val root = (project in file(".")).
     ).map(_ exclude("javax.ws.rs", "javax.ws.rs-api")),
     assemblyJarName := "consumer-prefetch.jar",
     assemblyMergeStrategy in assembly := {
+      case PathList("com", "sun", xs @ _*) => MergeStrategy.first
       case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first
+      case PathList("javax", "activation", xs @ _*) => MergeStrategy.first
       case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
       case PathList(xs @ _*) if xs.last == "module-info.class" => MergeStrategy.first
       case PathList("org", "apache", "commons", xs @ _*) => MergeStrategy.first
