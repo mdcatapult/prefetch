@@ -120,14 +120,14 @@ object ConsumerPrefetch extends App with LazyLogging {
     * @return Bson $set for origin & source
     */
   def fetchRemote(remote: Option[PrefetchOrigin], doc: Document, msg: PrefetchMsg): (Bson, Option[DownloadResult]) = {
-    val currentOrigins: List[PrefetchOrigin] = doc.get[BsonArray]("origin").getOrElse(BsonArray()).getValues.asScala
+    val currentOrigins: List[PrefetchOrigin] = (doc.get[BsonArray]("origin").getOrElse(BsonArray()).getValues.asScala
       .flatMap({
         case d: BsonValue ⇒ Json.parse(d.asDocument().toJson).validate[PrefetchOrigin] match {
           case JsSuccess(value, _) ⇒ Some(value)
           case _ ⇒ None
         }
         case _ ⇒ None
-      }).toList ::: msg.origin.getOrElse(List[PrefetchOrigin]())
+      }).toList ::: msg.origin.getOrElse(List[PrefetchOrigin]())).distinct
     remote match {
       case Some(response) ⇒ RemoteClient.download(response.uri) match {
         case Some(result) ⇒
