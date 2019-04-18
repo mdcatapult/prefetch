@@ -30,7 +30,7 @@ import org.mongodb.scala.Document
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
 import org.mongodb.scala.bson.codecs.Macros._
 import org.mongodb.scala.bson.conversions.Bson
-import org.mongodb.scala.bson.{BsonArray, BsonValue, ObjectId}
+import org.mongodb.scala.bson.{BsonArray, BsonDocument, BsonValue, ObjectId}
 import org.mongodb.scala.model.Filters._
 import org.mongodb.scala.model.Updates._
 import play.api.libs.json._
@@ -228,7 +228,11 @@ object ConsumerPrefetch extends App with LazyLogging {
     collection.find(query).first().toFutureOption().map({
       case Some(found) ⇒ Some(found)
       case None ⇒
-        val newDoc = Document("_id" → new ObjectId(), "source" → source, "created" → new Date)
+        val newDoc = Document(
+          "_id" → new ObjectId(),
+          "source" → source,
+          "created" → new Date,
+          "doclib" → Document())
         Await.result(collection.insertOne(newDoc).toFutureOption(), Duration.Inf)
         Some(newDoc)
     })
