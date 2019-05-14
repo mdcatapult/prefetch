@@ -50,7 +50,7 @@ object ConsumerPrefetch extends App with LazyLogging {
   /** initialise queues **/
   val upstream: Queue[PrefetchMsg] = new Queue[PrefetchMsg](config.getString("upstream.queue"))
   val subscription: SubscriptionRef = upstream.subscribe(handle, config.getInt("upstream.concurrent"))
-  val downstream: Exchange[DoclibMsg] = new Exchange[DoclibMsg](config.getString("downstream.exchange"))
+  val downstream: Exchange[DoclibMsg] = new Exchange[DoclibMsg](config.getString("downstream.queue"))
 
   /** Initialise Mongo **/
   implicit val mongoCodecs: CodecRegistry = fromRegistries(fromProviders(
@@ -204,7 +204,7 @@ object ConsumerPrefetch extends App with LazyLogging {
     uri.schemeOption match {
       case None ⇒ throw new RemoteClient.UndefinedSchemeException(uri)
       case Some("file") ⇒ for {
-        doc: Option[Document] <- findOrCreateDoc(equal("source", uri.toString), uri.toString)
+        doc: Option[Document] <- findOrCreateDoc(equal("source", uri.path.toString), uri.path.toString)
       } yield Some((doc, None))
       case _ ⇒ for {
         response: PrefetchOrigin ← RemoteClient.resolve(uri)
