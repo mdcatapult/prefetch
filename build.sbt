@@ -1,5 +1,5 @@
 lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.5.22"
+lazy val akkaVersion = "2.5.23"
 lazy val catsVersion = "1.6.0"
 lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
@@ -24,7 +24,9 @@ lazy val root = (project in file(".")).
       }
     },
     libraryDependencies ++= Seq(
-      "org.scalatest" % "scalatest_2.12"              % "3.0.5" % "test",
+      "org.scalactic" %% "scalactic"                  % "3.0.5",
+      "org.scalatest" %% "scalatest"                  % "3.0.5" % "test",
+      "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % Test,
       "com.typesafe.akka" %% "akka-actor"             % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j"             % akkaVersion,
       "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
@@ -34,11 +36,8 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-macros"                % catsVersion,
       "org.typelevel" %% "cats-kernel"                % catsVersion,
       "org.typelevel" %% "cats-core"                  % catsVersion,
-      "io.mdcatapult.klein" %% "queue"                % "0.0.3",
-      "io.mdcatapult.klein" %% "mongo"                % "0.0.3",
-      "io.lemonlabs" %% "scala-uri"                   % "1.4.5",
+      "io.mdcatapult.doclib" %% "common"              % "0.0.7",
       "com.github.seratch" %% "awscala"               % awsScalaVersion,
-      "com.softwaremill.sttp" %% "core"               % "1.5.11",
       "org.apache.tika" % "tika-core"                 % tikaVersion,
       "org.apache.tika" % "tika-parsers"              % tikaVersion,
       "org.apache.tika" % "tika-parsers"              % tikaVersion, 

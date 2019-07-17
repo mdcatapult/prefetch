@@ -6,23 +6,21 @@ import java.security.MessageDigest
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.PrefetchOrigin
 import play.api.libs.ws.ahc._
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.sys.process._
 
-object Client {
+class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
+class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
-  import scala.concurrent.ExecutionContext.Implicits._
+class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) {
 
-  implicit val config: Config = ConfigFactory.load()
-  implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http-client")
-  implicit val materialiser: ActorMaterializer = ActorMaterializer()
   /** initialise web client **/
-  val httpClient = StandaloneAhcWSClient()
+  lazy val httpClient = StandaloneAhcWSClient()
 
   /**
     * does an initial check of a provided remote resource and returns a Resolved response
@@ -34,7 +32,7 @@ object Client {
     case Some("http" | "https") ⇒ httpClient.url(source.toString).head().map(r =>
       PrefetchOrigin(
         scheme = r.uri.getScheme,
-        uri = Uri.parse(r.uri.toString),
+        uri = Some(Uri.parse(r.uri.toString)),
         headers = Some(r.headers),
         metadata = Some(Map[String, Any]("status" → r.status, "statusText" → r.statusText)))
     )
@@ -113,8 +111,6 @@ object Client {
     }"
   }
 
-  class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 
-  class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
 }
