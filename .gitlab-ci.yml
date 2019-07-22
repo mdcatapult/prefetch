@@ -20,6 +20,7 @@ cache:
 before_script:
   - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
 
+
 assemble:
   stage: assembly
   image: openjdk:11
@@ -44,7 +45,13 @@ publish-master:
   dependencies:
     - assemble
   script:
-    - docker build --pull -t "$CI_REGISTRY_IMAGE" .
+    - >
+      docker build --pull
+      --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
+      --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
+      -t "$CI_REGISTRY_IMAGE"
+      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      .
     - docker push "$CI_REGISTRY_IMAGE"
   only:
     - master
@@ -55,7 +62,12 @@ publish:
   dependencies:
     - assemble
   script:
-    - docker build --pull -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" .
+    - >
+      docker build --pull
+      --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
+      --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
+      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+      .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
   except:
     - master
