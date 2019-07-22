@@ -36,7 +36,7 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-macros"                % catsVersion,
       "org.typelevel" %% "cats-kernel"                % catsVersion,
       "org.typelevel" %% "cats-core"                  % catsVersion,
-      "io.mdcatapult.doclib" %% "common"              % "0.0.7",
+      "io.mdcatapult.doclib" %% "common"              % "0.0.8",
       "com.github.seratch" %% "awscala"               % awsScalaVersion,
       "org.apache.tika" % "tika-core"                 % tikaVersion,
       "org.apache.tika" % "tika-parsers"              % tikaVersion,

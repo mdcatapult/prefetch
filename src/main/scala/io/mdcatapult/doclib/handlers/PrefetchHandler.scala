@@ -17,14 +17,16 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.{FileAttrs, PrefetchOrigin}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
+import io.mdcatapult.doclib.util.{DoclibFlags, MongoCodecs}
 import io.mdcatapult.klein.queue.Queue
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.bson.{BsonArray, BsonValue, ObjectId}
 import org.mongodb.scala.model.Filters.{equal, or}
-import org.mongodb.scala.model.Updates.{addToSet, combine, set}
+import org.mongodb.scala.model.Updates.{addEachToSet, combine, set}
 import org.mongodb.scala.{Document, MongoCollection}
 import play.api.libs.json.{JsSuccess, Json}
 
@@ -38,12 +40,16 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
                       materializer: ActorMaterializer,
                       ex: ExecutionContextExecutor,
                       config: Config,
-                      collection: MongoCollection[Document]
+                      collection: MongoCollection[Document],
+                      codecs: CodecRegistry
                      ) extends LazyLogging{
+
+  implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
 
   /** Initialise Apache Tika && Remote Client **/
   lazy val tika = new Tika()
   lazy val remoteClient = new RemoteClient()
+  lazy val flags = new DoclibFlags(config.getString("doclib.flag"))
 
   /**
     * handle msg from rabbitmq
@@ -54,8 +60,26 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
     */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = (for {
     (doc, remoteResponse) ← OptionT(fetchDocument(toUri(msg.source)))
+    _ ← OptionT(flags.start(doc.get))
     result ← OptionT(process(doc.get, msg, remoteResponse))
-  } yield result).value
+    _ <- OptionT(flags.end(doc.get))
+  } yield (result, doc)).value.andThen({
+    case Success(r) ⇒ r match {
+      case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2.get.getObjectId("_id").toString}")
+      case None ⇒ // do nothing for now, but need to identify the use case
+    }
+    case Failure(err) ⇒ {
+      // enforce error flag
+      Await.result(fetchDocument(toUri(msg.source)), Duration.Inf) match {
+        case Some(r) ⇒ r._1 match {
+          case Some(doc) ⇒ flags.error(doc)
+          case _ ⇒ // do nothing
+        }
+        case _ ⇒ // do nothing
+      }
+      throw err
+    }
+  })
 
   /**
     * process the request and update the target document
@@ -78,9 +102,10 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
       fetchFileAttrs(source),
       fetchMimetype(source),
       fetchFileHash(source),
-      addToSet("tags", msg.tags.getOrElse(List[String]()).distinct),
+      addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
       set("metadata", msg.metadata.getOrElse(Map[String, Any]())),
-      set("updated", LocalDateTime.now())
+      set("derivative", msg.derivative.getOrElse(false)),
+      set("updated", LocalDateTime.now()),
     )
 
     collection.updateOne(equal("_id", doc.getObjectId("_id")), update).toFutureOption().andThen({
@@ -176,7 +201,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
     } finally {
       dis.close()
     }
-    set(config.getString("prefetch.labels.flags"), md5.digest.map("%02x".format(_)).mkString)
+    set(config.getString("prefetch.labels.hash"), md5.digest.map("%02x".format(_)).mkString)
   }
 
   /**
@@ -195,10 +220,10 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
         response: PrefetchOrigin ← remoteClient.resolve(uri)
         doc: Option[Document] ← findOrCreateDoc(
           or(
-            equal("origin.uri", response.uri.toString),
-            equal("source", response.uri.toString),
+            equal("origin.uri", response.uri.get.toString),
+            equal("source", response.uri.get.toString),
           ),
-          response.uri.toString)
+          response.uri.get.toString)
       } yield Some((doc, Some(response)))
     }
 
@@ -216,8 +241,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg])
         val newDoc = Document(
           "_id" → new ObjectId(),
           "source" → source,
-          "created" → new Date,
-          config.getString("prefetch.labels.flags") → Document())
+          "created" → new Date)
         Await.result(collection.insertOne(newDoc).toFutureOption(), Duration.Inf)
         Some(newDoc)
     })

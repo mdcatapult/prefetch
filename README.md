@@ -59,6 +59,7 @@ Messages are composed in JSON using the following properties
 * **origin** - optional: an array of FQ origins (see above)
 * **tags** - optional: a list of arbitrary string values that can be used to tag a document
 * **metadata** - optional: additional information that will can be utilised in processing documents
+* **derivative** - optional: explicit flag to mark this document as a derivative
 
 
 ## Results
@@ -68,6 +69,7 @@ Documents on successful completion will contain the following properties
 * **source** - location of file stored on file system
 * **origin** - an array of FQ origins (see above)
 * **attrs** - filesystem attributes of the file
+* **derivative** - explicit flag to identify if this is a derivative of another document
 * **mimetype** - the mimetype as derived from apache tika
 * **hash** - an md5 hash of the file to assist with deduplication
 * **origin** - an array of FQ origins (see above)
