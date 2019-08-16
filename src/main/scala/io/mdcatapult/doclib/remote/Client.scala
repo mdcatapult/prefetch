@@ -9,6 +9,7 @@ import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.PrefetchOrigin
+import io.mdcatapult.doclib.util.FileHash
 import play.api.libs.ws.ahc._
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -17,7 +18,7 @@ import scala.sys.process._
 class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
-class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) {
+class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) extends FileHash {
 
   /** initialise web client **/
   lazy val httpClient = StandaloneAhcWSClient()
@@ -58,11 +59,19 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
     * @return
     */
   def downloadHttp(source: Uri): Option[DownloadResult] = {
-    val target = new File(generateFilePath(source))
-    target.getParentFile.mkdirs()
-    (new URL(source.toUrl.toString) #> target).!!
-    Some(DownloadResult(source = target.getAbsolutePath, origin = Some(source.toString)))
+    val finalTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.target-dir"))))
+    val tempTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.temp-dir"))))
+    tempTarget.getParentFile.mkdirs()
+    (new URL(source.toUrl.toString) #> tempTarget).!!
+    Some(DownloadResult(
+      source = tempTarget.getAbsolutePath,
+      hash = md5(tempTarget.getAbsolutePath),
+      origin = Some(source.toString),
+      target = Some(finalTarget.getAbsolutePath)
+    ))
   }
+
+
 
   /**
     * generate path on filesystem from uri
@@ -72,10 +81,11 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
     * If uri includes query string it will generate an MD5 hash in the filename
     *
     * @param uri io.lemonlabs.uri.Uri
+    * @param root root of path to generate
     * @return
     */
-  def generateFilePath(uri: Uri): String = {
-    val targetDir = config.getString("prefetch.remote.target-dir").replaceAll("/+$", "")
+  def generateFilePath(uri: Uri, root: Option[String] = None): String = {
+    val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
     val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
       MessageDigest.getInstance("MD5").digest(uri.toUrl.query.toString.getBytes)
