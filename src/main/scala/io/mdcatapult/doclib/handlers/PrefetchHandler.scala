@@ -1,10 +1,9 @@
 package io.mdcatapult.doclib.handlers
 
-import java.io.{File, FileInputStream}
+import java.io.{File, FileInputStream, FileNotFoundException}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time.{LocalDateTime, ZoneOffset}
-import java.util.Date
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -34,7 +33,7 @@ import play.api.libs.json.{JsSuccess, Json}
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 /**
   * Handler to perform prefetch of source supplied in Prefetch Messages
@@ -59,7 +58,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
                       config: Config,
                       collection: MongoCollection[Document],
                       codecs: CodecRegistry
-                     ) extends LazyLogging with FileHash with TargetPath{
+                     ) extends LazyLogging with FileHash with TargetPath {
 
   /** Initialise Apache Tika && Remote Client **/
   lazy val tika = new Tika()
@@ -95,7 +94,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     case Failure(err) ⇒
       // enforce error flag
       Await.result(fetchDocument(toUri(msg.source)), Duration.Inf) match {
-        case Some(found) ⇒ flags.error(found.doc, true)
+        case Some(found) ⇒ flags.error(found.doc, noCheck = true)
         case _ ⇒ // do nothing
       }
       throw err
@@ -108,13 +107,8 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @return
     */
   def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[Any]] = {
-    val (remoteUpdate, source) = fetchRemoteUpdate(found, msg)
-
     val update = combine(
-      remoteUpdate,
-      fetchFileAttrs(source),
-      fetchMimetype(source),
-      fetchFileHash(source),
+      fetchDocumentUpdate(found, msg),
       addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
       set("metadata", fetchMetaData(msg)),
       set("derivative", msg.derivative.getOrElse(false)),
@@ -133,8 +127,8 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param msg PrefetchMsg
     * @return
     */
-  def consolidateOrigins(doc: Document, msg: PrefetchMsg): List[PrefetchOrigin] = (doc.get[BsonArray]("origin").getOrElse(BsonArray()).getValues.asScala
-    .flatMap({
+  def consolidateOrigins(doc: Document, msg: PrefetchMsg): List[PrefetchOrigin] =
+    (doc.get[BsonArray]("origin").getOrElse(BsonArray()).getValues.asScala.flatMap({
       case d: BsonValue ⇒ Json.parse(d.asDocument().toJson).validate[PrefetchOrigin] match {
         case JsSuccess(value, _) ⇒ Some(value)
         case _ ⇒ None
@@ -143,20 +137,50 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     }).toList ::: msg.origin.getOrElse(List[PrefetchOrigin]())).distinct
 
 
+
+  def moveFile(source: String, target: String): Option[Path] = moveFile(new File(source), new File(target))
+
   /**
     * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
     * @param source current source path
     * @param target target path to move file to
     * @return
     */
-  def moveFile(source: String, target: String): Path = {
-    if (source == target) {
-      Paths.get(target)
-    } else {
-      new File(target).getParentFile.mkdirs
-      Files.move(Paths.get(source), Paths.get(target), StandardCopyOption.REPLACE_EXISTING)
+  def moveFile(source: File, target: File): Option[Path] = {
+    Try({
+      if (source == target) {
+        target.toPath
+      } else {
+        target.getParentFile.mkdirs
+        Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      }
+    }) match {
+      case Success(path: Path) ⇒ Some(path)
+      case Failure(err) ⇒ throw err
     }
   }
+
+  def copyFile(source: String, target: String): Option[Path] = copyFile(new File(source), new File(target))
+
+  def copyFile(source: File, target: File): Option[Path] = {
+    if (source.exists)
+      Try({
+        target.getParentFile.mkdirs
+        Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      }) match {
+        case Success(path: Path) ⇒ Some(path)
+        case Failure(_: FileNotFoundException) ⇒ None
+        case Failure(err) ⇒ throw err
+      }
+    else None
+  }
+
+  /**
+    * Silently remove file and empty parent dirs
+    * @param source String
+    */
+  def removeFile(source:String): Unit = removeFile(new File(source))
+
 
   /**
     * Silently remove file and empty parent dirs
@@ -170,30 +194,15 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
   }
 
   /**
-    * Silently remove file and empty parent dirs
-    * @param source String
-    */
-  def removeFile(source:String): Unit = removeFile(new File(source))
-
-  /**
     * archives a document to the archive collection and moves file into archive folder
     * @param doc Source Document
     * @return
     */
-  def archiveDoc(doc: Document, move: Boolean = true): Future[Option[Completed]] = {
-    val currentPath = Paths.get(doc.getString("source"))
-    val archiveDir = getTargetPath(currentPath.toString, new File(config.getString("prefetch.archive.target-dir")).getAbsolutePath.toString)
-    val archivePath = s"$archiveDir${doc.getString("hash")}_${currentPath.getFileName.toString}"
-
+  def addToArchiveCollection(doc: Document, archivePath: Path): Future[Option[Completed]] = {
     archiveCollection.insertOne(Document(
       "_id" → new ObjectId(),
       "created" → BsonDateTime(LocalDateTime.now().toInstant(ZoneOffset.UTC).toEpochMilli),
-      "archive" → BsonString({
-        if (move)
-          moveFile(doc.getString("source"), archivePath).toString
-        else
-          currentPath.toString
-      }),
+      "archive" → BsonString(archivePath.toAbsolutePath.toString),
       "document" → doc
     )).toFutureOption()
   }
@@ -203,11 +212,20 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param source String
     * @return
     */
-  def inRemoteRoot(source: String): Boolean = source.startsWith(new File(config.getString("prefetch.remote.target-dir")).getAbsolutePath.toString)
+  def inRemoteRoot(source: String): Boolean =
+    source.startsWith(new File(config.getString("prefetch.remote.target-dir")).getAbsolutePath)
+
+  /**
+  * tests if source string starts with the configured local target-dir
+  * @param source String
+  * @return
+  */
+  def inLocalRoot(source: String): Boolean =
+    source.startsWith(new File(config.getString("prefetch.local.target-dir")).getAbsolutePath)
 
   /**
     * Tests if found Document currently in the remote root and is not returns the appropriate download target
-    * @param foundDoc
+    * @param foundDoc Found Document and remote data
     * @return
     */
   def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
@@ -215,6 +233,81 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
       Some(foundDoc.doc.getString("source"))
     else
       foundDoc.download.get.target
+
+  /**
+    * determines appropriate local target path if required
+    * @param foundDoc Found Doc
+    * @return
+    */
+  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
+    if (inLocalRoot(foundDoc.doc.getString("source")))
+      Some(foundDoc.doc.getString("source"))
+    else {
+      // strips temp dir if present plus any prefixed slashes
+      val relPath = foundDoc.doc.getString("source").replaceAll(config.getString("prefetch.local.temp-dir"), "").replaceAll("^/+", "")
+      // ensures target dir is prepended
+      val root = config.getString("prefetch.local.target-dir").replaceAll("/+$", "")
+      Some(Paths.get(s"$root/$relPath").toAbsolutePath.toString)
+    }
+
+  /**
+    *
+    * @param foundDoc document to be archived
+    * @param archive string location to store the document
+    * @return
+    */
+  def archiveDocument(foundDoc: FoundDoc, archive: String): Future[Option[Completed]] =
+    (for {
+      archivePath: Path ← OptionT.fromOption[Future](copyFile(foundDoc.doc.getString("source"), archive))
+      result: Completed ← OptionT(addToArchiveCollection(foundDoc.doc, archivePath))
+    } yield result).value
+
+  /**
+    * updates a physical file
+    *  - copies existing file to archive location
+    *  - adds document to archive collection
+    *  - moves new file to target/document-source location
+    * @param foundDoc FoundDoc
+    * @param temp path that the new file is located at
+    * @param archive the path that the file needs to be copied to
+    * @param target an optional path to set the new source to if not using the source from the document
+    * @return path of the target/document-source location
+    */
+  def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] =
+    archiveDocument(foundDoc, archive).map(_ ⇒ moveFile(temp, target.getOrElse(foundDoc.doc.getString("source"))))
+
+  /**
+    * generate an archive for the found document
+    * @param foundDoc the found doc
+    * @return
+    */
+  def getArchivePath(foundDoc: FoundDoc): String = {
+    val currentPath = Paths.get(foundDoc.doc.getString("source")).toAbsolutePath
+    val archiveDir =
+      getTargetPath(
+        currentPath.toString,
+        new File(config.getString("prefetch.archive.target-dir")).getAbsolutePath
+      )
+    s"$archiveDir${foundDoc.doc.getString("hash")}_${currentPath.getFileName.toString}"
+  }
+
+  def handleFileUpdate(foundDoc: FoundDoc, newHash: String, source: String, targetPathGenerator: FoundDoc ⇒ Option[String], inRightLocation: String ⇒ Boolean): Option[Path] = {
+    val currentHash: Option[BsonString] = foundDoc.doc.get[BsonString]("hash")
+    targetPathGenerator(foundDoc) match {
+      case Some(targetPath) ⇒
+        if (currentHash.nonEmpty && currentHash.get.getValue != newHash)
+          Await.result(updateFile(foundDoc, source, getArchivePath(foundDoc), Some(targetPath)), Duration.Inf)
+        else if (currentHash.nonEmpty && !inRightLocation(foundDoc.doc.getString("source")))
+          moveFile(foundDoc.doc.getString("source"), targetPath)
+        else if (currentHash.isEmpty)
+          moveFile(source, targetPath)
+        else { // not a new file or a file that requires updating so we will just cleanup the temp file
+          removeFile(source)
+          None
+        }
+      case None ⇒ None
+    }
+  }
 
   /**
     * checks to see if a remote file was downloaded as part found document
@@ -231,52 +324,39 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param msg    PrefetchMsg
     * @return ("Bson $set for origin, source", "identified source string")
     */
-  def fetchRemoteUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): (Bson, String) = {
+  def fetchDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
     val currentOrigins: List[PrefetchOrigin] = consolidateOrigins(foundDoc.doc, msg)
-    val currentHash: Option[BsonString] = foundDoc.doc.get[BsonString]("hash")
-
-    foundDoc.download match {
+    val (source: Option[Path], origin: List[PrefetchOrigin]) = foundDoc.download match {
       case Some(downloaded) ⇒
-        val source: String = Await.result(
-            if (currentHash.nonEmpty && currentHash.get.getValue != downloaded.hash) {
-              (for {
-                _ ← OptionT(archiveDoc(foundDoc.doc)) // archive file
-                target: String ← OptionT.fromOption[Future](getRemoteUpdateTargetPath(foundDoc))
-                path ← OptionT.some[Future](moveFile(downloaded.source, target))
-                _ ← OptionT.some[Future](removeFile(downloaded.source))
-              } yield path).value.map({
-                case Some(path) ⇒ Some(path.toString)
-                case None ⇒ None
-              })
-            } else if (currentHash.nonEmpty && !inRemoteRoot(foundDoc.doc.getString("source"))) {
-              // ok, so its not a new file but lets make sure that its in the remote files root to ensure its cleaned up
-              val newSource = moveFile(
-                foundDoc.doc.getString("source"),
-                getRemoteUpdateTargetPath(foundDoc).get)
-              removeFile(foundDoc.doc.getString("source"))
-              Future.successful(Some(newSource.toString))
-            } else if (currentHash.isEmpty) {
-              // completely new remote file being added to lets move it out of its temp folder
-              Future.successful(Some(moveFile(
-                downloaded.source,
-                downloaded.target.get
-              ).toString))
-            } else Future.successful(None),
-            Duration.Inf
-          ).getOrElse(foundDoc.doc.getString("source"))
-
+        val source: Option[Path] = handleFileUpdate(
+          foundDoc,
+          downloaded.hash,
+          downloaded.source,
+          getRemoteUpdateTargetPath,
+          inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d ⇒ d.uri.toString == foundDoc.origin.get.uri.toString)
-        (combine(
-          set("source", source),
-          set("origin", foundDoc.origin.get :: filteredDocOrigin)
-        ), source)
+        (source, foundDoc.origin.get :: filteredDocOrigin)
+
       case None ⇒
-        // its not a remote/downloaded file so lets check how things stand locally
-        if (currentHash.nonEmpty && currentHash.get.getValue != md5(foundDoc.doc.getString("source"))) {
-          Await.result(archiveDoc(foundDoc.doc, false), Duration.Inf)
-        }
-        (combine(set("origin", currentOrigins)), foundDoc.doc.getString("source"))
+        val source: Option[Path] = handleFileUpdate(
+          foundDoc,
+          md5(msg.source),
+          msg.source,
+          getLocalUpdateTargetPath,
+          inLocalRoot)
+        (source ,currentOrigins)
     }
+
+    combine(
+      set("source", source match {
+        case Some(path: Path) ⇒ path.toAbsolutePath.toString
+        case None ⇒ foundDoc.doc.getString("source")
+      }),
+      set("origin", origin),
+      fetchFileAttrs(source),
+      fetchMimetype(source),
+      fetchFileHash(source),
+    )
   }
 
   /**
@@ -285,18 +365,20 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param source String
     * @return Bson $set
     */
-  def fetchFileAttrs(source: String): Bson = {
-    val filePath = Paths.get(source)
-    val attrs = Files.getFileAttributeView(filePath, classOf[BasicFileAttributeView]).readAttributes()
-    set(config.getString("prefetch.labels.attrs"), FileAttrs(
-      path = filePath.getParent.toAbsolutePath.toString,
-      name = filePath.getFileName.toString,
-      mtime = LocalDateTime.ofInstant(attrs.lastModifiedTime().toInstant, ZoneOffset.UTC),
-      ctime = LocalDateTime.ofInstant(attrs.creationTime().toInstant, ZoneOffset.UTC),
-      atime = LocalDateTime.ofInstant(attrs.lastAccessTime().toInstant, ZoneOffset.UTC),
-      size = attrs.size()
-    ))
-  }
+  def fetchFileAttrs(source: Option[Path]): Bson =
+    source match {
+      case Some(path) ⇒
+        val attrs = Files.getFileAttributeView(path, classOf[BasicFileAttributeView]).readAttributes()
+        set(config.getString("prefetch.labels.attrs"), FileAttrs(
+          path = path.getParent.toAbsolutePath.toString,
+          name = path.getFileName.toString,
+          mtime = LocalDateTime.ofInstant(attrs.lastModifiedTime().toInstant, ZoneOffset.UTC),
+          ctime = LocalDateTime.ofInstant(attrs.creationTime().toInstant, ZoneOffset.UTC),
+          atime = LocalDateTime.ofInstant(attrs.lastAccessTime().toInstant, ZoneOffset.UTC),
+          size = attrs.size()
+        ))
+      case None ⇒ combine()
+    }
 
   /**
     * detect mimetype of source file
@@ -304,13 +386,16 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param source String
     * @return Bson $set
     */
-  def fetchMimetype(source: String): Bson = {
-    val metadata = new Metadata()
-    metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, Paths.get(source).getFileName.toString)
-    set(config.getString("prefetch.labels.mimetype"), tika.getDetector.detect(
-      TikaInputStream.get(new FileInputStream(source)),
-      metadata
-    ).toString)
+  def fetchMimetype(source: Option[Path]): Bson =
+    source match {
+      case Some(path) ⇒
+        val metadata = new Metadata()
+        metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, path.getFileName.toString)
+        set(config.getString("prefetch.labels.mimetype"), tika.getDetector.detect(
+          TikaInputStream.get(new FileInputStream(path.toString)),
+          metadata
+        ).toString)
+      case None ⇒ combine()
   }
 
   /**
@@ -319,7 +404,12 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @param source String
     * @return Bson $set
     */
-  def fetchFileHash(source: String): Bson = set(config.getString("prefetch.labels.hash"), md5(source))
+  def fetchFileHash(source: Option[Path]): Bson =
+    source match {
+      case Some(path) ⇒ set(config.getString("prefetch.labels.hash"), md5(path.toAbsolutePath.toString))
+      case None ⇒ combine()
+    }
+
 
 
 
@@ -333,9 +423,17 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     uri.schemeOption match {
       case None ⇒ throw new UndefinedSchemeException(uri)
       case Some("file") ⇒ (for {
+        target: String ← OptionT.some[Future](uri.path.toString.replaceFirst(
+          config.getString("prefetch.local.temp-dir"),
+          config.getString("prefetch.local.target-dir"))
+        )
         doc: Document ← OptionT(findOrCreateDoc(
           or(
-            equal("source", uri.path.toString),
+            // try finding a matching document using hot folder path or the expected target path
+            or(
+              equal("source", uri.path.toString),
+              equal("source", target)
+            ),
             equal("hash", md5(uri.path.toString))
           ), uri.path.toString))
       } yield FoundDoc(doc = doc)).value

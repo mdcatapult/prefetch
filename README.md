@@ -46,6 +46,10 @@ The app allows runtime configuration via environment variables
 * **UPSTREAM_CONCURRENT** - optional: number of messages to handle concurrently (default: 1)
 * **DOWNSTREAM_QUEUE** - optional: name of queue to enqueue new files to (default: klein.preprocess)
 * **PREFETCH_REMOTE_TARGET** - The target location to store files retrieved from remote locations
+* **PREFETCH_REMOTE_TEMP** - The temporary location to store files retrieved from remote locations
+* **PREFETCH_ARCHIVE_TARGET** - The location to store remote files that are archived via prefetch
+* **PREFETCH_LOCAL_TARGET** - The location to store local files that are managed via prefetch
+* **PREFETCH_LOCAL_TEMP** - A temp folder for local files waiting to be added/updated to the document library
 * **AWS_ACCESS_KEY_ID** - optional: AWS access key for use when not run withing AWS 
 * **AWS_SECRET_ACCESS_KEY** - optional: AWS secret key for use when not run withing AWS
 
