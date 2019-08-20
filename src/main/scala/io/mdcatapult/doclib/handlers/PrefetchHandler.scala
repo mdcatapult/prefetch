@@ -137,7 +137,12 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     }).toList ::: msg.origin.getOrElse(List[PrefetchOrigin]())).distinct
 
 
-
+  /**
+    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
+    * @param source current source path
+    * @param target target path to move file to
+    * @return
+    */
   def moveFile(source: String, target: String): Option[Path] = moveFile(new File(source), new File(target))
 
   /**
@@ -160,8 +165,20 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     }
   }
 
+  /**
+    * Copies a file to a new location
+    * @param source source path
+    * @param target target path
+    * @return
+    */
   def copyFile(source: String, target: String): Option[Path] = copyFile(new File(source), new File(target))
 
+  /**
+    * Copies a file to a new location
+    * @param source source path
+    * @param target target path
+    * @return
+    */
   def copyFile(source: File, target: File): Option[Path] = {
     if (source.exists)
       Try({
@@ -291,18 +308,27 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     s"$archiveDir${foundDoc.doc.getString("hash")}_${currentPath.getFileName.toString}"
   }
 
-  def handleFileUpdate(foundDoc: FoundDoc, newHash: String, source: String, targetPathGenerator: FoundDoc ⇒ Option[String], inRightLocation: String ⇒ Boolean): Option[Path] = {
+  /**
+    * Handles the potential update of a document and is assocuated file based on supplied propertries
+    * @param foundDoc the found document
+    * @param newHash the computed hash of the new file
+    * @param tempPath the path of the temporary file either remote or local
+    * @param targetPathGenerator function to generate the target path for the file
+    * @param inRightLocation function to test if the current document source path is in the right location
+    * @return
+    */
+  def handleFileUpdate(foundDoc: FoundDoc, newHash: String, tempPath: String, targetPathGenerator: FoundDoc ⇒ Option[String], inRightLocation: String ⇒ Boolean): Option[Path] = {
     val currentHash: Option[BsonString] = foundDoc.doc.get[BsonString]("hash")
     targetPathGenerator(foundDoc) match {
       case Some(targetPath) ⇒
         if (currentHash.nonEmpty && currentHash.get.getValue != newHash)
-          Await.result(updateFile(foundDoc, source, getArchivePath(foundDoc), Some(targetPath)), Duration.Inf)
+          Await.result(updateFile(foundDoc, tempPath, getArchivePath(foundDoc), Some(targetPath)), Duration.Inf)
         else if (currentHash.nonEmpty && !inRightLocation(foundDoc.doc.getString("source")))
           moveFile(foundDoc.doc.getString("source"), targetPath)
         else if (currentHash.isEmpty)
-          moveFile(source, targetPath)
+          moveFile(tempPath, targetPath)
         else { // not a new file or a file that requires updating so we will just cleanup the temp file
-          removeFile(source)
+          removeFile(tempPath)
           None
         }
       case None ⇒ None
@@ -310,19 +336,11 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
   }
 
   /**
-    * checks to see if a remote file was downloaded as part found document
-    * if a download is present and the hash is different from the current file it will
-    *  - archive the old file,
-    *  - move the new file into its new location
-    *  - and create a suitable update that defines the new source path, updates the origins and adds the new file
-    * if a download is present and the hash has not changed it will
-    *  - verify if the current source path is in the remote root and it not move the file with an appropriate update
-    * if no download is present then it will just update the origins
+    * Builds a document update with updates source and origins
     *
-    * @todo super heavy function in need of revision/refactor
     * @param foundDoc FoundDoc
     * @param msg    PrefetchMsg
-    * @return ("Bson $set for origin, source", "identified source string")
+    * @return Bson
     */
   def fetchDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
     val currentOrigins: List[PrefetchOrigin] = consolidateOrigins(foundDoc.doc, msg)
