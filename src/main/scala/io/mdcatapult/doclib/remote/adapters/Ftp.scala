@@ -23,10 +23,6 @@ object Ftp extends Adapter with FileHash {
 
   val protocols = List("ftp", "ftps", "sftp")
 
-  implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp")
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
-  implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
-
   /**
     * test if supported scheme and perform download
     * @param uri Uri
@@ -89,7 +85,7 @@ object Ftp extends Adapter with FileHash {
     * @param url Url
     * @return
     */
-  protected def retieve(url: Url): Source[ByteString, Future[IOResult]] = url.schemeOption match  {
+  protected def retrieve(url: Url): Source[ByteString, Future[IOResult]] = url.schemeOption match  {
     case Some("ftp")  ⇒ AkkaFtp.fromPath(url.path.toString(), getFtpSettings(url))
     case Some("ftps") ⇒ AkkaFtps.fromPath(url.path.toString(), getFtpsSettings(url))
     case Some("sftp") ⇒ AkkaSftp.fromPath(url.path.toString(), getSftpSettings(url))
@@ -104,10 +100,14 @@ object Ftp extends Adapter with FileHash {
     * @return
     */
   def download(source: Uri)(implicit config: Config): Option[DownloadResult] = {
-    val finalTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.target-dir"))))
-    val tempTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.temp-dir"))))
+    implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp", config)
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
+    implicit val executor: ExecutionContextExecutor = system.dispatcher
+
+    val finalTarget = getTargetPath(source)
+    val tempTarget = getTempPath((source))
     tempTarget.getParentFile.mkdirs()
-    Await.result(retieve(source.toUrl)
+    val r: Future[Some[DownloadResult]] = retrieve(source.toUrl)
       .runWith(FileIO.toPath(tempTarget.toPath))
       .map({ioresult: IOResult ⇒ ioresult.status match {
         case Success(_) ⇒ Some(DownloadResult(
@@ -118,6 +118,8 @@ object Ftp extends Adapter with FileHash {
         ))
         case Failure(exception) ⇒ throw exception
 
-      }}), Duration.Inf)
+      }})
+    Await.result(system.terminate(), Duration.Inf)
+    Await.result(r, Duration.Inf)
   }
 }

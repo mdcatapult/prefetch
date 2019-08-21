@@ -3,10 +3,13 @@ package io.mdcatapult.doclib.remote.adapters
 import java.io.File
 import java.net.URL
 
+import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.FileHash
+
+import scala.concurrent.ExecutionContextExecutor
 import scala.sys.process._
 
 object Http extends Adapter with FileHash {

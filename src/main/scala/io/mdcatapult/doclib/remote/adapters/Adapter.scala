@@ -1,15 +1,28 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
 import java.security.MessageDigest
 
+import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri.{AbsolutePath, EmptyPath, Path, RootlessPath, Uri}
 import io.mdcatapult.doclib.remote.DownloadResult
+import io.mdcatapult.doclib.remote.adapters.Ftp.generateFilePath
+
+import scala.concurrent.ExecutionContextExecutor
 
 trait Adapter {
 
   def unapply(uri: Uri)(implicit config: Config): Option[DownloadResult]
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult]
+
+
+  def getTargetPath(source: Uri)(implicit config: Config) =
+    new File(generateFilePath(source, Some(config.getString("prefetch.remote.target-dir"))))
+
+  def getTempPath(source: Uri)(implicit config: Config) =
+    new File(generateFilePath(source, Some(config.getString("prefetch.remote.temp-dir"))))
+
 
   /**
     * generate path on filesystem from uri
