@@ -9,6 +9,7 @@ import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.PrefetchOrigin
+import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.FileHash
 import play.api.libs.ws.ahc._
 
@@ -41,86 +42,10 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
     case None ⇒ throw new UndefinedSchemeException(source)
   }
 
-  def download(source: Uri): Option[DownloadResult] = source.schemeOption match {
-    case Some("http" | "https") ⇒ downloadHttp(source)
-    case Some(unsupported) ⇒ throw new UnsupportedSchemeException(unsupported)
-    case None ⇒ throw new UndefinedSchemeException(source)
+  def download(source: Uri): Option[DownloadResult] = source match {
+    case Http(result: DownloadResult) ⇒ Some(result)
+    case Ftp(result: DownloadResult) ⇒ Some(result)
+    case _ ⇒ throw new UnsupportedSchemeException(source.schemeOption.getOrElse("unknown"))
   }
-
-  /**
-    * Fetches contents of URI using low level request and writes to file
-    *
-    * This method will not facilitate any form of Javascript rendering
-    * Converts url to path using naive assumption that we are using linux
-    * filesystem and does not attempt to convert of change the target path
-    * for non linux filesystem
-    *
-    * @param source io.lemonlabs.uri.Uri
-    * @return
-    */
-  def downloadHttp(source: Uri): Option[DownloadResult] = {
-    val finalTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.target-dir"))))
-    val tempTarget = new File(generateFilePath(source, Some(config.getString("prefetch.remote.temp-dir"))))
-    tempTarget.getParentFile.mkdirs()
-    (new URL(source.toUrl.toString) #> tempTarget).!!
-    Some(DownloadResult(
-      source = tempTarget.getAbsolutePath,
-      hash = md5(tempTarget.getAbsolutePath),
-      origin = Some(source.toString),
-      target = Some(finalTarget.getAbsolutePath)
-    ))
-  }
-
-
-
-  /**
-    * generate path on filesystem from uri
-    *
-    * generates a url while attempting to maintain file extensions and
-    * generation of index filename for uris ending in slash.
-    * If uri includes query string it will generate an MD5 hash in the filename
-    *
-    * @param uri io.lemonlabs.uri.Uri
-    * @param root root of path to generate
-    * @return
-    */
-  def generateFilePath(uri: Uri, root: Option[String] = None): String = {
-    val targetDir = root.getOrElse("").replaceAll("/+$", "")
-
-    val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
-      MessageDigest.getInstance("MD5").digest(uri.toUrl.query.toString.getBytes)
-    }"
-
-    def generateBasename(path: Path) = {
-      val endsWithSlash = """(.*/)$""".r
-      val hasExtension = """(.*)\.(.*)$""".r
-      path.toString match {
-        case endsWithSlash(p) ⇒ s"${p}index$queryHash.html"
-        case hasExtension(p, ext) ⇒ s"$p$queryHash.$ext"
-        case p ⇒ s"$p$queryHash.html"
-      }
-    }
-
-    s"$targetDir/${
-      uri.schemeOption match {
-        case Some(scheme) ⇒ s"$scheme/"
-        case None ⇒ ""
-      }
-    }${
-      uri.toUrl.hostOption match {
-        case Some(host) ⇒ s"$host/"
-        case None ⇒ ""
-      }
-    }${
-      uri.path match {
-        case EmptyPath ⇒ s"/index$queryHash.html" // assumes http url
-        case path: RootlessPath ⇒ s"/${generateBasename(path)}"
-        case path: AbsolutePath ⇒ generateBasename(path)
-        case _ ⇒ ""
-      }
-    }"
-  }
-
-
 
 }
