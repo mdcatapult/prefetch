@@ -22,7 +22,7 @@ class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected 
 class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) extends FileHash {
 
   /** initialise web client **/
-  lazy val httpClient = StandaloneAhcWSClient()
+  lazy val httpClient = StandaloneAhcWSClient(AhcWSClientConfigFactory.forConfig(config))
 
   /**
     * does an initial check of a provided remote resource and returns a Resolved response
@@ -38,6 +38,11 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
         headers = Some(r.headers),
         metadata = Some(Map[String, Any]("status" → r.status, "statusText" → r.statusText)))
     )
+    case Some("ftp" | "ftps" | "sftp") ⇒ Future.successful(PrefetchOrigin(
+      scheme = source.schemeOption.get,
+      uri = Some(source),
+      headers = None,
+      metadata = None))
     case Some(unsupported) ⇒ throw new UnsupportedSchemeException(unsupported)
     case None ⇒ throw new UndefinedSchemeException(source)
   }
