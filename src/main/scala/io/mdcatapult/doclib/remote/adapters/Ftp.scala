@@ -55,6 +55,7 @@ object Ftp extends Adapter with FileHash {
       .withPort(url.port.getOrElse(21))
       .withCredentials(getFTPCredentials(url))
       .withBinary(true)
+      .withPassiveMode(true)
 
   /**
     * build FTPS config
@@ -67,6 +68,7 @@ object Ftp extends Adapter with FileHash {
       .withPort(url.port.getOrElse(21))
       .withCredentials(getFTPCredentials(url))
       .withBinary(true)
+      .withPassiveMode(true)
 
   /**
     * Build SFTP config
@@ -107,9 +109,10 @@ object Ftp extends Adapter with FileHash {
     val finalTarget = getTargetPath(source)
     val tempTarget = getTempPath((source))
     tempTarget.getParentFile.mkdirs()
-    val r: Future[Some[DownloadResult]] = retrieve(source.toUrl)
-      .runWith(FileIO.toPath(tempTarget.toPath))
-      .map({ioresult: IOResult ⇒ ioresult.status match {
+    val r: Future[IOResult] = retrieve(source.toUrl)
+      .runWith(FileIO.toFile(tempTarget))
+
+    val a = r.map(ioresult ⇒ ioresult.status match {
         case Success(_) ⇒ Some(DownloadResult(
           source = tempTarget.getAbsolutePath,
           hash = md5(tempTarget.getAbsolutePath),
@@ -117,9 +120,7 @@ object Ftp extends Adapter with FileHash {
           target = Some(finalTarget.getAbsolutePath)
         ))
         case Failure(exception) ⇒ throw exception
-
-      }})
-    Await.result(system.terminate(), Duration.Inf)
-    Await.result(r, Duration.Inf)
+      })
+    Await.result(a, Duration.Inf)
   }
 }
