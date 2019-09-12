@@ -1,5 +1,8 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
+import java.nio.file.{Files, Paths}
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.{Config, ConfigFactory}
@@ -19,7 +22,13 @@ class FtpSpec extends FlatSpec {
 
   "A valid anonymous FTP URL" should "download a file successfully" in {
     val uri = Uri.parse("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
-    val result = Ftp.download(uri)
-    assert(true)
+    val expectedSize = 426
+    val result: Option[DownloadResult] = Ftp.download(uri)
+    assert(result.isDefined)
+    assert(result.get.isInstanceOf[DownloadResult])
+    val file = new File(result.get.source)
+    assert(file.exists)
+    assert(file.length == expectedSize)
   }
+
 }
