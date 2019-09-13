@@ -13,7 +13,7 @@ When retrieving remote documents the resulting mongo document will contain an `o
 identifies the remote location/s that the document was retrieved from. Each origin contains the following properties
 
 * **scheme** - the type of origin source usually derived from the source. If the origin does not contain a scheme then a default of file will be assumer 
-* **uri** - this is a fully qualified uri i.e. `file:///path/to/file` or `https://bbc.co.uk/news
+* **uri** - this is a fully qualified uri i.e. `file:///path/to/file` or `https://bbc.co.uk/news`
 * **headers** - optional: where required will contain header data about the origin
 * **metadata** - optional: where required will contain additional data derived from the remote file that is not part of any headers
 
