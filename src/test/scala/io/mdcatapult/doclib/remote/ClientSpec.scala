@@ -44,4 +44,18 @@ class ClientSpec extends FlatSpec{
     assert(result.scheme == "ftp")
     assert(result.uri.get == source)
   }
+
+  "An unsupported scheme" should "throw an exception" in {
+    val source = Uri.parse("file://a_file.txt")
+    assertThrows[UnsupportedSchemeException] {
+      client.resolve(source)
+    }
+  }
+
+  "An undefined scheme" should "throw an exception" in {
+    val source = Uri.parse("a_file.txt")
+    assertThrows[UndefinedSchemeException] {
+      client.resolve(source)
+    }
+  }
 }
