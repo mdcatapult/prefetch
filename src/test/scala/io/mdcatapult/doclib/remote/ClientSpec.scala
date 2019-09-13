@@ -58,4 +58,10 @@ class ClientSpec extends FlatSpec{
       client.resolve(source)
     }
   }
+  "Downloading an unsupported scheme" should "throw an exception" in {
+    val source = Uri.parse("file://a_file.txt")
+    assertThrows[UnsupportedSchemeException] {
+      client.download(source)
+    }
+  }
 }
