@@ -1,17 +1,13 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-import java.nio.file.{Files, Paths}
 
-import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import org.scalatest.FlatSpec
 
 import scala.collection.JavaConverters._
-import scala.concurrent.ExecutionContextExecutor
 
 class FtpSpec extends FlatSpec {
 

@@ -1,17 +1,13 @@
 package io.mdcatapult.doclib.remote
 
-import java.io.File
-
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.{Config, ConfigFactory}
-import org.scalatest.FlatSpec
 import io.lemonlabs.uri._
-import io.mdcatapult.doclib.models.PrefetchOrigin
+import org.scalatest.FlatSpec
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor}
-import scala.io.Source
 
 class ClientSpec extends FlatSpec{
   val wsConfFile = getClass.getResource("/test/ws.conf")
@@ -43,5 +39,25 @@ class ClientSpec extends FlatSpec{
     val result = Await.result(client.resolve(source), Duration.Inf)
     assert(result.scheme == "ftp")
     assert(result.uri.get == source)
+  }
+
+  "An unsupported scheme" should "throw an exception" in {
+    val source = Uri.parse("file://a_file.txt")
+    assertThrows[UnsupportedSchemeException] {
+      client.resolve(source)
+    }
+  }
+
+  "An undefined scheme" should "throw an exception" in {
+    val source = Uri.parse("a_file.txt")
+    assertThrows[UndefinedSchemeException] {
+      client.resolve(source)
+    }
+  }
+  "Downloading an unsupported scheme" should "throw an exception" in {
+    val source = Uri.parse("file://a_file.txt")
+    assertThrows[UnsupportedSchemeException] {
+      client.download(source)
+    }
   }
 }
