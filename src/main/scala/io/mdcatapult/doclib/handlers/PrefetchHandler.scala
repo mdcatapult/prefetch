@@ -42,7 +42,7 @@ import scala.util.{Failure, Success, Try}
   * all files receive an md5 hash of its contents if there is a detectable difference between
   * hashes it will attempt to archive and update appropriately
   *
-  * @param downstream downstream queue to push Document LIbrary messages onto
+  * @param downstream downstream queue to push Document Library messages onto
   * @param archiveCollection collection to push all archived documents to
   * @param ac ActorSystem
   * @param materializer ActorMateriaizer
