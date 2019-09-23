@@ -18,7 +18,7 @@ class HttpSpec extends FlatSpec {
 
   "A valid HTTPS URL" should "download a file successfully" in {
     val uri = Uri.parse("https://www.google.com/humans.txt")
-    //val expectedSize = 286
+    val expectedSize = 286
     val result: Option[DownloadResult] = Http.download(uri)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
@@ -29,7 +29,7 @@ class HttpSpec extends FlatSpec {
 
   "A valid HTTP URL" should "download a file successfully" in {
     val uri = Uri.parse("http://www.google.com/robots.txt")
-    //val expectedSize = 7246
+    val expectedSize = 7246
     val result: Option[DownloadResult] = Http.download(uri)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
