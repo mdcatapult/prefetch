@@ -1,10 +1,10 @@
 lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.5.23"
-lazy val catsVersion = "1.6.0"
+lazy val akkaVersion = "2.5.25"
+lazy val catsVersion = "2.0.0"
 lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
-lazy val tikaVersion = "1.20"
+lazy val tikaVersion = "1.21"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -38,7 +38,7 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-macros"                % catsVersion,
       "org.typelevel" %% "cats-kernel"                % catsVersion,
       "org.typelevel" %% "cats-core"                  % catsVersion,
-      "io.mdcatapult.doclib" %% "common"              % "0.0.13",
+      "io.mdcatapult.doclib" %% "common"              % "0.0.14",
       "com.github.seratch" %% "awscala"               % awsScalaVersion
     ),
     assemblyJarName := "consumer-prefetch.jar",
