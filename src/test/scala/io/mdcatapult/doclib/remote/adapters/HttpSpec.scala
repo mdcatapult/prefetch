@@ -38,10 +38,20 @@ class HttpSpec extends FlatSpec {
     //assert(file.length == expectedSize)
   }
 
-  "A URL exception" should "return None" in {
+  "An URL to nowhere" should "throw an Exception" in {
     val uri = Uri.parse("http://www.a.b.c/something")
-    val result: Option[DownloadResult] = Http.download(uri)
-    assert(result == None)
+    val caught = intercept[Exception] {
+      Http.download(uri)
+    }
+    assert(caught.getMessage == "Unable to retrieve headers for URL http://www.a.b.c/something")
+  }
+
+  "A valid URL with unknown file" should "throw an Exception" in {
+    val uri = Uri.parse("http://www.google.com/this-is-an-invalid-file.pdf")
+    val caught = intercept[Exception] {
+      Http.download(uri)
+    }
+    assert(caught.getMessage == "Unable to process URL with resolved status code of 404")
   }
   
 }

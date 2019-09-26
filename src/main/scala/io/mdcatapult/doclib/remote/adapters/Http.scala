@@ -36,28 +36,21 @@ object Http extends Adapter with FileHash {
     val finalTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.target-dir"))))
     val tempTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.temp-dir"))))
     tempTarget.getParentFile.mkdirs()
+    val validStatusRegex = """HTTP/[0-9]\.[0-9]\s([0-9]{3})\s(.*)""".r
     val url =  new URL(uri.toUrl.toString)
-    try {
-      val connection = url.openConnection().asInstanceOf[HttpURLConnection]
-      connection.setConnectTimeout(5000)
-      connection.setReadTimeout(5000)
-      connection.connect()
-      if (connection.getResponseCode >= 400) {
-        None
-        // TODO log errors somewhere
-        // TODO Failure via Try may be better since upstream the error will be reported as an unhandled protocol
-      } else {
-        (new URL(uri.toUrl.toString) #> tempTarget).!!
-        Some(DownloadResult(
-          source = tempTarget.getAbsolutePath,
-          hash = md5(tempTarget.getAbsolutePath),
-          origin = Some(uri.toString),
-          target = Some(finalTarget.getAbsolutePath)
-        ))
+    url.openConnection().getHeaderField(null) match {
+      case validStatusRegex(code, message) ⇒ code.toInt match {
+        case c if c < 400 ⇒
+          (url #> tempTarget).!!
+          Some(DownloadResult(
+            source = tempTarget.getAbsolutePath,
+            hash = md5(tempTarget.getAbsolutePath),
+            origin = Some(uri.toString),
+            target = Some(finalTarget.getAbsolutePath)
+          ))
+        case _ ⇒ throw new Exception(s"Unable to process URL with resolved status code of $code")
       }
-    } catch {
-      case e: Exception => None
+      case _ ⇒ throw new Exception(s"Unable to retrieve headers for URL ${url.toString}")
     }
-
   }
 }
