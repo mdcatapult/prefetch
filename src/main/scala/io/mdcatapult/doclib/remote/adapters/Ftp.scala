@@ -109,10 +109,11 @@ object Ftp extends Adapter with FileHash {
     val finalTarget = getTargetPath(source)
     val tempTarget = getTempPath((source))
     tempTarget.getParentFile.mkdirs()
-    val r: Future[IOResult] = retrieve(source.toUrl)
-      .runWith(FileIO.toFile(tempTarget))
+    try {
+      val r: Future[IOResult] = retrieve(source.toUrl)
+        .runWith(FileIO.toFile(tempTarget))
 
-    val a = r.map(ioresult ⇒ ioresult.status match {
+      val a = r.map(ioresult ⇒ ioresult.status match {
         case Success(_) ⇒ Some(DownloadResult(
           source = tempTarget.getAbsolutePath,
           hash = md5(tempTarget.getAbsolutePath),
@@ -121,6 +122,10 @@ object Ftp extends Adapter with FileHash {
         ))
         case Failure(exception) ⇒ throw exception
       })
-    Await.result(a, Duration.Inf)
+      Await.result(a, Duration.Inf)
+    } catch {
+      //TODO Log error. Throw it?
+      case e: Exception => None
+    }
   }
 }
