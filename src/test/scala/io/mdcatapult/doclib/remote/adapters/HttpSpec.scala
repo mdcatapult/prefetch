@@ -37,5 +37,11 @@ class HttpSpec extends FlatSpec {
     assert(file.exists)
     //assert(file.length == expectedSize)
   }
+
+  "A URL exception" should "return None" in {
+    val uri = Uri.parse("http://www.a.b.c/something")
+    val result: Option[DownloadResult] = Http.download(uri)
+    assert(result == None)
+  }
   
 }
