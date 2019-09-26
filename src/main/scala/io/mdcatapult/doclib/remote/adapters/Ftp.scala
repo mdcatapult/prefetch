@@ -124,8 +124,8 @@ object Ftp extends Adapter with FileHash {
       })
       Await.result(a, Duration.Inf)
     } catch {
-      //TODO Log error. Throw it?
-      case e: Exception => None
+      // TODO Log error.
+      case e: Exception => throw new Exception("Could not process " + source + "." + e.getMessage)
     }
   }
 }
