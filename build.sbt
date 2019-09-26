@@ -9,7 +9,9 @@ lazy val tikaVersion = "1.21"
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val root = (project in file(".")).
+  configs(IntegrationTest).
   settings(
+    Defaults.itSettings,
     name              := "consumer-prefetch",
     version           := "0.1",
     scalaVersion      := "2.12.8",
@@ -25,9 +27,9 @@ lazy val root = (project in file(".")).
     },
     libraryDependencies ++= Seq(
       "org.scalactic" %% "scalactic"                  % "3.0.5",
-      "org.scalatest" %% "scalatest"                  % "3.0.5" % "test",
-      "org.scalamock" %% "scalamock"                  % "4.3.0" % Test,
-      "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % Test,
+      "org.scalatest" %% "scalatest"                  % "3.0.5" % "it,test",
+      "org.scalamock" %% "scalamock"                  % "4.3.0" % "it,test",
+      "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-actor"             % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j"             % akkaVersion,
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
