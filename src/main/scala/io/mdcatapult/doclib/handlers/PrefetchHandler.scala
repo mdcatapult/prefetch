@@ -303,11 +303,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @return
     */
   def getArchivePath(foundDoc: FoundDoc): String = {
-    val currentPath = Paths.get(foundDoc.doc.getString("source")).toAbsolutePath
+    val doclibRoot = config.getString("doclib.root")
+    val currentPath: Path = Paths.get(s"$doclibRoot/${foundDoc.doc.getString("source")}")
     val archiveDir =
       getTargetPath(
-        currentPath.toString,
-        new File(config.getString("doclib.archive.target-dir")).getAbsolutePath
+        currentPath.toUri.getPath,
+        s"$doclibRoot/${config.getString("doclib.archive.target-dir")}"
       )
     s"$archiveDir${foundDoc.doc.getString("hash")}_${currentPath.getFileName.toString}"
   }

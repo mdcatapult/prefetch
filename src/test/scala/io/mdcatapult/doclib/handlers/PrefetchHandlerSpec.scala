@@ -41,6 +41,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
       |  }
+      |  archive {
+      |    target-dir: "archive"
+      |  }
       |}
     """.stripMargin)
 
@@ -102,6 +105,14 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
       ))
       assert(result.get == "/test/remote/cheese/stinking-bishop.cz")
+    }
+
+    "generate a valid archive path for a document" in {
+      val result = handler.getArchivePath(new handler.FoundDoc(Document(List(
+        "source" → BsonString("remote/cheese/stinking-bishop.cz"),
+        "hash" → BsonString("1234567890")
+      ))))
+      assert(result == "/test/archive/remote/cheese/stinking-bishop/1234567890_stinking-bishop.cz")
     }
 
   }
