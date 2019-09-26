@@ -15,6 +15,7 @@ lazy val root = (project in file(".")).
     name              := "consumer-prefetch",
     version           := "0.1",
     scalaVersion      := "2.12.8",
+    coverageEnabled   := true,
     scalacOptions     ++= Seq("-Ypartial-unification"),
     resolvers         ++= Seq("MDC Nexus" at "http://nexus.mdcatapult.io/repository/maven-releases/"),
     credentials       += {
