@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{FileAttrs, PrefetchOrigin}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
-import io.mdcatapult.klein.queue.Queue
+import io.mdcatapult.klein.queue.{Queue, Sendable}
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
@@ -51,7 +51,7 @@ import scala.util.{Failure, Success, Try}
   * @param collection MongoCollection[Document] to read documents from
   * @param codecs CodecRegistry
   */
-class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoCollection[Document])
+class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoCollection[Document])
                      (implicit ac: ActorSystem,
                       materializer: ActorMaterializer,
                       ex: ExecutionContextExecutor,
@@ -82,7 +82,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @return
     */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = (for {
-    found: FoundDoc ← OptionT(fetchDocument(toUri(msg.source)))
+    found: FoundDoc ← OptionT(fetchDocument(toUri(msg.source.replaceFirst(config.getString("doclib.root"), ""))))
     started: UpdateResult ← OptionT(flags.start(found.doc))
     result ← OptionT(process(found, msg))
     _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
@@ -230,7 +230,7 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     * @return
     */
   def inRemoteRoot(source: String): Boolean =
-    source.startsWith(new File(config.getString("prefetch.remote.target-dir")).getAbsolutePath)
+    source.startsWith(s"${config.getString("doclib.remote.target-dir")}/")
 
   /**
   * tests if source string starts with the configured local target-dir
@@ -238,34 +238,38 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
   * @return
   */
   def inLocalRoot(source: String): Boolean =
-    source.startsWith(new File(config.getString("prefetch.local.target-dir")).getAbsolutePath)
+    source.startsWith(s"${config.getString("doclib.local.target-dir")}/")
 
   /**
     * Tests if found Document currently in the remote root and is not returns the appropriate download target
     * @param foundDoc Found Document and remote data
     * @return
     */
-  def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
+  def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+    val doclibRoot = config.getString("doclib.root")
     if (inRemoteRoot(foundDoc.doc.getString("source")))
-      Some(foundDoc.doc.getString("source"))
+      Some(Paths.get(s"$doclibRoot/${foundDoc.doc.getString("source")}").toAbsolutePath.toString)
     else
-      foundDoc.download.get.target
+      Some(Paths.get(s"$doclibRoot/${foundDoc.download.get.target.get}").toAbsolutePath.toString)
+  }
 
   /**
     * determines appropriate local target path if required
     * @param foundDoc Found Doc
     * @return
     */
-  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
+  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+    val doclibRoot = config.getString("doclib.root")
     if (inLocalRoot(foundDoc.doc.getString("source")))
-      Some(foundDoc.doc.getString("source"))
+      Some(Paths.get(s"$doclibRoot/${foundDoc.doc.getString("source")}").toAbsolutePath.toString)
     else {
       // strips temp dir if present plus any prefixed slashes
-      val relPath = foundDoc.doc.getString("source").replaceAll(config.getString("prefetch.local.temp-dir"), "").replaceAll("^/+", "")
+      val relPath = foundDoc.doc.getString("source").replaceAll(config.getString("doclib.local.temp-dir"), "").replaceAll("^/+", "")
       // ensures target dir is prepended
-      val root = config.getString("prefetch.local.target-dir").replaceAll("/+$", "")
-      Some(Paths.get(s"$root/$relPath").toAbsolutePath.toString)
+      val root = config.getString("doclib.local.target-dir").replaceAll("/+$", "")
+      Some(Paths.get(s"$doclibRoot/$root/$relPath").toAbsolutePath.toString)
     }
+  }
 
   /**
     *
@@ -303,17 +307,17 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
     val archiveDir =
       getTargetPath(
         currentPath.toString,
-        new File(config.getString("prefetch.archive.target-dir")).getAbsolutePath
+        new File(config.getString("doclib.archive.target-dir")).getAbsolutePath
       )
     s"$archiveDir${foundDoc.doc.getString("hash")}_${currentPath.getFileName.toString}"
   }
 
   /**
-    * Handles the potential update of a document and is assocuated file based on supplied propertries
+    * Handles the potential update of a document and is associated file based on supplied properties
     * @param foundDoc the found document
     * @param newHash the computed hash of the new file
     * @param tempPath the path of the temporary file either remote or local
-    * @param targetPathGenerator function to generate the target path for the file
+    * @param targetPathGenerator function to generate the absolute target path for the file
     * @param inRightLocation function to test if the current document source path is in the right location
     * @return
     */
@@ -442,8 +446,8 @@ class PrefetchHandler(downstream: Queue[DoclibMsg], archiveCollection: MongoColl
       case None ⇒ throw new UndefinedSchemeException(uri)
       case Some("file") ⇒ (for {
         target: String ← OptionT.some[Future](uri.path.toString.replaceFirst(
-          config.getString("prefetch.local.temp-dir"),
-          config.getString("prefetch.local.target-dir"))
+          config.getString("doclib.local.temp-dir"),
+          config.getString("doclib.local.target-dir"))
         )
         doc: Document ← OptionT(findOrCreateDoc(
           or(
