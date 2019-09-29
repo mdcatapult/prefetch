@@ -65,6 +65,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
   lazy val remoteClient = new RemoteClient()
   lazy val flags = new DoclibFlags(config.getString("doclib.flag"))
 
+  val doclibRoot: String = s"${config.getString("doclib.root").replace("""/{1,}$""", "")}/"
+
   /**
     * Case class for handling the various permutations of local and remote documents
     * @param doc Document
@@ -82,7 +84,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @return
     */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = (for {
-    found: FoundDoc ← OptionT(fetchDocument(toUri(msg.source.replaceFirst(config.getString("doclib.root"), ""))))
+    found: FoundDoc ← OptionT(fetchDocument(toUri(msg.source.replace(s"^doclibRoot", ""))))
     started: UpdateResult ← OptionT(flags.start(found.doc))
     result ← OptionT(process(found, msg))
     _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
@@ -143,7 +145,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @param target target path to move file to
     * @return
     */
-  def moveFile(source: String, target: String): Option[Path] = moveFile(new File(source), new File(target))
+  def moveFile(source: String, target: String): Option[Path] = moveFile(
+    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
+    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
+  ) match {
+    case Success(path: Path) ⇒ Some(Paths.get(target))
+    case Failure(err) ⇒ throw err
+  }
 
   /**
     * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
@@ -151,7 +159,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @param target target path to move file to
     * @return
     */
-  def moveFile(source: File, target: File): Option[Path] = {
+  def moveFile(source: File, target: File): Try[Path] = {
     Try({
       if (source == target) {
         target.toPath
@@ -159,10 +167,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
         target.getParentFile.mkdirs
         Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
       }
-    }) match {
-      case Success(path: Path) ⇒ Some(path)
-      case Failure(err) ⇒ throw err
-    }
+    })
   }
 
   /**
@@ -171,7 +176,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @param target target path
     * @return
     */
-  def copyFile(source: String, target: String): Option[Path] = copyFile(new File(source), new File(target))
+  def copyFile(source: String, target: String): Option[Path] = copyFile(
+    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
+    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
+  ) match {
+    case Success(path: Path) ⇒ Some(Paths.get(target))
+    case Failure(_: FileNotFoundException) ⇒ None
+    case Failure(err) ⇒ throw err
+  }
 
   /**
     * Copies a file to a new location
@@ -179,24 +191,17 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @param target target path
     * @return
     */
-  def copyFile(source: File, target: File): Option[Path] = {
-    if (source.exists)
+  def copyFile(source: File, target: File): Try[Path] =
       Try({
         target.getParentFile.mkdirs
         Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
-      }) match {
-        case Success(path: Path) ⇒ Some(path)
-        case Failure(_: FileNotFoundException) ⇒ None
-        case Failure(err) ⇒ throw err
-      }
-    else None
-  }
+      })
 
   /**
     * Silently remove file and empty parent dirs
     * @param source String
     */
-  def removeFile(source:String): Unit = removeFile(new File(source))
+  def removeFile(source:String): Unit = removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
 
 
   /**
@@ -259,15 +264,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     * @return
     */
   def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
-    val doclibRoot = config.getString("doclib.root")
     if (inLocalRoot(foundDoc.doc.getString("source")))
-      Some(Paths.get(s"$doclibRoot/${foundDoc.doc.getString("source")}").toAbsolutePath.toString)
+      Some(Paths.get(s"${foundDoc.doc.getString("source")}").toAbsolutePath.toString)
     else {
       // strips temp dir if present plus any prefixed slashes
       val relPath = foundDoc.doc.getString("source").replaceAll(config.getString("doclib.local.temp-dir"), "").replaceAll("^/+", "")
       // ensures target dir is prepended
       val root = config.getString("doclib.local.target-dir").replaceAll("/+$", "")
-      Some(Paths.get(s"$doclibRoot/$root/$relPath").toAbsolutePath.toString)
+      Some(Paths.get(s"$root/$relPath").toString)
     }
   }
 
@@ -372,7 +376,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
 
     combine(
       set("source", source match {
-        case Some(path: Path) ⇒ path.toAbsolutePath.toString
+        case Some(path: Path) ⇒ path.toString
         case None ⇒ foundDoc.doc.getString("source")
       }),
       set("origin", origin),
@@ -434,33 +438,38 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
     }
 
 
-
-
   /**
-    * retrieves a document based on url or filepath
+    * retrieves document from mongo based on supplied uri being for a local source
     *
     * @param uri io.lemonlabs.uri.Uri
     * @return
     */
-  def fetchDocument(uri: Uri): Future[Option[FoundDoc]] =
-    uri.schemeOption match {
-      case None ⇒ throw new UndefinedSchemeException(uri)
-      case Some("file") ⇒ (for {
-        target: String ← OptionT.some[Future](uri.path.toString.replaceFirst(
-          config.getString("doclib.local.temp-dir"),
-          config.getString("doclib.local.target-dir"))
-        )
-        doc: Document ← OptionT(findOrCreateDoc(
+  def fetchLocalDocument(uri: Uri): Future[Option[FoundDoc]] =
+    (for {
+      target: String ← OptionT.some[Future](uri.path.toString.replace(
+        s"^${config.getString("doclib.local.temp-dir")}",
+        s"^${config.getString("doclib.local.target-dir")}"
+      ))
+      doc: Document ← OptionT(findOrCreateDoc(
+        or(
+          // try finding a matching document using hot folder path or the expected target path
           or(
-            // try finding a matching document using hot folder path or the expected target path
-            or(
-              equal("source", uri.path.toString),
-              equal("source", target)
-            ),
-            equal("hash", md5(uri.path.toString))
-          ), uri.path.toString))
-      } yield FoundDoc(doc = doc)).value
-      case _ ⇒ (for { // assumes remote
+            equal("source", uri.path.toString),
+            equal("source", target)
+          ),
+          equal("hash", md5(s"$doclibRoot${uri.path.toString}"))
+        ), uri.path.toString))
+    } yield FoundDoc(doc = doc)).value
+
+
+    /**
+      * retrieves document from mongo based on supplied uri being for a remote source
+      *
+      * @param uri io.lemonlabs.uri.Uri
+      * @return
+      */
+    def fetchRemoteDocument(uri: Uri): Future[Option[FoundDoc]] =
+      (for { // assumes remote
         origin: PrefetchOrigin ← OptionT.liftF(remoteClient.resolve(uri))
         downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origin.uri.get))
         doc: Document ← OptionT(findOrCreateDoc(
@@ -472,6 +481,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiveCollection: MongoC
           origin.uri.get.toString)
         )
       } yield FoundDoc(doc = doc, origin = Some(origin), download = Some(downloaded))).value
+
+
+  /**
+    * retrieves a document based on url or filepath
+    *
+    * @param uri io.lemonlabs.uri.Uri
+    * @return
+    */
+  def fetchDocument(uri: Uri): Future[Option[FoundDoc]] =
+    uri.schemeOption match {
+      case None ⇒ throw new UndefinedSchemeException(uri)
+      case Some("file") ⇒ fetchLocalDocument(uri)
+      case _ ⇒ fetchRemoteDocument(uri)
     }
 
   /**
