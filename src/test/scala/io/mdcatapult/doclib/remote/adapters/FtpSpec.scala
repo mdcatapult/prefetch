@@ -35,10 +35,9 @@ class FtpSpec extends FlatSpec {
 
   "A broken FTP URL" should "fail" in {
     val uri = Uri.parse("ftp://a.b.c/something")
-    val caught = intercept[Exception] {
+    intercept[Exception] {
       Ftp.download(uri)
     }
-    assert(caught.getMessage == "Could not process ftp://a.b.c/something.a.b.c: Name or service not known")
   }
 
 }
