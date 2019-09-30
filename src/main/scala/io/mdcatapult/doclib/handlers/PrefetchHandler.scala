@@ -166,6 +166,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         target.toPath
       } else {
         target.getParentFile.mkdirs
+        println(s"*** Moving from ${source} to ${target}")
         Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
       }
     })
@@ -337,7 +338,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
           // file already exists at target location but is not the same file, archive the old one then add the new one
           Await.result(updateFile(foundDoc, tempPath, getArchivePath(targetPath, currentHash), Some(targetPath)), Duration.Inf)
         else if (!inRightLocation(foundDoc.doc.getString("source")))
-          moveFile(foundDoc.doc.getString("source"), targetPath)
+          moveFile(tempPath, targetPath)
         else { // not a new file or a file that requires updating so we will just cleanup the temp file
           removeFile(tempPath)
           None
