@@ -52,15 +52,15 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[Document] = stub[JMongoCollection[Document]]
   implicit val collection: MongoCollection[Document] = MongoCollection[Document](wrappedCollection)
-  val archiveCollection: MongoCollection[Document] = MongoCollection[Document](wrappedCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val handler = new PrefetchHandler(downstream, archiveCollection)
+  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val handler = new PrefetchHandler(downstream, archiver)
 
 
   "The handler" should {
-    val prefetchHandler: PrefetchHandler = new PrefetchHandler(downstream, archiveCollection)
+    val prefetchHandler: PrefetchHandler = new PrefetchHandler(downstream, archiver)
 
     "return prefetch message metadata correctly" in {
       val metadataMap: Map[String, Any] = Map[String, Any]("doi" -> "10.1101/327015")
@@ -82,38 +82,49 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(handler.inRemoteRoot("remote/cheese/stinking-bishop.cz"))
     }
 
-    "return an absolute doclib path for local files from a relative ingress path" in {
+    "return an relative local path for local files from a relative ingress path" in {
       val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("ingress/cheese/stinking-bishop.cz")))))
-      assert(result.get == "/test/local/cheese/stinking-bishop.cz")
+      assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
-    "return an absolute doclib path for local files from a relative local path" in {
+    "return an relative local path for local files from a relative local path" in {
       val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("local/cheese/stinking-bishop.cz")))))
-      assert(result.get == "/test/local/cheese/stinking-bishop.cz")
+      assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
-    "return an absolute doclib path for remote files from a relative remote path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("remote/cheese/stinking-bishop.cz")))))
-      assert(result.get == "/test/remote/cheese/stinking-bishop.cz")
-    }
 
-    "return an absolute doclib path for remote files from a relative remote-ingress path" in {
+    "return an relative remote path for remote files from a relative remote ingress path" in {
       val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(
         Document(List("source" → BsonString("remote-ingress/cheese/stinking-bishop.cz"))),
+        download = Some(DownloadResult("remote-ingress/cheese/stinking-bishop.cz", "1234567890", target = Some("remote/cheese/stinking-bishop.cz")))
+      ))
+      assert(result.get == "remote/cheese/stinking-bishop.cz")
+    }
+
+    "return an relative remote path for remote files from a relative remote path" in {
+      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("remote/cheese/stinking-bishop.cz")))))
+      assert(result.get == "remote/cheese/stinking-bishop.cz")
+    }
+
+    "return an relative archive path for file from a relative path" in {
+      val result = handler.getArchivePath("remote/cheese/stinking-bishop.cz", "fd6eba7e747b846abbdfbfed0e10de12")
+      assert(result == "archive/remote/cheese/stinking-bishop.cz/fd6eba7e747b846abbdfbfed0e10de12.cz")
+    }
+
+    "return an relative archive path for file from a relative path witj no file extension" in {
+      val result = handler.getArchivePath("remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
+      assert(result == "archive/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
+    }
+
+    "return an relative doclib path for remote files from a relative remote-ingress path" in {
+      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(
+        Document(List("source" → BsonString("remote-ingress/cheese/stinking-bishop.cz"))),
+        None,
         None,
         Some(DownloadResult("", "", None, Some("remote/cheese/stinking-bishop.cz")))
 
       ))
-      assert(result.get == "/test/remote/cheese/stinking-bishop.cz")
+      assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
-
-    "generate a valid archive path for a document" in {
-      val result = handler.getArchivePath(new handler.FoundDoc(Document(List(
-        "source" → BsonString("remote/cheese/stinking-bishop.cz"),
-        "hash" → BsonString("1234567890")
-      ))))
-      assert(result == "/test/archive/remote/cheese/stinking-bishop/1234567890_stinking-bishop.cz")
-    }
-
   }
 }
