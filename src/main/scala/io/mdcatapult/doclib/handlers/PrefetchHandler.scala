@@ -171,7 +171,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         target.toPath
       } else {
         target.getParentFile.mkdirs
-        println(s"*** Moving from ${source} to ${target}")
         Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
       }
     })
