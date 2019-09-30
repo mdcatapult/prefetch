@@ -70,12 +70,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   /**
     * Case class for handling the various permutations of local and remote documents
-    * @param doc Document
-    * @param origin PrefetchOrigin
+    *
+    * @param doc      Document
+    * @param origin   PrefetchOrigin
     * @param download DownloadResult
     */
   sealed case class FoundDoc(doc: Document, archiveable: Option[List[Document]] = None, origin: Option[PrefetchOrigin] = None, download: Option[DownloadResult] = None)
-
 
   /**
     * handle msg from rabbitmq
@@ -84,25 +84,30 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     * @param key String
     * @return
     */
-  def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = (for {
-    found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-    started: UpdateResult ← OptionT(flags.start(found.doc))
-    result ← OptionT(process(found, msg))
-    _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
+  def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
+    (for {
+      found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
+      started: UpdateResult ← OptionT(flags.start(found.doc))
+      result ← OptionT(process(found, msg))
+      _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
 
-  } yield (result, found.doc)).value.andThen({
-    case Success(r) ⇒ r match {
-      case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2.getObjectId("_id").toString}")
-      case None ⇒ // do nothing for now, but need to identify the use case
-    }
-    case Failure(err) ⇒
-      // enforce error flag
-      Await.result(findDocument(toUri(msg.source)), Duration.Inf) match {
-        case Some(found) ⇒ flags.error(found.doc, noCheck = true)
-        case _ ⇒ // do nothing
+    } yield (result, found.doc)).value.andThen({
+      case Success(r) ⇒ r match {
+        case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2.getObjectId("_id").toString}")
+        case None ⇒ // do nothing for now, but need to identify the use case
       }
-      throw err
-  })
+      case Failure(_) ⇒
+        // enforce error flag
+        Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
+          case Success(value: Option[FoundDoc]) ⇒ value match {
+            case Some(found) ⇒ flags.error(found.doc, noCheck = true)
+            case _ ⇒ // do nothing as error handling will capture
+          }
+          case Failure(_) ⇒ // do nothing as error handling will capture
+        }
+    })
+  }
+
 
   /**    * process the found documents and generate an update to apply to the document before pushing downstream
     * @param found FoundDoc

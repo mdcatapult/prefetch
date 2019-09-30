@@ -55,17 +55,16 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val errors: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val handler = new PrefetchHandler(downstream, archiver)
+  val handler = new PrefetchHandler(downstream, errors, archiver)
 
 
   "The handler" should {
-    val prefetchHandler: PrefetchHandler = new PrefetchHandler(downstream, archiver)
-
     "return prefetch message metadata correctly" in {
       val metadataMap: Map[String, Any] = Map[String, Any]("doi" -> "10.1101/327015")
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
-      val fetchedMetadata = prefetchHandler.fetchMetaData(prefetchMsg)
+      val fetchedMetadata = handler.fetchMetaData(prefetchMsg)
       assert(fetchedMetadata.isInstanceOf[List[MetaValue]])
       assert(fetchedMetadata(0).asInstanceOf[MetaString].key == "doi")
       assert(fetchedMetadata(0).asInstanceOf[MetaString].value == "10.1101/327015")

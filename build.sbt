@@ -41,7 +41,7 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-macros"                % catsVersion,
       "org.typelevel" %% "cats-kernel"                % catsVersion,
       "org.typelevel" %% "cats-core"                  % catsVersion,
-      "io.mdcatapult.doclib" %% "common"              % "0.0.14",
+      "io.mdcatapult.doclib" %% "common"              % "0.0.15",
       "com.github.seratch" %% "awscala"               % awsScalaVersion
     ),
     assemblyJarName := "consumer-prefetch.jar",
