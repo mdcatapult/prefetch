@@ -3,6 +3,7 @@ package io.mdcatapult.doclib.handlers
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
+import better.files.Dsl.pwd
 import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -124,5 +125,18 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       ))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
+  }
+
+  override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
+    Seq((pwd/"test/local"),
+      (pwd/"test"/"efs"),
+      (pwd/"test"/"ftp"),
+      (pwd/"test"/"http"),
+      (pwd/"test"/"https"),
+      (pwd/"test"/"remote-ingress"),
+      (pwd/"test"/"ingress"),
+      (pwd/"test"/"remote"),
+      (pwd/"test"/"local")).map(_.delete(true))
   }
 }
