@@ -10,6 +10,7 @@ import better.files.{File ⇒ ScalaFile}
 import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.{FileHash, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
@@ -86,9 +87,34 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         assert(actualMovedFilePath.value.toString == movedFilePath.pathAsString)
       }
     }
+
+    "move a new remote https file to the correct directory" in {
+      implicit val attributes = ScalaFile.Attributes.default
+      println(pwd)
+      val docFile: ScalaFile = ScalaFile(s"${config.getString("doclib.remote.temp-dir")}/https/path/to/aFile.txt").createFileIfNotExists(true)
+      for {
+        tempFile <- docFile.toTemporary
+      } {
+        val fileHash = md5(tempFile.path.toString)
+        val document = Document(
+          BsonDocument(
+            "key" → BsonString("unarchived"),
+            "source" → BsonString("https://path/to/aFile.txt"),
+            "version" → BsonDouble(2.0),
+            "hash" → BsonString(fileHash),
+            "started" → BsonDateTime(new Date()),
+            "ended" → BsonNull())
+        )
+        val foundDoc = new handler.FoundDoc(document, None, None, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
+        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, tempFile.path.toString, handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
+        val movedFilePath = ScalaFile(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt")
+        assert(actualMovedFilePath.value.toString == movedFilePath.pathAsString)
+      }
+    }
   }
 
   override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
     Seq((pwd/"test/local"),
       (pwd/"test"/"efs"),
       (pwd/"test"/"ftp"),
@@ -96,6 +122,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       (pwd/"test"/"https"),
       (pwd/"test"/"remote-ingress"),
       (pwd/"test"/"ingress"),
+      (pwd/"test"/"remote"),
       (pwd/"test"/"local")).map(_.delete(true))
   }
 }
