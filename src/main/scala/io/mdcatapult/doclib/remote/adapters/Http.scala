@@ -2,6 +2,7 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 import java.net.{HttpURLConnection, URL}
+import java.nio.file.Paths
 
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
@@ -33,8 +34,12 @@ object Http extends Adapter with FileHash {
   * @return
   */
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
-    val finalTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.target-dir"))))
-    val tempTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.temp-dir"))))
+    val doclibRoot = config.getString("doclib.root")
+    val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
+    val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
+    val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
+    val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
+
     tempTarget.getParentFile.mkdirs()
     val validStatusRegex = """HTTP/[0-9]\.[0-9]\s([0-9]{3})\s(.*)""".r
     val url =  new URL(uri.toUrl.toString)
@@ -43,7 +48,7 @@ object Http extends Adapter with FileHash {
         case c if c < 400 ⇒
           (url #> tempTarget).!!
           Some(DownloadResult(
-            source = tempTarget.getAbsolutePath,
+            source = tempPath,
             hash = md5(tempTarget.getAbsolutePath),
             origin = Some(uri.toString),
             target = Some(finalTarget.getAbsolutePath)

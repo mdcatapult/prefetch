@@ -33,11 +33,12 @@ assemble:
     - apt-get install -yqq sbt
     - sbt sbtVersion
   script:
-    - sbt clean assembly
+    - sbt clean assembly coverageReport
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
      - target/scala-2.12/consumer-prefetch.jar
+     - target/scala-2.12/scoverage-report/
 
 publish-master:
   stage: publish

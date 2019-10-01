@@ -16,14 +16,6 @@ trait Adapter {
   def unapply(uri: Uri)(implicit config: Config): Option[DownloadResult]
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult]
 
-
-  def getTargetPath(source: Uri)(implicit config: Config) =
-    new File(generateFilePath(source, Some(config.getString("prefetch.remote.target-dir"))))
-
-  def getTempPath(source: Uri)(implicit config: Config) =
-    new File(generateFilePath(source, Some(config.getString("prefetch.remote.temp-dir"))))
-
-
   /**
     * generate path on filesystem from uri
     *
@@ -39,7 +31,11 @@ trait Adapter {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
     val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
-      MessageDigest.getInstance("MD5").digest(uri.toUrl.query.toString.getBytes)
+      MessageDigest.getInstance("MD5")
+        .digest(uri.toUrl.query.toString.getBytes)
+        .map(0xFF & _)
+        .map { "%02x".format(_) }
+        .foldLeft(""){_ + _}
     }"
 
     def generateBasename(path: Path) = {
@@ -59,13 +55,13 @@ trait Adapter {
       }
     }${
       uri.toUrl.hostOption match {
-        case Some(host) ⇒ s"$host/"
+        case Some(host) ⇒ s"$host"
         case None ⇒ ""
       }
     }${
       uri.path match {
-        case EmptyPath ⇒ s"/index$queryHash.html" // assumes http url
-        case path: RootlessPath ⇒ s"/${generateBasename(path)}"
+        case EmptyPath ⇒ s"index$queryHash.html"
+        case path: RootlessPath ⇒ s"${generateBasename(path)}"
         case path: AbsolutePath ⇒ generateBasename(path)
         case _ ⇒ ""
       }

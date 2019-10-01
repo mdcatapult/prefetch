@@ -18,12 +18,10 @@
         </encoder>
     </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-    </root>
-
     <logger name="org.mongodb.driver" level="WARN" />
     <logger name="play.api.libs.ws" level="WARN" />
+    <logger name="com.spingo.op_rabbit" level="OFF" >
+        <appender-ref ref="CONSOLE"/>
+    </logger>
 
 </configuration>

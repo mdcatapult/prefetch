@@ -14,7 +14,7 @@ class ClientSpec extends FlatSpec{
   val wsConfig = ConfigFactory.parseURL(wsConfFile)
   implicit val config: Config = ConfigFactory.parseString(
     """
-      |prefetch {
+      |doclib {
       |  remote {
       |    target-dir: "./test"
       |    temp-dir: "./test"
