@@ -55,9 +55,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val errors: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val handler = new PrefetchHandler(downstream, errors, archiver)
+  val handler = new PrefetchHandler(downstream, archiver)
 
 
   "The handler" should {
