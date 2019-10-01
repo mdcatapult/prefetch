@@ -11,10 +11,16 @@ import scala.collection.JavaConverters._
 
 class HttpSpec extends FlatSpec {
 
-  implicit val config: Config = ConfigFactory.parseMap(Map[String, Any](
-    "prefetch.remote.target-dir" → "./test",
-    "prefetch.remote.temp-dir" → "./test"
-  ).asJava)
+  implicit val config: Config = ConfigFactory.parseString(
+    """
+      |doclib {
+      |  root: ./test
+      |  remote {
+      |    target-dir: "remote"
+      |    temp-dir: "remote-ingress"
+      |  }
+      |}
+    """.stripMargin)
 
   "A valid HTTPS URL" should "download a file successfully" in {
     val uri = Uri.parse("https://www.google.com/humans.txt")
@@ -22,7 +28,7 @@ class HttpSpec extends FlatSpec {
     val result: Option[DownloadResult] = Http.download(uri)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
-    val file = new File(result.get.source)
+    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
     assert(file.exists)
     //assert(file.length == expectedSize)
   }
@@ -33,7 +39,7 @@ class HttpSpec extends FlatSpec {
     val result: Option[DownloadResult] = Http.download(uri)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
-    val file = new File(result.get.source)
+    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
     assert(file.exists)
     //assert(file.length == expectedSize)
   }
