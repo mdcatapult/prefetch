@@ -9,6 +9,7 @@ import better.files.Dsl._
 import better.files.{File ⇒ ScalaFile}
 import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
+import io.mdcatapult.doclib.TestDirectoryDelete
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.{FileHash, MongoCodecs}
@@ -29,7 +30,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   """))) with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with FileHash with OptionValues {
+  with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with TestDirectoryDelete {
 
   val testBase = s"$pwd/test"
   implicit val config: Config = ConfigFactory.parseString(
@@ -115,14 +116,13 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    Seq((pwd/"test/local"),
+    deleteDirectories(List((pwd/"test/local"),
       (pwd/"test"/"efs"),
       (pwd/"test"/"ftp"),
       (pwd/"test"/"http"),
       (pwd/"test"/"https"),
       (pwd/"test"/"remote-ingress"),
       (pwd/"test"/"ingress"),
-      (pwd/"test"/"remote"),
-      (pwd/"test"/"local")).map(_.delete(true))
+      (pwd/"test"/"remote")))
   }
 }

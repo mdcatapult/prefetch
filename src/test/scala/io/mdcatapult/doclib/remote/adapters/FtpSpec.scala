@@ -2,14 +2,16 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 
+import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.TestDirectoryDelete
 import io.mdcatapult.doclib.remote.DownloadResult
-import org.scalatest.FlatSpec
+import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 
 import scala.collection.JavaConverters._
 
-class FtpSpec extends FlatSpec {
+class FtpSpec extends FlatSpec with TestDirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -38,6 +40,11 @@ class FtpSpec extends FlatSpec {
     intercept[Exception] {
       Ftp.download(uri)
     }
+  }
+
+  override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List((pwd/"test"/"remote-ingress")))
   }
 
 }
