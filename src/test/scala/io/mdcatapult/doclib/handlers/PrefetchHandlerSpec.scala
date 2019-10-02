@@ -110,7 +110,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(result == "archive/remote/cheese/stinking-bishop.cz/fd6eba7e747b846abbdfbfed0e10de12.cz")
     }
 
-    "return an relative archive path for file from a relative path witj no file extension" in {
+    "return an relative archive path for file from a relative path with no file extension" in {
       val result = handler.getArchivePath("remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
       assert(result == "archive/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
     }
