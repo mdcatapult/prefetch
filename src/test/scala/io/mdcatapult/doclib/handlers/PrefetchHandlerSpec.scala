@@ -7,6 +7,7 @@ import better.files.Dsl.pwd
 import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValue}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.MongoCodecs
@@ -51,8 +52,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
-  val wrappedCollection: JMongoCollection[Document] = stub[JMongoCollection[Document]]
-  implicit val collection: MongoCollection[Document] = MongoCollection[Document](wrappedCollection)
+  val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
+  implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
@@ -62,12 +63,12 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
   "The handler" should {
     "return prefetch message metadata correctly" in {
-      val metadataMap: Map[String, Any] = Map[String, Any]("doi" -> "10.1101/327015")
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
-      val fetchedMetadata = handler.fetchMetaData(prefetchMsg)
-      assert(fetchedMetadata.isInstanceOf[List[MetaValue]])
-      assert(fetchedMetadata(0).asInstanceOf[MetaString].key == "doi")
-      assert(fetchedMetadata(0).asInstanceOf[MetaString].value == "10.1101/327015")
+      val fetchedMetadata = prefetchMsg.metadata
+      assert(fetchedMetadata.get(0).isInstanceOf[List[MetaValue[String]]])
+      assert(fetchedMetadata.get(0).getKey == "doi")
+      assert(fetchedMetadata.get(0).getValue == "10.1101/327015")
     }
 
     "correctly identify when a file path is targeting the local root" in {
