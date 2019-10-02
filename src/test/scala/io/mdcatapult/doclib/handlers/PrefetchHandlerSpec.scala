@@ -127,16 +127,4 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
   }
 
-  override def afterAll(): Unit = {
-    // These may or may not exist but are all removed anyway
-    Seq((pwd/"test/local"),
-      (pwd/"test"/"efs"),
-      (pwd/"test"/"ftp"),
-      (pwd/"test"/"http"),
-      (pwd/"test"/"https"),
-      (pwd/"test"/"remote-ingress"),
-      (pwd/"test"/"ingress"),
-      (pwd/"test"/"remote"),
-      (pwd/"test"/"local")).map(_.delete(true))
-  }
 }
