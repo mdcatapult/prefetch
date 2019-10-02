@@ -9,6 +9,8 @@ lazy val betterFilesVersion = "3.8.0"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
+lazy val IntegrationTest = config("it") extend(Test)
+
 lazy val root = (project in file(".")).
   configs(IntegrationTest).
   settings(
