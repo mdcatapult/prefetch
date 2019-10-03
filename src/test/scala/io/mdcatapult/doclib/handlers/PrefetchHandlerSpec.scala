@@ -81,7 +81,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
       updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
       mimetype = "",
-      attrs = fileAttrs
+      attrs = Some(fileAttrs)
     )
     newDoc
   }
