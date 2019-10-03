@@ -91,7 +91,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
           updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
           mimetype = "text/plain",
-          attrs = fileAttrs
+          attrs = Some(fileAttrs)
         )
         val foundDoc = new handler.FoundDoc(document, None, None, None)
         val actualMovedFilePath = handler.handleFileUpdate(foundDoc, tempFile.path.toString, handler.getLocalUpdateTargetPath, handler.inLocalRoot)
@@ -124,7 +124,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
           updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
           mimetype = "text/html",
-          attrs = fileAttrs
+          attrs = Some(fileAttrs)
         )
         val foundDoc = new handler.FoundDoc(document, None, None, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
         val actualMovedFilePath = handler.handleFileUpdate(foundDoc, tempFile.path.toString, handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)

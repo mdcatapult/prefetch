@@ -494,18 +494,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   def createDoc(source: String, hash: String): DoclibDoc = {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
-    val path = ScalaFile(source).path
-    val attrs = Files.getFileAttributeView(path, classOf[BasicFileAttributeView]).readAttributes()
+    //val path = ScalaFile(source).path
+    //val attrs = Files.getFileAttributeView(path, classOf[BasicFileAttributeView]).readAttributes()
     //TODO What should created, modified, accessed time be
-    val fileAttrs = FileAttrs(
-      path = path.getParent.toAbsolutePath.toString,
-      name = path.getFileName.toString,
-      mtime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      ctime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      atime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      size = attrs.size()
-    )
+//    val fileAttrs = FileAttrs(
+//      path = path.getParent.toAbsolutePath.toString,
+//      name = path.getFileName.toString,
+//      mtime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+//      ctime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+//      atime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+//      size = attrs.size()
+//    )
     //TODO what should created and updated time be. Mime type? From getMimeType or from some metadata? More than one?
+    // At this point the file has not been copied to its final destination so no FileAttrs
     val newDoc = DoclibDoc(
       _id = new ObjectId(),
       source = source,
@@ -514,7 +515,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
       updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
       mimetype = "",
-      attrs = fileAttrs
+      tags = Some(List[String]())
     )
     Await.result(collection.insertOne(newDoc).toFutureOption(), Duration.Inf)
     newDoc
