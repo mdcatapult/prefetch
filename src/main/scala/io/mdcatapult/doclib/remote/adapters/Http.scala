@@ -1,7 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-import java.net.{HttpURLConnection, URL}
+import java.net.URL
 import java.nio.file.Paths
 
 import com.typesafe.config.Config

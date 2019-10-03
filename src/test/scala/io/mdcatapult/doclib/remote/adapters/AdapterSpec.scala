@@ -1,13 +1,9 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.io.File
-
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
-import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers, WordSpecLike}
-
-import scala.collection.JavaConverters._
+import org.scalatest.FlatSpec
 
 class AdapterSpec extends FlatSpec {
 

@@ -1,21 +1,16 @@
 package io.mdcatapult.doclib.remote
 
-import java.io.File
-import java.net.URL
-import java.security.MessageDigest
-
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
-import io.mdcatapult.doclib.models.metadata.{MetaInt, MetaString}
 import io.mdcatapult.doclib.models.Origin
+import io.mdcatapult.doclib.models.metadata.MetaInt
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.FileHash
 import play.api.libs.ws.ahc._
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.sys.process._
 
 class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")

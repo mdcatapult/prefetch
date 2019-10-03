@@ -1,21 +1,20 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-import java.net.{InetAddress, URL}
+import java.net.InetAddress
 import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.stream.alpakka.ftp.FtpCredentials.AnonFtpCredentials
-import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, RemoteFileSettings, SftpSettings}
+import akka.stream.alpakka.ftp.scaladsl.{Ftp ⇒ AkkaFtp, Ftps ⇒ AkkaFtps, Sftp ⇒ AkkaSftp}
+import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, SftpSettings}
+import akka.stream.scaladsl.{FileIO, Source}
+import akka.stream.{ActorMaterializer, IOResult}
+import akka.util.ByteString
 import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.remote.adapters.Http.{generateFilePath, md5}
 import io.mdcatapult.doclib.util.FileHash
-import akka.stream.{ActorMaterializer, IOResult}
-import akka.stream.alpakka.ftp.scaladsl.{Ftp ⇒ AkkaFtp, Ftps ⇒ AkkaFtps, Sftp ⇒ AkkaSftp}
-import akka.stream.scaladsl.{FileIO, Sink, Source}
-import akka.util.ByteString
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}

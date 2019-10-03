@@ -12,7 +12,7 @@ import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Queue
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.{Document, MongoCollection}
+import org.mongodb.scala.MongoCollection
 
 import scala.concurrent.ExecutionContextExecutor
 

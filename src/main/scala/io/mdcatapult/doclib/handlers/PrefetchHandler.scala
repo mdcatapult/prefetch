@@ -7,6 +7,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
+import better.files.{File ⇒ ScalaFile}
 import cats.data._
 import cats.implicits._
 import com.typesafe.config.Config
@@ -22,17 +23,14 @@ import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.bson.{BsonArray, BsonDateTime, BsonObjectId, BsonString, BsonValue, ObjectId}
+import org.mongodb.scala.MongoCollection
+import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates.{addEachToSet, combine, set}
 import org.mongodb.scala.result.UpdateResult
-import org.mongodb.scala.{Document, MongoCollection}
-import play.api.libs.json.{JsSuccess, Json}
-import better.files.{File ⇒ ScalaFile}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success, Try}

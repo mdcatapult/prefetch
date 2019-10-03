@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-import java.util.Date
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -17,8 +16,8 @@ import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.{FileHash, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.bson.{BsonDateTime, BsonDocument, BsonDouble, BsonNull, BsonString, ObjectId}
-import org.mongodb.scala.{Document, MongoCollection}
+import org.mongodb.scala.MongoCollection
+import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpecLike}
 
