@@ -1,24 +1,25 @@
 package io.mdcatapult.doclib.handlers
 
+import java.time.{LocalDateTime, ZoneOffset}
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.Dsl.pwd
+import better.files.{File ⇒ ScalaFile}
 import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValue}
+import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.bson.BsonString
-import org.mongodb.scala.{Document, MongoCollection}
+import org.mongodb.scala.MongoCollection
+import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContextExecutor
 
 /**
@@ -60,13 +61,38 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
   val handler = new PrefetchHandler(downstream, archiver)
 
+  def createNewDoc(source: String): DoclibDoc = {
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val path = ScalaFile(source).path
+    val fileAttrs = FileAttrs(
+      path = path.getParent.toAbsolutePath.toString,
+      name = path.getFileName.toString,
+      mtime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      ctime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      atime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      size = 5
+    )
+    //TODO what should created and updated time be. Mime type? From getMimeType or from some metadata? More than one?
+    val newDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = source,
+      hash = "12345",
+      derivative = false,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "",
+      attrs = fileAttrs
+    )
+    newDoc
+  }
+
 
   "The handler" should {
     "return prefetch message metadata correctly" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val fetchedMetadata = prefetchMsg.metadata
-      assert(fetchedMetadata.get(0).isInstanceOf[List[MetaValue[String]]])
+      assert(fetchedMetadata.get.length == 1)
       assert(fetchedMetadata.get(0).getKey == "doi")
       assert(fetchedMetadata.get(0).getValue == "10.1101/327015")
     }
@@ -83,26 +109,26 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative local path for local files from a relative ingress path" in {
-      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("ingress/cheese/stinking-bishop.cz")))))
+      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(createNewDoc("ingress/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
     "return an relative local path for local files from a relative local path" in {
-      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("local/cheese/stinking-bishop.cz")))))
+      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(createNewDoc("local/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
 
     "return an relative remote path for remote files from a relative remote ingress path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(
-        Document(List("source" → BsonString("remote-ingress/cheese/stinking-bishop.cz"))),
+      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(doc =
+        createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         download = Some(DownloadResult("remote-ingress/cheese/stinking-bishop.cz", "1234567890", target = Some("remote/cheese/stinking-bishop.cz")))
       ))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
     "return an relative remote path for remote files from a relative remote path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(Document(List("source" → BsonString("remote/cheese/stinking-bishop.cz")))))
+      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(createNewDoc("remote/cheese/stinking-bishop.cz")))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
@@ -118,7 +144,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     "return an relative doclib path for remote files from a relative remote-ingress path" in {
       val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(
-        Document(List("source" → BsonString("remote-ingress/cheese/stinking-bishop.cz"))),
+        doc = createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         None,
         None,
         Some(DownloadResult("", "", None, Some("remote/cheese/stinking-bishop.cz")))
