@@ -93,8 +93,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     } yield (result, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
           //TODO What is v?
-        //case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2.getObjectId("_id").toString}")
-        case Some(v) ⇒ println(v)
+        case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
+        //case Some(v) ⇒ println(v)
         case None ⇒ // do nothing for now, but need to identify the use case
       }
       case Failure(_) ⇒
@@ -119,7 +119,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     val update = combine(
       getDocumentUpdate(found, msg),
       addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
-      set("metadata", msg.metadata.getOrElse(List[MetaValue[Any]]())),
+      set("metadata", msg.metadata.getOrElse(List[MetaValueUntyped]())),
       set("derivative", msg.derivative.getOrElse(false)),
       set("updated", LocalDateTime.now())
     )
