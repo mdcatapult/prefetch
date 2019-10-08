@@ -7,7 +7,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import better.files.{File ⇒ ScalaFile}
+import better.files._
 import cats.data._
 import cats.implicits._
 import com.typesafe.config.Config
@@ -15,8 +15,8 @@ import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
+import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
@@ -121,6 +121,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
       set("metadata", msg.metadata.getOrElse(List[MetaValueUntyped]())),
       set("derivative", msg.derivative.getOrElse(false)),
+      set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
 
@@ -142,8 +143,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   /**
     * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-    * @param source current source path
-    * @param target target path to move file to
+    * @param source current relative source path
+    * @param target relative target path to move file to
     * @return
     */
   def moveFile(source: String, target: String): Option[Path] = moveFile(
@@ -156,8 +157,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   /**
     * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-    * @param source current source path
-    * @param target target path to move file to
+    * @param source current absolute source path
+    * @param target absolute target path to move file to
     * @return
     */
   def moveFile(source: File, target: File): Try[Path] = {
@@ -241,7 +242,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     if (inRemoteRoot(foundDoc.doc.source))
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else
-      Some(Paths.get(s"${foundDoc.download.get.target.get}").toString)
+      Some(Paths.get(s"${foundDoc.download.get.target.get}").toString.replaceFirst(s"^$doclibRoot/*", ""))
   }
 
   /**
@@ -254,7 +255,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
       // strips temp dir if present plus any prefixed slashes
-      val relPath = foundDoc.doc.source.replaceFirst(s"^${config.getString("doclib.local.temp-dir")}/*", "")
+      val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "").replaceFirst(s"^${config.getString("doclib.local.temp-dir")}/*", "")
       // ensures target dir is prepended
       val root = config.getString("doclib.local.target-dir").replaceFirst("/+$", "")
       Some(Paths.get(s"$root/$relPath").toString)
@@ -365,11 +366,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         val source = handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
         (source ,currentOrigins)
     }
-
+    // source needs to be relative path from doclib.root
     combine(
       set("source", source match {
-        case Some(path: Path) ⇒ path.toString
-        case None ⇒ foundDoc.doc.source
+        case Some(path: Path) ⇒ path.toString.replaceFirst(s"^${config.getString("doclib.root")}", "")
+        case None ⇒ foundDoc.doc.source.replaceFirst(s"^${config.getString("doclib.root")}", "")
       }),
       set("origin", origin),
       getFileAttrs(source),
@@ -380,16 +381,17 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
   /**
     * builds a mongo update based on the target files attributes
     *
-    * @param source String
+    * @param source Path relative path from doclib.root
     * @return Bson $set
     */
-  def getFileAttrs(source: Option[Path]): Bson =
+  def getFileAttrs(source: Option[Path]): Bson = {
     source match {
       case Some(path) ⇒
-        val attrs = Files.getFileAttributeView(path, classOf[BasicFileAttributeView]).readAttributes()
+        val absPath = (doclibRoot/path.toString).path
+        val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
         set(config.getString("prefetch.labels.attrs"), FileAttrs(
-          path = path.getParent.toAbsolutePath.toString,
-          name = path.getFileName.toString,
+          path = absPath.getParent.toAbsolutePath.toString,
+          name = absPath.getFileName.toString,
           mtime = LocalDateTime.ofInstant(attrs.lastModifiedTime().toInstant, ZoneOffset.UTC),
           ctime = LocalDateTime.ofInstant(attrs.creationTime().toInstant, ZoneOffset.UTC),
           atime = LocalDateTime.ofInstant(attrs.lastAccessTime().toInstant, ZoneOffset.UTC),
@@ -397,20 +399,22 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         ))
       case None ⇒ combine()
     }
+  }
 
   /**
     * detect mimetype of source file
     *
-    * @param source String
+    * @param source Path relative path from doclib.root
     * @return Bson $set
     */
   def getMimetype(source: Option[Path]): Bson =
     source match {
       case Some(path) ⇒
+        val absPath = (doclibRoot/path.toString).path
         val metadata = new Metadata()
-        metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, path.getFileName.toString)
+        metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, absPath.getFileName.toString)
         set(config.getString("prefetch.labels.mimetype"), tika.getDetector.detect(
-          TikaInputStream.get(new FileInputStream(path.toString)),
+          TikaInputStream.get(new FileInputStream(absPath.toString)),
           metadata
         ).toString)
       case None ⇒ combine()

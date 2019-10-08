@@ -33,21 +33,20 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   with Matchers
   with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with TestDirectoryDelete {
 
-  val testBase = s"$pwd/test"
   implicit val config: Config = ConfigFactory.parseString(
     s"""
        |doclib {
-       |  root: "/"
+       |  root: "${pwd/"test"}"
        |  local {
-       |    target-dir: "$testBase/local"
-       |    temp-dir: "$testBase/ingress"
+       |    target-dir: "local"
+       |    temp-dir: "ingress"
        |  }
        |  remote {
-       |    target-dir: "$testBase/remote"
-       |    temp-dir: "$testBase/remote-ingress"
+       |    target-dir: "remote"
+       |    temp-dir: "remote-ingress"
        |  }
        |  archive {
-       |    target-dir: "$testBase/archive"
+       |    target-dir: "archive"
        |  }
        |}
     """.stripMargin)
@@ -68,8 +67,11 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
 
     "move a new local file to the correct directory" in {
       implicit val attributes = ScalaFile.Attributes.default
-      println(pwd)
-      val docFile: ScalaFile = ScalaFile(s"$pwd/test/efs/aFile.txt").createFileIfNotExists(true)
+      val sourceFile = "aFile.txt"
+      val doclibRoot = config.getString("doclib.root")
+      val ingressDir = config.getString("doclib.local.temp-dir")
+      val localTargetDir = config.getString("doclib.local.target-dir")
+      val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/$sourceFile").createFileIfNotExists(true)
       for {
         tempFile <- docFile.toTemporary
       } {
@@ -94,15 +96,19 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           attrs = Some(fileAttrs)
         )
         val foundDoc = new handler.FoundDoc(document, None, None, None)
-        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, tempFile.path.toString, handler.getLocalUpdateTargetPath, handler.inLocalRoot)
-        val movedFilePath = ScalaFile(s"${testBase}/local/${docFile.pathAsString}")
-        assert(actualMovedFilePath.value.toString == movedFilePath.pathAsString)
+        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, s"$ingressDir/$sourceFile", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+        val movedFilePath = s"$localTargetDir/$sourceFile"
+        assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
 
     "move a new remote https file to the correct directory" in {
       implicit val attributes = ScalaFile.Attributes.default
-      val docFile: ScalaFile = ScalaFile(s"${config.getString("doclib.remote.temp-dir")}/https/path/to/aFile.txt").createFileIfNotExists(true)
+      val sourceFile = "https/path/to/aFile.txt"
+      val doclibRoot = config.getString("doclib.root")
+      val remoteIngressDir = config.getString("doclib.remote.temp-dir")
+      val remoteTargetDir = config.getString("doclib.remote.target-dir")
+      val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$remoteIngressDir/$sourceFile").createFileIfNotExists(true)
       for {
         tempFile <- docFile.toTemporary
       } {
@@ -127,9 +133,9 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           attrs = Some(fileAttrs)
         )
         val foundDoc = new handler.FoundDoc(document, None, None, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
-        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, tempFile.path.toString, handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
-        val movedFilePath = ScalaFile(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt")
-        assert(actualMovedFilePath.value.toString == movedFilePath.pathAsString)
+        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
+        assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
   }
