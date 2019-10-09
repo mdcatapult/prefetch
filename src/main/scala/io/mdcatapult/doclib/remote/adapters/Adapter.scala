@@ -1,15 +1,10 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.io.File
 import java.security.MessageDigest
 
-import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
-import io.lemonlabs.uri.{AbsolutePath, EmptyPath, Path, RootlessPath, Uri}
+import io.lemonlabs.uri._
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.remote.adapters.Ftp.generateFilePath
-
-import scala.concurrent.ExecutionContextExecutor
 
 trait Adapter {
 

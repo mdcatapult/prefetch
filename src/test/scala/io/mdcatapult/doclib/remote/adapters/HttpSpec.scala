@@ -7,8 +7,6 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import org.scalatest.FlatSpec
 
-import scala.collection.JavaConverters._
-
 class HttpSpec extends FlatSpec {
 
   implicit val config: Config = ConfigFactory.parseString(

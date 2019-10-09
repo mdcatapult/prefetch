@@ -7,11 +7,12 @@ import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.LazyLogging
 import io.mdcatapult.doclib.handlers.PrefetchHandler
 import io.mdcatapult.doclib.messages._
+import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Queue
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.{Document, MongoCollection}
+import org.mongodb.scala.MongoCollection
 
 import scala.concurrent.ExecutionContextExecutor
 
@@ -27,7 +28,7 @@ object ConsumerPrefetch extends App with LazyLogging {
   // Custom mongo codecs for saving message
   implicit val codecs: CodecRegistry = MongoCodecs.get
   implicit val mongo: Mongo = new Mongo()
-  implicit val collection: MongoCollection[Document] = mongo.collection
+  implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
 
   /** initialise queues **/
   val downstream: Queue[DoclibMsg] = new Queue[DoclibMsg](config.getString("downstream.queue"), consumerName = Some("prefetch"))

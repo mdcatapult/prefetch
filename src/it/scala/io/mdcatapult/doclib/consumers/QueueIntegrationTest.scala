@@ -67,11 +67,6 @@ class QueueIntegrationTests extends TestKit(ActorSystem("PrefetchHandlerSpec", C
       whenReady(upstreamReceived) { s =>
         s shouldBe a[Message.Ack]
       }
-/*      val res = Await.result(received, 10.seconds)
-      res*/
-    /*  received map { s =>
-        assert(s == true)
-      }*/
     }
   }
 }
