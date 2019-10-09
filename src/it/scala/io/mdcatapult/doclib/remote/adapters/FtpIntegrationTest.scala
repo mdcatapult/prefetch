@@ -5,11 +5,11 @@ import java.io.File
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.TestDirectoryDelete
 import io.mdcatapult.doclib.remote.DownloadResult
+import io.mdcatapult.doclib.util.DirectoryDelete
 import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 
-class FtpIntegrationTest extends FlatSpec with TestDirectoryDelete with BeforeAndAfterAll {
+class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     """

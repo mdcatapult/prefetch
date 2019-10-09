@@ -6,14 +6,13 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
-import better.files.{File ⇒ ScalaFile}
-import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
+import better.files.{File => ScalaFile}
+import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
-import io.mdcatapult.doclib.TestDirectoryDelete
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs}
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.util.{FileHash, MongoCodecs}
+import io.mdcatapult.doclib.util.{DirectoryDelete, FileHash, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -31,7 +30,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   """))) with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with TestDirectoryDelete {
+  with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
