@@ -88,7 +88,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
       result ← OptionT(process(found, msg))
-      _ <- OptionT(processParent(msg)) if (msg.derivative.get)
+      _ <- OptionT(processParent(msg))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
 
     } yield (result, found.doc)).value.andThen({
@@ -117,27 +117,32 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def processParent(msg: PrefetchMsg): Future[Option[Any]] = {
-    // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
-    val parentId: String = msg.origin.get(0).metadata.get.filter(_.getKey == "_id")(0).getValue.toString
-    val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
-    // TODO get metadata from old derivative
-    val derivative: Derivative = Derivative(
-      `type` = "unarchived",
-      path = path
-    )
-    // TODO combine push and pull in one update operation
-    collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), push("derivatives", derivative)).toFutureOption().andThen({
-      case Success(_) ⇒ {
-        collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
-          case Success(_) ⇒ {
-            println(s"Removed old path ${msg.source} from  parent doc $parentId ")
-          }
-          case Failure(e) => println(s"Failed to update parent doc $parentId with new child path. $e")
-        })
-        println(s"Updated parent doc $parentId with new child path $path")
-      }
-      case Failure(e) => println(s"Failed to update parent doc $parentId with new child path. $e")
-    })
+    if (msg.derivative.getOrElse(false)) {
+      // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
+      val parentId: String = msg.origin.get(0).metadata.get.filter(_.getKey == "_id")(0).getValue.toString
+      val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
+      // TODO get metadata from old derivative
+      val derivative: Derivative = Derivative(
+        `type` = "unarchived",
+        path = path
+      )
+      // TODO combine push and pull in one update operation
+      collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), push("derivatives", derivative)).toFutureOption().andThen({
+        case Success(_) ⇒ {
+          collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
+            case Success(_) ⇒ {
+            }
+            // TODO does this need to bubble up?
+            case Failure(e) => logger.error(s"Failed to update parent doc $parentId with new child path. $e")
+          })
+        }
+        // TODO does this need to bubble up?
+        case Failure(e) => logger.error(s"Failed to update parent doc $parentId with new child path. $e")
+      })
+    } else{
+      // No derivative.
+      Future.successful(Some(true))
+    }
   }
 
   /**
