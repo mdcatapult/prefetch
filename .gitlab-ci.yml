@@ -33,7 +33,7 @@ assemble:
     - apt-get install -yqq sbt
     - sbt sbtVersion
   script:
-    - sbt clean assembly #coverageReport
+    - sbt clean coverage test coverageReport coverageOff assembly 
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
