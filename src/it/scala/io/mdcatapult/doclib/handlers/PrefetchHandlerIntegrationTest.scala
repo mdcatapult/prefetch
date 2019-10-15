@@ -18,6 +18,7 @@ import org.mongodb.scala.{Completed, MongoCollection, Observable, Observer}
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, exists, equal => mequal}
 import org.mongodb.scala.model.Updates._
+import com.mongodb.client.result.UpdateResult
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
@@ -223,9 +224,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
       val parentUpdate = Await.result(handler.processParent(prefetchMsg), 5 seconds)
-      assert(parentUpdate.get.toString == "The operation completed successfully")
-
-
+      assert(parentUpdate.get.asInstanceOf[UpdateResult].getMatchedCount == 2)
+      assert(parentUpdate.get.asInstanceOf[UpdateResult].getModifiedCount == 2)
     }
   }
 }

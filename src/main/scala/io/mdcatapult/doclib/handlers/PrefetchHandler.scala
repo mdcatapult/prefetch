@@ -10,6 +10,7 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
+import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -112,13 +113,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
 
   /**
-   * Update the parent doc with the new source for the derivative
+   * Update parent "origin" documents with the new source for the derivative
    * @param msg PrefetchMsg
    * @return
    */
   def processParent(msg: PrefetchMsg): Future[Option[Any]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
+      // Create list of filters by _id, one for each parent origin
       val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb").map(parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)))
       val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
       // TODO get metadata from old derivative
@@ -127,9 +129,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       path = path
       )
       // TODO combine push and pull in one update operation
-      collection.updateMany(combine(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
+      collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
           case Success(_) ⇒ {
-            collection.updateOne(combine(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
+            collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
               case Success(_) ⇒ {
               }
               // TODO does this need to bubble up?
