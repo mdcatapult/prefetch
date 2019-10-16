@@ -10,7 +10,7 @@ import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.metadata.{MetaInt, MetaString, MetaValue}
+import io.mdcatapult.doclib.models.metadata.MetaString
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.MongoCodecs
@@ -21,7 +21,8 @@ import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
-import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContextExecutor}
 
 /**
  * PrefetchHandler Spec with Actor test system and config
@@ -175,6 +176,20 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         ))
 
       assert(origins.filter(origin => origin.scheme == "mongodb").length == 2)
+    }
+
+    "A parent prefetch message which has derivative false should not be processed" in {
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
+      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
+      assert(result == None)
+    }
+
+    "A parent prefetch message with no derivative field should not be processed" in {
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
+      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
+      assert(result == None)
     }
   }
 
