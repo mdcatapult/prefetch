@@ -10,6 +10,7 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
+import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -112,37 +113,43 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
 
   /**
-   * Update the parent doc with the new source for the derivative
+   * Update parent "origin" documents with the new source for the derivative
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[Any]] = {
+  def processParent(msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
-      val parentId: String = msg.origin.get(0).metadata.get.filter(_.getKey == "_id")(0).getValue.toString
+      // Create list of filters by _id, one for each parent origin
+      val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb").map(parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)))
       val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
       // TODO get metadata from old derivative
       val derivative: Derivative = Derivative(
-        `type` = "unarchived",
-        path = path
+      `type` = "unarchived",
+      path = path
       )
-      // TODO combine push and pull in one update operation
-      collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), push("derivatives", derivative)).toFutureOption().andThen({
-        case Success(_) ⇒ {
-          collection.updateOne(and(equal("_id", new ObjectId(parentId)), exists("derivatives.path"), equal("derivatives.path", msg.source)), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
-            case Success(_) ⇒ {
-            }
-            // TODO does this need to bubble up?
-            case Failure(e) => logger.error(s"Failed to update parent doc $parentId with new child path. $e")
-          })
-        }
-        // TODO does this need to bubble up?
-        case Failure(e) => logger.error(s"Failed to update parent doc $parentId with new child path. $e")
-      })
-    } else{
+      collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
+          case Success(_) ⇒ {
+            collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
+              case Success(_) ⇒ {
+              }
+              // TODO does this need to bubble up?
+              case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
+            })
+          }
+          // TODO does this need to bubble up?
+          case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
+        })
+      }
+      else {
       // No derivative.
-      Future.successful(Some(true))
+      Future.successful(None)
     }
+  }
+
+  def parentId(metadata: List[MetaValueUntyped]): Any = {
+    val origin:List[MetaValueUntyped] = metadata.filter(m => m.getKey == "_id")
+    origin.head.getValue
   }
 
   /**

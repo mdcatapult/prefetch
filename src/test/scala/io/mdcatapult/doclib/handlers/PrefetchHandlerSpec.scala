@@ -5,12 +5,13 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File ⇒ ScalaFile}
-import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
+import better.files.{File => ScalaFile}
+import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
+import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValue}
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs}
+import io.mdcatapult.doclib.models.metadata.MetaString
+import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
@@ -20,7 +21,8 @@ import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
-import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContextExecutor}
 
 /**
  * PrefetchHandler Spec with Actor test system and config
@@ -151,6 +153,43 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
       ))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
+    }
+
+    "a prefetch message can have multiple origins" in {
+      val origins: List[Origin] = List(Origin(
+        scheme = "mongodb",
+        uri = Some(Uri.parse("remote/https/parent1")),
+        metadata = Some(List(MetaString("_id", "1"))),
+        headers = None
+      ),
+        Origin(
+          scheme = "mongodb",
+          uri = Some(Uri.parse("local/file/parent2")),
+          metadata = Some(List(MetaString("_id", "2"))),
+          headers = None
+        ),
+        Origin(
+          scheme = "file",
+          uri = Some(Uri.parse("local/file/parent3")),
+          metadata = Some(List(MetaString("_id", "3"))),
+          headers = None
+        ))
+
+      assert(origins.filter(origin => origin.scheme == "mongodb").length == 2)
+    }
+
+    "A parent prefetch message which has derivative false should not be processed" in {
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
+      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
+      assert(result == None)
+    }
+
+    "A parent prefetch message with no derivative field should not be processed" in {
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
+      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
+      assert(result == None)
     }
   }
 
