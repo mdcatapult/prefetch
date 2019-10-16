@@ -1,28 +1,23 @@
 package io.mdcatapult.doclib.handlers
 
-import java.net.URI
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import cats.data.OptionT
+import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
+import io.mdcatapult.doclib.remote.adapters.Http
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.{Completed, MongoCollection, Observable, Observer}
+import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
-import org.mongodb.scala.model.Filters.{and, exists, equal => mequal}
-import org.mongodb.scala.model.Updates._
-import com.mongodb.client.result.UpdateResult
-import io.mdcatapult.doclib.remote.{Client, DownloadResult}
-import io.mdcatapult.doclib.remote.adapters.Http
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
@@ -30,7 +25,6 @@ import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.language.postfixOps
-import scala.util.{Failure, Success}
 
 class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandlerIntegrationTest", ConfigFactory.parseString(
   """
@@ -87,7 +81,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
       val childMetadata: List[MetaValueUntyped] = List[MetaValueUntyped](MetaString("metadata-key", "metadata-value"))
       val derivative: Derivative = new Derivative(`type` = "unarchived", path = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
-      val newDerivative: Derivative = new Derivative(`type` = "unarchived", path = "blah", metadata = Some(childMetadata))
       val derivatives: List[Derivative] = List[Derivative](derivative)
       val parentIdOne = new ObjectId()
       val parentIdTwo = new ObjectId()
