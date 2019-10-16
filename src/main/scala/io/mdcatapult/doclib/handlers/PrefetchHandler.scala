@@ -117,7 +117,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[Any]] = {
+  def processParent(msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
       // Create list of filters by _id, one for each parent origin
@@ -128,7 +128,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       `type` = "unarchived",
       path = path
       )
-      // TODO combine push and pull in one update operation
       collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
           case Success(_) ⇒ {
             collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
@@ -144,7 +143,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       }
       else {
       // No derivative.
-      Future.successful(Some(true))
+      Future.successful(None)
     }
   }
 

@@ -5,6 +5,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
+import cats.data.OptionT
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -223,9 +224,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           headers = None)
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-      val parentUpdate = Await.result(handler.processParent(prefetchMsg), 5 seconds)
-      assert(parentUpdate.get.asInstanceOf[UpdateResult].getMatchedCount == 2)
-      assert(parentUpdate.get.asInstanceOf[UpdateResult].getModifiedCount == 2)
+      val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(prefetchMsg), 5 seconds)
+      assert(parentUpdate.get.getMatchedCount == 2)
+      assert(parentUpdate.get.getModifiedCount == 2)
     }
   }
 }
