@@ -154,22 +154,6 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
-    "update parent with childs location" in {
-      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
-      val origin: Origin = Origin(
-        scheme = "https",
-        uri = Some(Uri.parse("https:/parent")),
-        metadata = Some(List(MetaString("_id", new ObjectId().toString))),
-        headers = None
-      )
-      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/child", Some(List(origin)), Some(List("a-tag")), Some(metadataMap), Some(true))
-      val f = handler.processParent(prefetchMsg)
-      f map { s =>
-        println("?")
-        assert(s == "ScalaTest is easy!")
-      }
-    }
-
     "a prefetch message can have multiple origins" in {
       val origins: List[Origin] = List(Origin(
         scheme = "mongodb",
