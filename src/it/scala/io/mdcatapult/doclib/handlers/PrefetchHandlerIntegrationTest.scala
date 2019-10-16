@@ -1,5 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
+import java.net.URI
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor._
@@ -20,6 +21,8 @@ import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, exists, equal => mequal}
 import org.mongodb.scala.model.Updates._
 import com.mongodb.client.result.UpdateResult
+import io.mdcatapult.doclib.remote.{Client, DownloadResult}
+import io.mdcatapult.doclib.remote.adapters.Http
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
@@ -146,6 +149,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(prefetchMsg), 5 seconds)
       assert(parentUpdate.get.getMatchedCount == 2)
       assert(parentUpdate.get.getModifiedCount == 2)
+    }
+  }
+
+  "An http URI" should {
+    "be downloaded by the HTTP adapter" in {
+      // Result not actually important just the fact that it triggers the "download" method
+      val uri: Uri = Uri.parse("http://a/file/somewhere")
+      assertThrows[Exception] {
+        Http.unapply(uri)
+      }
     }
   }
 }
