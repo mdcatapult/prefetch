@@ -17,7 +17,8 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
@@ -94,9 +95,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
     } yield (result, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
-        //TODO What is v?
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
-        //case Some(v) ⇒ println(v)
         case None ⇒ // do nothing for now, but need to identify the use case
       }
       case Failure(_) ⇒
@@ -164,10 +163,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
       set("metadata", msg.metadata.getOrElse(List[MetaValueUntyped]())),
       set("derivative", msg.derivative.getOrElse(false)),
-      set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
-    //processParent(found.doc.source, found.doc.origin.get) if (msg.derivative.get)
     collection.updateOne(equal("_id", found.doc._id), update).toFutureOption().andThen({
       case Success(_) ⇒ {
         downstream.send(DoclibMsg(id = found.doc._id.toString))
@@ -307,6 +304,24 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     }
   }
 
+  def getRemoteOrigins(origins: List[Origin]): List[Origin] = {
+    origins.filter(o ⇒ {
+      Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
+    })
+  }
+
+  def getLocalToRemoteTargetUpdatePath(origin: Origin): (FoundDoc) ⇒ Option[String] ={
+    def getTargetPath(foundDoc: FoundDoc): Option[String] = {
+      if (inRemoteRoot(foundDoc.doc.source))
+        Some(Paths.get(s"${foundDoc.doc.source}").toString)
+      else {
+        val remotePath = Http.generateFilePath(origin.uri.get, Some(config.getString("doclib.remote.target-dir")))
+        Some(Paths.get(s"$doclibRoot/$remotePath").toString)
+      }
+    }
+    getTargetPath
+  }
+
   /**
    *
    * @param foundDoc document to be archived
@@ -408,7 +423,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         (source, foundDoc.origin.get :: filteredDocOrigin)
 
       case None ⇒
-        val source = handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+        val remoteOrigins = getRemoteOrigins(currentOrigins)
+        val source = if (remoteOrigins.nonEmpty)
+        // has at least one remote origin and needs relocating to remote folder
+          handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(remoteOrigins.head), inRemoteRoot)
+        // does not need remapping to remote location
+        else
+          handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
         (source ,currentOrigins)
     }
     // source needs to be relative path from doclib.root
@@ -543,19 +564,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   def createDoc(source: String, hash: String): DoclibDoc = {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
-    //val path = ScalaFile(source).path
-    //val attrs = Files.getFileAttributeView(path, classOf[BasicFileAttributeView]).readAttributes()
-    //TODO What should created, modified, accessed time be
-    //    val fileAttrs = FileAttrs(
-    //      path = path.getParent.toAbsolutePath.toString,
-    //      name = path.getFileName.toString,
-    //      mtime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      ctime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      atime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      size = attrs.size()
-    //    )
-    //TODO what should created and updated time be. Mime type? From getMimeType or from some metadata? More than one?
-    // At this point the file has not been copied to its final destination so no FileAttrs
     val newDoc = DoclibDoc(
       _id = new ObjectId(),
       source = source,
