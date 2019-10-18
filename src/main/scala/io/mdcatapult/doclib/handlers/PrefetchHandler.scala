@@ -434,7 +434,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       case Some(path) ⇒
         val absPath = (doclibRoot/path.toString).path
         val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
-        set(config.getString("prefetch.labels.attrs"), FileAttrs(
+        set("attrs", FileAttrs(
           path = absPath.getParent.toAbsolutePath.toString,
           name = absPath.getFileName.toString,
           mtime = LocalDateTime.ofInstant(attrs.lastModifiedTime().toInstant, ZoneOffset.UTC),
@@ -458,7 +458,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         val absPath = (doclibRoot/path.toString).path
         val metadata = new Metadata()
         metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, absPath.getFileName.toString)
-        set(config.getString("prefetch.labels.mimetype"), tika.getDetector.detect(
+        set("mimetype", tika.getDetector.detect(
           TikaInputStream.get(new FileInputStream(absPath.toString)),
           metadata
         ).toString)
