@@ -31,8 +31,8 @@ object ConsumerPrefetch extends App with LazyLogging {
   implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
 
   /** initialise queues **/
-  val downstream: Queue[DoclibMsg] = new Queue[DoclibMsg](config.getString("downstream.queue"), consumerName = Some("prefetch"))
-  val upstream: Queue[PrefetchMsg] = new Queue[PrefetchMsg](config.getString("doclib.supervisor.queue"), consumerName = Some("prefetch"))
+  val downstream: Queue[DoclibMsg] = new Queue[DoclibMsg](config.getString("doclib.supervisor.queue"), consumerName = Some("prefetch"))
+  val upstream: Queue[PrefetchMsg] = new Queue[PrefetchMsg](config.getString("upstream.queue"), consumerName = Some("prefetch"))
   val archiver: Queue[DoclibMsg] = new Queue[DoclibMsg](config.getString("doclib.archive.queue"), consumerName = Some("prefetch"))
   val subscription: SubscriptionRef = upstream.subscribe(new PrefetchHandler(downstream, archiver).handle, config.getInt("upstream.concurrent"))
 
