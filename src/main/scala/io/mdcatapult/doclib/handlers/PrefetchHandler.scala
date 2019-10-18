@@ -158,11 +158,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[Any]] = {
+    // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     val update = combine(
       getDocumentUpdate(found, msg),
       addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
       set("metadata", msg.metadata.getOrElse(List[MetaValueUntyped]())),
       set("derivative", msg.derivative.getOrElse(false)),
+      set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
     collection.updateOne(equal("_id", found.doc._id), update).toFutureOption().andThen({
