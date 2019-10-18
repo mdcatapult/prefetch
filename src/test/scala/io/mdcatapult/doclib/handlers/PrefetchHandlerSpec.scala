@@ -155,6 +155,60 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
+    "return a relative doclib path for local files with an FTP remote origin" in {
+      val origin: Origin = Origin(
+        scheme = "ftp",
+        uri = Some(Uri.parse("ftp://a.site/a/path/to/aFile.txt")),
+        metadata = None,
+        headers = None
+      )
+      val foundDoc = new handler.FoundDoc(
+        doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+        None,
+        None,
+        None
+      )
+      val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
+      val result = targetPath(foundDoc)
+      assert(result.get == "remote/ftp/a.site/a/path/to/aFile.txt")
+    }
+
+    "return a relative doclib path for local files with an HTTP remote origin" in {
+      val origin: Origin = Origin(
+        scheme = "http",
+        uri = Some(Uri.parse("http://a.site/a/path/to/aFile.txt")),
+        metadata = None,
+        headers = None
+      )
+      val foundDoc = new handler.FoundDoc(
+        doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+        None,
+        None,
+        None
+      )
+      val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
+      val result = targetPath(foundDoc)
+      assert(result.get == "remote/http/a.site/a/path/to/aFile.txt")
+    }
+
+    "return a relative doclib path for local files with an HTTPS remote origin" in {
+      val origin: Origin = Origin(
+        scheme = "https",
+        uri = Some(Uri.parse("https://a.site/a/path/to/aFile.txt")),
+        metadata = None,
+        headers = None
+      )
+      val foundDoc = new handler.FoundDoc(
+        doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+        None,
+        None,
+        None
+      )
+      val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
+      val result = targetPath(foundDoc)
+      assert(result.get == "remote/https/a.site/a/path/to/aFile.txt")
+    }
+
     "a prefetch message can have multiple origins" in {
       val origins: List[Origin] = List(Origin(
         scheme = "mongodb",

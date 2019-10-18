@@ -316,7 +316,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
         val remotePath = Http.generateFilePath(origin.uri.get, Some(config.getString("doclib.remote.target-dir")))
-        Some(Paths.get(s"$doclibRoot/$remotePath").toString)
+        Some(Paths.get(s"$remotePath").toString)
       }
     }
     getTargetPath
