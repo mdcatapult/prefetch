@@ -1,20 +1,20 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-import java.net.{InetAddress, URL}
+import java.net.InetAddress
+import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.stream.alpakka.ftp.FtpCredentials.AnonFtpCredentials
-import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, RemoteFileSettings, SftpSettings}
+import akka.stream.alpakka.ftp.scaladsl.{Ftp ⇒ AkkaFtp, Ftps ⇒ AkkaFtps, Sftp ⇒ AkkaSftp}
+import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, SftpSettings}
+import akka.stream.scaladsl.{FileIO, Source}
+import akka.stream.{ActorMaterializer, IOResult}
+import akka.util.ByteString
 import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.remote.adapters.Http.{generateFilePath, md5}
 import io.mdcatapult.doclib.util.FileHash
-import akka.stream.{ActorMaterializer, IOResult}
-import akka.stream.alpakka.ftp.scaladsl.{Ftp ⇒ AkkaFtp, Ftps ⇒ AkkaFtps, Sftp ⇒ AkkaSftp}
-import akka.stream.scaladsl.{FileIO, Sink, Source}
-import akka.util.ByteString
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
@@ -97,26 +97,30 @@ object Ftp extends Adapter with FileHash {
 
   /**
     * download a file from the ftp server and store it locally returning a DownloadResult
-    * @param source Uri
+    * @param uri Uri
     * @param config Config
     * @return
     */
-  def download(source: Uri)(implicit config: Config): Option[DownloadResult] = {
+  def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp", config)
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executor: ExecutionContextExecutor = system.dispatcher
 
-    val finalTarget = getTargetPath(source)
-    val tempTarget = getTempPath((source))
+    val doclibRoot = config.getString("doclib.root")
+    val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
+    val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
+    val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
+    val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
+
     tempTarget.getParentFile.mkdirs()
-    val r: Future[IOResult] = retrieve(source.toUrl)
+    val r: Future[IOResult] = retrieve(uri.toUrl)
       .runWith(FileIO.toFile(tempTarget))
 
     val a = r.map(ioresult ⇒ ioresult.status match {
         case Success(_) ⇒ Some(DownloadResult(
-          source = tempTarget.getAbsolutePath,
+          source = tempPath,
           hash = md5(tempTarget.getAbsolutePath),
-          origin = Some(source.toString),
+          origin = Some(uri.toString),
           target = Some(finalTarget.getAbsolutePath)
         ))
         case Failure(exception) ⇒ throw exception

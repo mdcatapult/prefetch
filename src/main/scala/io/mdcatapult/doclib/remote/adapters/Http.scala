@@ -2,15 +2,16 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 import java.net.URL
+import java.nio.file.Paths
 
-import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.FileHash
 
-import scala.concurrent.ExecutionContextExecutor
 import scala.sys.process._
+
+case class Http(uri: Uri)
 
 object Http extends Adapter with FileHash {
 
@@ -33,16 +34,28 @@ object Http extends Adapter with FileHash {
   * @return
   */
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
-    val finalTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.target-dir"))))
-    val tempTarget = new File(generateFilePath(uri, Some(config.getString("prefetch.remote.temp-dir"))))
-    tempTarget.getParentFile.mkdirs()
-    (new URL(uri.toUrl.toString) #> tempTarget).!!
+    val doclibRoot = config.getString("doclib.root")
+    val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
+    val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
+    val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
+    val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
 
-    Some(DownloadResult(
-      source = tempTarget.getAbsolutePath,
-      hash = md5(tempTarget.getAbsolutePath),
-      origin = Some(uri.toString),
-      target = Some(finalTarget.getAbsolutePath)
-    ))
+    tempTarget.getParentFile.mkdirs()
+    val validStatusRegex = """HTTP/[0-9]\.[0-9]\s([0-9]{3})\s(.*)""".r
+    val url =  new URL(uri.toUrl.toString)
+    url.openConnection().getHeaderField(null) match {
+      case validStatusRegex(code, message) ⇒ code.toInt match {
+        case c if c < 400 ⇒
+          (url #> tempTarget).!!
+          Some(DownloadResult(
+            source = tempPath,
+            hash = md5(tempTarget.getAbsolutePath),
+            origin = Some(uri.toString),
+            target = Some(finalTarget.getAbsolutePath)
+          ))
+        case _ ⇒ throw new Exception(s"Unable to process URL with resolved status code of $code")
+      }
+      case _ ⇒ throw new Exception(s"Unable to retrieve headers for URL ${url.toString}")
+    }
   }
 }

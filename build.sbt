@@ -5,16 +5,23 @@ lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val tikaVersion = "1.21"
+lazy val betterFilesVersion = "3.8.0"
+lazy val doclibCommonVersion = "0.0.17-SNAPSHOT"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
+lazy val IntegrationTest = config("it") extend(Test)
+
 lazy val root = (project in file(".")).
+  configs(IntegrationTest).
   settings(
+    Defaults.itSettings,
     name              := "consumer-prefetch",
     version           := "0.1",
     scalaVersion      := "2.12.8",
     scalacOptions     ++= Seq("-Ypartial-unification"),
-    resolvers         ++= Seq("MDC Nexus" at "http://nexus.mdcatapult.io/repository/maven-releases/"),
+    resolvers         ++= Seq("MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/", "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
+    updateOptions     := updateOptions.value.withLatestSnapshots(false),
     credentials       += {
       val nexusPassword = sys.env.get("NEXUS_PASSWORD")
       if ( nexusPassword.nonEmpty ) {
@@ -25,9 +32,9 @@ lazy val root = (project in file(".")).
     },
     libraryDependencies ++= Seq(
       "org.scalactic" %% "scalactic"                  % "3.0.5",
-      "org.scalatest" %% "scalatest"                  % "3.0.5" % "test",
-      "org.scalamock" %% "scalamock"                  % "4.3.0" % Test,
-      "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % Test,
+      "org.scalatest" %% "scalatest"                  % "3.0.5" % "it,test",
+      "org.scalamock" %% "scalamock"                  % "4.3.0" % "it,test",
+      "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-actor"             % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j"             % akkaVersion,
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
@@ -38,8 +45,9 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-macros"                % catsVersion,
       "org.typelevel" %% "cats-kernel"                % catsVersion,
       "org.typelevel" %% "cats-core"                  % catsVersion,
-      "io.mdcatapult.doclib" %% "common"              % "0.0.14",
-      "com.github.seratch" %% "awscala"               % awsScalaVersion
+      "io.mdcatapult.doclib" %% "common"              % doclibCommonVersion,
+      "com.github.seratch" %% "awscala"               % awsScalaVersion,
+      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion
     ),
     assemblyJarName := "consumer-prefetch.jar",
     assemblyMergeStrategy in assembly := {
