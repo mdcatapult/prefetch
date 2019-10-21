@@ -5,6 +5,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
+import better.files.Dsl.pwd
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
@@ -12,7 +13,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.util.MongoCodecs
+import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
@@ -32,7 +33,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   """))) with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with ScalaFutures {
+  with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -163,6 +164,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         Ftp.unapply(uri)
       }
     }
+  }
+
+  override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List((pwd/"test"/"remote-ingress")))
   }
 }
 

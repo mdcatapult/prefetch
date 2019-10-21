@@ -6,6 +6,7 @@ import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import better.files.Dsl._
+import io.mdcatapult.doclib.util.DirectoryDelete
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{AsyncWordSpecLike, BeforeAndAfterAll, Matchers, OptionValues}
 import org.scalatest.concurrent.ScalaFutures
@@ -18,7 +19,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   """))) with ImplicitSender
   with AsyncWordSpecLike
   with Matchers
-  with BeforeAndAfterAll with OptionValues {
+  with BeforeAndAfterAll with OptionValues with DirectoryDelete {
   implicit val config: Config = ConfigFactory.parseString(
     """
       |doclib {
@@ -68,6 +69,11 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
       assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
     }
+  }
+
+  override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List((pwd/"test"/"remote-ingress")))
   }
 
 
