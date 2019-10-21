@@ -41,5 +41,19 @@ class AdapterSpec extends FlatSpec {
       val result = new Dummy().generateFilePath(Uri.parse("https://www.bbc.co.uk/news/"), Some("remote"))
       assert(result == "remote/https/www.bbc.co.uk/news/index.html")
     }
+  "A URL without a path" should  "generate a file path ending in index.html" in {
+    val result = new Dummy().generateFilePath(Uri.parse("https://www.bbc.co.uk"), Some("remote"))
+    assert(result == "remote/https/www.bbc.co.uk/index.html")
+  }
+
+  "A URL without a path but with a query string" should  "generate a file path ending with md5 hash before index.html" in {
+    val result = new Dummy().generateFilePath(Uri.parse("https://www.bbc.co.uk?page=1"), Some("remote"))
+    assert(result == "remote/https/www.bbc.co.uk/index.1a8c14b8c6351d0699ed8db13dcde382.html")
+  }
+
+  "A URL without a sub path but with terminating /" should  "generate file path ending in index.html" in {
+    val result = new Dummy().generateFilePath(Uri.parse("https://www.bbc.co.uk/"), Some("remote"))
+    assert(result == "remote/https/www.bbc.co.uk/index.html")
+  }
 
 }
