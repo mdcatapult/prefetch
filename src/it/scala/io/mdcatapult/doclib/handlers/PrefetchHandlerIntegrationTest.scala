@@ -11,7 +11,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
-import io.mdcatapult.doclib.remote.adapters.Http
+import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
@@ -151,6 +151,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val uri: Uri = Uri.parse("http://a/file/somewhere")
       assertThrows[Exception] {
         Http.unapply(uri)
+      }
+    }
+  }
+
+  "An ftp URI" should {
+    "be downloaded by the FTP adapter" in {
+      // Result not actually important just the fact that it triggers the "download" method
+      val uri: Uri = Uri.parse("ftp://a/file/somewhere")
+      assertThrows[Exception] {
+        Ftp.unapply(uri)
       }
     }
   }
