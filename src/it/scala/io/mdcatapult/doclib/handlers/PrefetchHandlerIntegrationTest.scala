@@ -1,5 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
+import java.io.File
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor._
@@ -20,6 +21,7 @@ import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
+import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -162,6 +164,21 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val uri: Uri = Uri.parse("ftp://a/file/somewhere")
       assertThrows[Exception] {
         Ftp.unapply(uri)
+      }
+    }
+  }
+
+  "Moving a non existent file" should {
+    "throw an exception" in {
+      assertThrows[Exception] {
+        handler.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
+      }
+    }
+
+    "Moving a file with the same source and target" should {
+      "return the original file path" in {
+        val path = handler.moveFile(new File("/a/path/to/a/file.txt"), new File("/a/path/to/a/file.txt"))
+        assert(path.success.value == new File("/a/path/to/a/file.txt").toPath)
       }
     }
   }
