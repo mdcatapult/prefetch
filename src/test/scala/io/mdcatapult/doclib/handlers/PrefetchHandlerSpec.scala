@@ -158,22 +158,33 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "a prefetch message can have multiple origins" in {
       val origins: List[Origin] = List(Origin(
         scheme = "mongodb",
+        hostname = None,
         uri = Some(Uri.parse("remote/https/parent1")),
         metadata = Some(List(MetaString("_id", "1"))),
         headers = None
       ),
         Origin(
           scheme = "mongodb",
+          hostname = None,
           uri = Some(Uri.parse("local/file/parent2")),
           metadata = Some(List(MetaString("_id", "2"))),
           headers = None
         ),
         Origin(
           scheme = "file",
+          hostname = None,
           uri = Some(Uri.parse("local/file/parent3")),
           metadata = Some(List(MetaString("_id", "3"))),
           headers = None
-        ))
+        ),
+        Origin(
+          scheme =  "http",
+          hostname =  Some("www.bbc.co.uk"),
+          uri =  Some(Uri.parse("http://www.bbc.co.uk/news")),
+          headers =  None,
+          metadata =  None
+        )
+      )
 
       assert(origins.filter(origin => origin.scheme == "mongodb").length == 2)
     }
