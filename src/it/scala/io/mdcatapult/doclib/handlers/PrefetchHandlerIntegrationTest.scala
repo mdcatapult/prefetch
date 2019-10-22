@@ -1,24 +1,27 @@
 package io.mdcatapult.doclib.handlers
 
+import java.io.File
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
+import better.files.Dsl.pwd
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
-import io.mdcatapult.doclib.remote.adapters.Http
-import io.mdcatapult.doclib.util.MongoCodecs
+import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
+import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
+import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -32,7 +35,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   """))) with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with ScalaFutures {
+  with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -153,6 +156,36 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         Http.unapply(uri)
       }
     }
+  }
+
+  "An ftp URI" should {
+    "be downloaded by the FTP adapter" in {
+      // Result not actually important just the fact that it triggers the "download" method
+      val uri: Uri = Uri.parse("ftp://a/file/somewhere")
+      assertThrows[Exception] {
+        Ftp.unapply(uri)
+      }
+    }
+  }
+
+  "Moving a non existent file" should {
+    "throw an exception" in {
+      assertThrows[Exception] {
+        handler.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
+      }
+    }
+
+    "Moving a file with the same source and target" should {
+      "return the original file path" in {
+        val path = handler.moveFile(new File("/a/path/to/a/file.txt"), new File("/a/path/to/a/file.txt"))
+        assert(path.success.value == new File("/a/path/to/a/file.txt").toPath)
+      }
+    }
+  }
+
+  override def afterAll(): Unit = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List((pwd/"test"/"remote-ingress")))
   }
 }
 
