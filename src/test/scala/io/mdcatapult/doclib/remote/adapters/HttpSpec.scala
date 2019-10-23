@@ -81,6 +81,7 @@ class HttpSpec extends FlatSpec {
     val fileNameHash = Http.md5HashString(fileName.replace(".pdf", ""))
     assert(hashName == s"$fileNameHash.pdf")
   }
+
   "A url that has no path" should "not be changed" in {
     val origUri = Uri.parse("www.bbc.co.uk")
     val fileName = ""
