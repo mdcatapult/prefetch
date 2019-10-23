@@ -75,11 +75,19 @@ class HttpSpec extends FlatSpec {
   }
 
   "A uri with filename longer than 255 chars with no query params" should "be hashed" in {
-    val origUri = Uri.parse("http://orbit.dtu.dk/en/publications/dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be.pdf?nofollow=true&rendering=author")
+    val origUri = Uri.parse("http://orbit.dtu.dk/en/publications/dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be.pdf")
     val fileName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be.pdf"
     val hashName = Http.hashOrOriginal(origUri, fileName)
     val fileNameHash = Http.md5HashString(fileName.replace(".pdf", ""))
     assert(hashName == s"$fileNameHash.pdf")
+  }
+
+  "A uri with filename longer than 255 chars with no query params and no extension" should "be hashed" in {
+    val origUri = Uri.parse("http://orbit.dtu.dk/en/publications/dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be")
+    val fileName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be"
+    val hashName = Http.hashOrOriginal(origUri, fileName)
+    val fileNameHash = Http.md5HashString(fileName)
+    assert(hashName == s"$fileNameHash")
   }
 
   "A url that has no path" should "not be changed" in {
