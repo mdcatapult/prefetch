@@ -43,7 +43,7 @@ object Http extends Adapter with FileHash {
     val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
     val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
     val (tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
-      case orig if orig == ScalaFile(tempPath).name ⇒ (tempTarget, finalTarget)
+      case orig if orig == tempTarget.getName ⇒ (tempTarget.toString, finalTarget.toString)
       case hashed ⇒ (tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
     }
     mkdirs (ScalaFile(tempTargetFinal).parent)
