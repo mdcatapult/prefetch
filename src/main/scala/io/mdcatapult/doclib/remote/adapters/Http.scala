@@ -42,9 +42,9 @@ object Http extends Adapter with FileHash {
     val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
     val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
     val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
-    val (tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
-      case orig if orig == tempTarget.getName ⇒ (tempTarget.toString, finalTarget.toString)
-      case hashed ⇒ (tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
+    val (tempPathFinal: String, tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
+      case orig if orig == tempTarget.getName ⇒ (tempPath, tempTarget.toString, finalTarget.toString)
+      case hashed ⇒ (tempPath.replace(tempTarget.getName, hashed), tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
     }
     mkdirs (ScalaFile(tempTargetFinal).parent)
     val validStatusRegex = """HTTP/[0-9]\.[0-9]\s([0-9]{3})\s(.*)""".r
@@ -54,7 +54,7 @@ object Http extends Adapter with FileHash {
         case c if c < 400 ⇒
           (url #> new File(tempTargetFinal)).!!
           Some(DownloadResult(
-            source = tempTargetFinal.replaceFirst(s"$doclibRoot/", ""),
+            source = tempPathFinal,
             hash = md5(new File(tempTargetFinal).getAbsolutePath),
             origin = Some(uri.toString),
             target = Some(new File(finalTargetFinal).getAbsolutePath)
