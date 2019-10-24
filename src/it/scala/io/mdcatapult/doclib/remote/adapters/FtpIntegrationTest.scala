@@ -31,6 +31,14 @@ class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAft
     assert(file.exists)
   }
 
+  "A valid FTP URL with credentials" should "parse ok" in {
+    // Test username/password. Doesn't matter if it downloads
+    val uri = Uri.parse("ftp://user:password@ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
+    intercept[Exception] {
+      Ftp.download(uri)
+    }
+  }
+
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List((pwd/"test"/"remote-ingress")))

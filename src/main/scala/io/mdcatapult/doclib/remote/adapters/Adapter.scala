@@ -55,7 +55,7 @@ trait Adapter {
       }
     }${
       uri.path match {
-        case EmptyPath ⇒ s"index$queryHash.html"
+        case EmptyPath ⇒ s"/index$queryHash.html"
         case path: RootlessPath ⇒ s"${generateBasename(path)}"
         case path: AbsolutePath ⇒ generateBasename(path)
         case _ ⇒ ""
