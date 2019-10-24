@@ -31,12 +31,14 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
     case Some("http" | "https") ⇒ httpClient.url(source.toString).head().map(r =>
       Origin(
         scheme = r.uri.getScheme,
+        hostname = Some(r.uri.getHost),
         uri = Some(Uri.parse(r.uri.toString)),
         headers = Some(r.headers),
         metadata = Some(List(MetaInt("status", r.status))))
     )
     case Some("ftp" | "ftps" | "sftp") ⇒ Future.successful(Origin(
       scheme = source.schemeOption.get,
+      hostname = Some(source.toJavaURI.getHost),
       uri = Some(source),
       headers = None,
       metadata = None))

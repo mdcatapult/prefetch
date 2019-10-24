@@ -131,12 +131,14 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val origin: List[Origin] = List(Origin(
         scheme = "mongodb",
+        hostname = None,
         uri = None,
         metadata = Some(List(MetaString("_id", parentIdOne.toString))),
         headers = None
       ),
         Origin(
           scheme = "mongodb",
+          hostname = None,
           uri = None,
           metadata = Some(List(MetaString("_id", parentIdTwo.toString))),
           headers = None)
