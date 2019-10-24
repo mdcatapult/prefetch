@@ -158,6 +158,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "return a relative doclib path for local files with an FTP remote origin" in {
       val origin: Origin = Origin(
         scheme = "ftp",
+        hostname =  None,
         uri = Some(Uri.parse("ftp://a.site/a/path/to/aFile.txt")),
         metadata = None,
         headers = None
@@ -176,6 +177,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "return a relative doclib path for local files with an HTTP remote origin" in {
       val origin: Origin = Origin(
         scheme = "http",
+        hostname = None,
         uri = Some(Uri.parse("http://a.site/a/path/to/aFile.txt")),
         metadata = None,
         headers = None
@@ -194,6 +196,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "return a relative doclib path for local files with an HTTPS remote origin" in {
       val origin: Origin = Origin(
         scheme = "https",
+        hostname = None,
         uri = Some(Uri.parse("https://a.site/a/path/to/aFile.txt")),
         metadata = None,
         headers = None
