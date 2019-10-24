@@ -32,6 +32,7 @@ class ClientSpec extends FlatSpec{
     assert(result.uri.get.schemeOption.get == "https")
     assert(result.uri.get.toUrl.hostOption.get.toString == "www.bbc.co.uk")
     assert(result.uri.get.toUrl.path.toAbsolute.toString == "/news")
+    assert(result.hostname.get == "www.bbc.co.uk")
   }
 
   "A valid ftp URL" should "resolve to a valid Prefetch Origin" in {
@@ -39,6 +40,7 @@ class ClientSpec extends FlatSpec{
     val result = Await.result(client.resolve(source), Duration.Inf)
     assert(result.scheme == "ftp")
     assert(result.uri.get == source)
+    assert(result.hostname.get == "ftp.ebi.ac.uk")
   }
 
   "An unsupported scheme" should "throw an exception" in {

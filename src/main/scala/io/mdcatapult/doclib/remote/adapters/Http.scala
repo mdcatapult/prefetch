@@ -8,6 +8,8 @@ import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.FileHash
+import better.files.{File ⇒ ScalaFile, _}
+import better.files.Dsl._
 
 import scala.sys.process._
 
@@ -23,35 +25,39 @@ object Http extends Adapter with FileHash {
     else None
 
   /**
-  * Fetches contents of URI using low level request and writes to file
-  *
-  * This method will not facilitate any form of Javascript rendering
-  * Converts url to path using naive assumption that we are using linux
-  * filesystem and does not attempt to convert of change the target path
-  * for non linux filesystem
-  *
-  * @param uri io.lemonlabs.uri.Uri
-  * @return
-  */
+   * Fetches contents of URI using low level request and writes to file
+   *
+   * This method will not facilitate any form of Javascript rendering
+   * Converts url to path using naive assumption that we are using linux
+   * filesystem and does not attempt to convert of change the target path
+   * for non linux filesystem.
+   * If the file name is too long then replace with a hash of the original name
+   *
+   * @param uri io.lemonlabs.uri.Uri
+   * @return
+   */
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
     val doclibRoot = config.getString("doclib.root")
     val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
     val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
     val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
     val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
-
-    tempTarget.getParentFile.mkdirs()
+    val (tempPathFinal: String, tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
+      case orig if orig == tempTarget.getName ⇒ (tempPath, tempTarget.toString, finalTarget.toString)
+      case hashed ⇒ (tempPath.replace(tempTarget.getName, hashed), tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
+    }
+    mkdirs (ScalaFile(tempTargetFinal).parent)
     val validStatusRegex = """HTTP/[0-9]\.[0-9]\s([0-9]{3})\s(.*)""".r
     val url =  new URL(uri.toUrl.toString)
     url.openConnection().getHeaderField(null) match {
       case validStatusRegex(code, message) ⇒ code.toInt match {
         case c if c < 400 ⇒
-          (url #> tempTarget).!!
+          (url #> new File(tempTargetFinal)).!!
           Some(DownloadResult(
-            source = tempPath,
-            hash = md5(tempTarget.getAbsolutePath),
+            source = tempPathFinal,
+            hash = md5(new File(tempTargetFinal).getAbsolutePath),
             origin = Some(uri.toString),
-            target = Some(finalTarget.getAbsolutePath)
+            target = Some(new File(finalTargetFinal).getAbsolutePath)
           ))
         case _ ⇒ throw new Exception(s"Unable to process URL with resolved status code of $code")
       }
