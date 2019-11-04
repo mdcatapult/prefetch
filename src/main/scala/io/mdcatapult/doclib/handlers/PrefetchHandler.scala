@@ -10,6 +10,7 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
+import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -23,9 +24,10 @@ import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.bson.BsonValue
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
-import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
@@ -140,8 +142,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       })
     }
     else {
-      // No derivative.
-      Future.successful(None)
+      // No derivative. Just return a success - we don't do anything with the response
+      Future.successful(Some(UpdateResult.acknowledged(1, 1.toLong, BsonInt32(1))))
     }
   }
 

@@ -5,8 +5,8 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File => ScalaFile}
-import com.mongodb.async.client.{MongoCollection => JMongoCollection}
+import better.files.{File ⇒ ScalaFile}
+import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
-import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -250,14 +250,14 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
       val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
-      assert(result == None)
+      assert(result.get.getUpsertedId == BsonInt32(1))
     }
 
     "A parent prefetch message with no derivative field should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
-      assert(result == None)
+      assert(result.get.getUpsertedId == BsonInt32(1))
     }
   }
 
