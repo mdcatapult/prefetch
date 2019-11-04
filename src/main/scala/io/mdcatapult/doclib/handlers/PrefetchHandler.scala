@@ -91,9 +91,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
       result ← OptionT(process(found, msg))
-      _ <- OptionT(processParent(msg))
+      _ <- OptionT.liftF(processParent(msg))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
-
     } yield (result, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
@@ -143,7 +142,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     }
     else {
       // No derivative. Just return a success - we don't do anything with the response
-      Future.successful(Some(UpdateResult.acknowledged(1, 1.toLong, BsonInt32(1))))
+      Future.successful(None)
     }
   }
 
