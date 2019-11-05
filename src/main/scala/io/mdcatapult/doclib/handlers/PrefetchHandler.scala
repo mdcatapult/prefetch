@@ -89,7 +89,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
       result ← OptionT(process(found, msg))
-      _ <- OptionT(processParent(msg))
+      _ <- OptionT.liftF(processParent(msg))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
 
     } yield (result, found.doc)).value.andThen({
@@ -115,7 +115,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[UpdateResult]] = {
+  def processParent(msg: PrefetchMsg): Future[Option[(UpdateResult, UpdateResult)]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
       // Create list of filters by _id, one for each parent origin
@@ -126,21 +126,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         `type` = "unarchived",
         path = path
       )
-      collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
-        case Success(_) ⇒ {
-          collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
-            case Success(_) ⇒ {
-            }
-            // TODO does this need to bubble up?
-            case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
-          })
-        }
-        // TODO does this need to bubble up?
-        case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
-      })
+      val result = for {
+        u1 ← OptionT(collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption())
+        u2 ← OptionT(collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption())
+      } yield (u1, u2)
+      result.value
     }
     else {
-      // No derivative.
+      // No derivative. No need to do anything more
       Future.successful(None)
     }
   }
