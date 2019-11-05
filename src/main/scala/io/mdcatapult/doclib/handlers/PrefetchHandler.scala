@@ -126,11 +126,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         `type` = "unarchived",
         path = path
       )
-      val result = for {
+      (for {
         u1 ← OptionT(collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption())
         u2 ← OptionT(collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption())
-      } yield (u1, u2)
-      result.value
+      } yield (u1, u2)).value
     }
     else {
       // No derivative. No need to do anything more
