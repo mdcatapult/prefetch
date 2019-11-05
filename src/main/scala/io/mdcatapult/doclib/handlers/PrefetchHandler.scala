@@ -104,6 +104,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
             case Some(found) ⇒ flags.error(found.doc, noCheck = true)
             case _ ⇒ // do nothing as error handling will capture
           }
+          // There is no mongo doc - error happened before one was created
           case Failure(_) ⇒ // do nothing as error handling will capture
         }
     })
