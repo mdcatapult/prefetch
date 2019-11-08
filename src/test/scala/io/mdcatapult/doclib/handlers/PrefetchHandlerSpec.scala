@@ -259,6 +259,21 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
       assert(result == None)
     }
+
+    "A prefetch message can have derivative type in the metadata" in {
+      val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
+      val derivMetadata = prefetchMsg.metadata.get.filter(p ⇒ p.getKey == "derivative.type")
+      assert(derivMetadata.length == 1)
+      assert(derivMetadata(0).getKey == "derivative.type")
+      assert(derivMetadata(0).getValue == "unarchive")
+    }
+
+    "Prefetch metadata can have derivative type" in {
+      val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"), MetaString("akey", "avalue"))
+      val derivMetadata = handler.getDervivativeType(Some(metadataMap))
+      assert(derivMetadata == "unarchive")
+    }
   }
 
 }

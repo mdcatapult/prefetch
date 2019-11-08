@@ -110,6 +110,18 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         }
     })
   }
+  /**
+   * Return derivative type. This should be in the metadata but isn't enforced in the code so if missing it will be 'unknown'
+   * Looking for MetaString("derivative.type", "rawtext")
+   * @param metadata Option[List[MetaValueUntyped]]
+   * @return String the derivative type eg "unarchived", "rawtext". If none then "unknown"
+   */
+  def getDervivativeType(metadata: Option[List[MetaValueUntyped]]): String = {
+    metadata.getOrElse(List[MetaString](MetaString("derivative.type", "unknown"))).filter(p ⇒ p.getKey == "derivative.type") match {
+      case head::rest ⇒ head.getValue.toString
+      case Nil ⇒ "unknown"
+    }
+  }
 
 
   /**
@@ -125,7 +137,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
       // TODO get metadata from old derivative
       val derivative: Derivative = Derivative(
-        `type` = "unarchived",
+        `type` = getDervivativeType(msg.metadata),
         path = path
       )
       (for {
