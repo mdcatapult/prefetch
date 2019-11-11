@@ -11,17 +11,23 @@
     </appender>
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>log/consumer-prefetch.${myTimestamp}.log</file>
+        <file>${log-level:-log/consumer-prefetch.${myTimestamp}.log}</file>
         <append>false</append>
         <encoder>
             <pattern>%d{yyyy-MM-dd_HH:mm:ss.SSS} %-5level[%thread] %logger{1} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <logger name="org.mongodb.driver" level="WARN" />
-    <logger name="play.api.libs.ws" level="WARN" />
-    <logger name="com.spingo.op_rabbit" level="OFF" >
+    <logger name="org.mongodb.driver" level="${log-level:-ERROR}" />
+    <logger name="play.api.libs.ws" level="${log-level:-ERROR}" />
+    <logger name="io.mdcatapult" level="${log-level:-ERROR}" />
+    <logger name="com.spingo.op_rabbit" level="${log-level:-ERROR}" >
         <appender-ref ref="CONSOLE"/>
     </logger>
+
+    <root level="${log-level:-ERROR}">
+        <appender-ref ref="CONSOLE"/>
+<!--        <appender-ref ref="FILE"/>-->
+    </root>
 
 </configuration>

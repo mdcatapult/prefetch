@@ -52,7 +52,6 @@ import scala.util.{Failure, Success, Try}
  * @param ex ExecutionContext
  * @param config Config
  * @param collection MongoCollection[Document] to read documents from
- * @param codecs CodecRegistry
  */
 class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[DoclibMsg])
                      (implicit ac: ActorSystem,
@@ -60,7 +59,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
                       ex: ExecutionContextExecutor,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
-                      codecs: CodecRegistry
                      ) extends LazyLogging with FileHash with TargetPath {
 
   /** Initialise Apache Tika && Remote Client **/
@@ -299,7 +297,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param foundDoc Found Doc
    * @return
    */
-  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inLocalRoot(foundDoc.doc.source))
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
@@ -309,23 +307,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       val root = config.getString("doclib.local.target-dir").replaceFirst("/+$", "")
       Some(Paths.get(s"$root/$relPath").toString)
     }
-  }
 
-  def getRemoteOrigins(origins: List[Origin]): List[Origin] = {
-    origins.filter(o ⇒ {
-      Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
-    })
-  }
+  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o ⇒ {
+    Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
+  })
 
-  def getLocalToRemoteTargetUpdatePath(origin: Origin): (FoundDoc) ⇒ Option[String] ={
-    def getTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalToRemoteTargetUpdatePath(origin: Origin): FoundDoc ⇒ Option[String] = {
+    def getTargetPath(foundDoc: FoundDoc): Option[String] =
       if (inRemoteRoot(foundDoc.doc.source))
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
         val remotePath = Http.generateFilePath(origin.uri.get, Some(config.getString("doclib.remote.target-dir")))
         Some(Paths.get(s"$remotePath").toString)
       }
-    }
     getTargetPath
   }
 
