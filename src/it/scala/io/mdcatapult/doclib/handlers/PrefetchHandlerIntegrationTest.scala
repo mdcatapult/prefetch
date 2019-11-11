@@ -144,9 +144,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           headers = None)
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-      val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(prefetchMsg), 5 seconds)
-      assert(parentUpdate.get.getMatchedCount == 2)
-      assert(parentUpdate.get.getModifiedCount == 2)
+      val parentUpdate: Option[(UpdateResult, UpdateResult)] = Await.result(handler.processParent(prefetchMsg), 5 seconds)
+      assert(parentUpdate.get._1.getMatchedCount == 2)
+      assert(parentUpdate.get._1.getModifiedCount == 2)
+      assert(parentUpdate.get._2.getMatchedCount == 2)
+      assert(parentUpdate.get._2.getModifiedCount == 2)
     }
   }
 
