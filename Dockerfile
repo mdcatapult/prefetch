@@ -1,6 +1,7 @@
 FROM openjdk:11
 ARG VERSION_HASH="SNAPSHOT"
 ENV VERSION_HASH=$VERSION_HASH
-COPY target/scala-2.12/consumer-prefetch.jar /consumer.jar
-COPY run.sh /run.sh
-ENTRYPOINT ["run.sh"]
+RUN mkdir -p /srv
+WORKDIR /srv
+COPY target/scala-2.12/consumer-prefetch.jar /srv/consumer.jar
+ENTRYPOINT ["java","-Dlog-level=DEBUG","-jar","/consumer.jar","start","--config","/srv/common.conf"]

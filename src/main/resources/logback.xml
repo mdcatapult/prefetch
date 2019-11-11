@@ -18,13 +18,14 @@
         </encoder>
     </appender>
 
-    <logger name="org.mongodb.driver" level="${log-level:-WARN}" />
-    <logger name="play.api.libs.ws" level="${log-level:-WARN}" />
-    <logger name="com.spingo.op_rabbit" level="${log-level:-OFF}" >
+    <logger name="org.mongodb.driver" level="${log-level:-ERROR}" />
+    <logger name="play.api.libs.ws" level="${log-level:-ERROR}" />
+    <logger name="io.mdcatapult" level="${log-level:-ERROR}" />
+    <logger name="com.spingo.op_rabbit" level="${log-level:-ERROR}" >
         <appender-ref ref="CONSOLE"/>
     </logger>
 
-    <root level="${log-level:-OFF}">
+    <root level="${log-level:-ERROR}">
         <appender-ref ref="CONSOLE"/>
 <!--        <appender-ref ref="FILE"/>-->
     </root>

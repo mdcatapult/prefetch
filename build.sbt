@@ -13,7 +13,7 @@ lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val tikaVersion = "1.21"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.20"
+lazy val doclibCommonVersion = "0.0.22"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -53,7 +53,7 @@ lazy val root = (project in file(".")).
       "org.typelevel" %% "cats-core"                  % catsVersion,
       "io.mdcatapult.doclib" %% "common"              % doclibCommonVersion,
       "com.github.seratch" %% "awscala"               % awsScalaVersion,
-      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion
+      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion,
     ),
   )
   .settings(
