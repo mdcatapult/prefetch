@@ -19,7 +19,6 @@ cache:
     - "sbt-cache/target"
 
 before_script:
-  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   - apt-get update -yqq
   - apt-get install -yqq apt-transport-https ca-certificates
   - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
@@ -86,6 +85,8 @@ publish-master:
   image: docker:latest
   dependencies:
     - release
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
     - >
       docker build --pull
@@ -103,6 +104,8 @@ publish:
   image: docker:latest
   dependencies:
     - assemble
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
     - >
       docker build --pull
