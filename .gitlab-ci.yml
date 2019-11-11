@@ -29,7 +29,14 @@ cache:
   - sbt sbtVersion
 
 before_script:
-  - *setup_sbt
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  - apt-get update -yqq
+  - apt-get install -yqq apt-transport-https ca-certificates
+  - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
+  - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
+  - apt-get update -yqq
+  - apt-get install -yqq sbt
+  - sbt sbtVersion
 
 
 test:
@@ -58,7 +65,14 @@ release:
   stage: build
   image: openjdk:11
   before_script:
-    - *setup_sbt
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - apt-get update -yqq
+    - apt-get install -yqq apt-transport-https ca-certificates
+    - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
+    - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
+    - apt-get update -yqq
+    - apt-get install -yqq sbt
+    - sbt sbtVersion
     - 'which ssh-agent || ( apt-get install -qq openssh-client )'
     - eval $(ssh-agent -s)
     - ssh-add <(echo "$SSH_PRIVATE_KEY")
