@@ -81,7 +81,7 @@ publish-master:
   stage: publish
   image: docker:latest
   dependencies:
-    - assemble
+    - release
   script:
     - >
       docker build --pull
