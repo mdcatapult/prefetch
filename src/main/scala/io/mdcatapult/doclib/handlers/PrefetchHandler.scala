@@ -23,7 +23,6 @@ import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
-import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
@@ -50,7 +49,6 @@ import scala.util.{Failure, Success, Try}
  * @param ex ExecutionContext
  * @param config Config
  * @param collection MongoCollection[Document] to read documents from
- * @param codecs CodecRegistry
  */
 class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[DoclibMsg])
                      (implicit ac: ActorSystem,
@@ -58,7 +56,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
                       ex: ExecutionContextExecutor,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
-                      codecs: CodecRegistry
                      ) extends LazyLogging with FileHash with TargetPath {
 
   /** Initialise Apache Tika && Remote Client **/
@@ -127,14 +124,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         path = path
       )
       collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
-        case Success(_) ⇒ {
+        case Success(_) ⇒
           collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
-            case Success(_) ⇒ {
-            }
+            case Success(_) ⇒
             // TODO does this need to bubble up?
             case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
           })
-        }
         // TODO does this need to bubble up?
         case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
       })
@@ -167,9 +162,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       set("updated", LocalDateTime.now())
     )
     collection.updateOne(equal("_id", found.doc._id), update).toFutureOption().andThen({
-      case Success(_) ⇒ {
-        downstream.send(DoclibMsg(id = found.doc._id.toString))
-      }
+      case Success(_) ⇒ downstream.send(DoclibMsg(id = found.doc._id.toString))
       case Failure(e) => throw e
     })
   }
@@ -293,7 +286,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param foundDoc Found Doc
    * @return
    */
-  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inLocalRoot(foundDoc.doc.source))
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
@@ -303,23 +296,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       val root = config.getString("doclib.local.target-dir").replaceFirst("/+$", "")
       Some(Paths.get(s"$root/$relPath").toString)
     }
-  }
 
-  def getRemoteOrigins(origins: List[Origin]): List[Origin] = {
-    origins.filter(o ⇒ {
-      Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
-    })
-  }
+  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o ⇒ {
+    Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
+  })
 
-  def getLocalToRemoteTargetUpdatePath(origin: Origin): (FoundDoc) ⇒ Option[String] ={
-    def getTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalToRemoteTargetUpdatePath(origin: Origin): FoundDoc ⇒ Option[String] = {
+    def getTargetPath(foundDoc: FoundDoc): Option[String] =
       if (inRemoteRoot(foundDoc.doc.source))
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
         val remotePath = Http.generateFilePath(origin.uri.get, Some(config.getString("doclib.remote.target-dir")))
         Some(Paths.get(s"$remotePath").toString)
       }
-    }
     getTargetPath
   }
 

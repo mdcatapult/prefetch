@@ -40,6 +40,8 @@ assemble:
      - target/scala-2.12/consumer-prefetch.jar
      #- target/scala-2.12/scoverage-report/
 
+
+
 publish-master:
   stage: publish
   image: docker:latest
