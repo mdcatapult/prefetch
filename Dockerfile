@@ -1,7 +1,6 @@
-FROM openjdk:11
-
+FROM openjdk:14
 ARG VERSION_HASH="SNAPSHOT"
 ENV VERSION_HASH=$VERSION_HASH
-
-COPY target/scala-2.12/consumer-prefetch.jar /
-ENTRYPOINT ["java","-jar","consumer-prefetch.jar"]
+RUN mkdir -p /srv
+COPY target/scala-2.12/consumer-prefetch.jar /consumer-prefetch.jar
+ENTRYPOINT ["java","-jar","/consumer-prefetch.jar","start","--config","/srv/common.conf"]

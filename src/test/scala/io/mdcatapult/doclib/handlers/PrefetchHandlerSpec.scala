@@ -5,8 +5,8 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File => ScalaFile}
-import com.mongodb.async.client.{MongoCollection => JMongoCollection}
+import better.files.{File ⇒ ScalaFile}
+import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
-import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -258,6 +258,21 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
       assert(result == None)
+    }
+
+    "A prefetch message can have derivative type in the metadata" in {
+      val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
+      val derivMetadata = prefetchMsg.metadata.get.filter(p ⇒ p.getKey == "derivative.type")
+      assert(derivMetadata.length == 1)
+      assert(derivMetadata(0).getKey == "derivative.type")
+      assert(derivMetadata(0).getValue == "unarchive")
+    }
+
+    "Prefetch metadata can have derivative type" in {
+      val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"), MetaString("akey", "avalue"))
+      val derivMetadata = handler.getDervivativeType(Some(metadataMap))
+      assert(derivMetadata == "unarchive")
     }
   }
 

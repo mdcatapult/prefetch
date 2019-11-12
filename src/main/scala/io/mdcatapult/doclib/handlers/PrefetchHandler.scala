@@ -23,11 +23,12 @@ import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.bson.BsonValue
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
-import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.mongodb.scala.bson.conversions.Bson
-import org.mongodb.scala.model.Filters.{equal, or}
+import org.mongodb.scala.model.Filters.{and, equal, exists, or}
 import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
@@ -50,7 +51,6 @@ import scala.util.{Failure, Success, Try}
  * @param ex ExecutionContext
  * @param config Config
  * @param collection MongoCollection[Document] to read documents from
- * @param codecs CodecRegistry
  */
 class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[DoclibMsg])
                      (implicit ac: ActorSystem,
@@ -58,7 +58,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
                       ex: ExecutionContextExecutor,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
-                      codecs: CodecRegistry
                      ) extends LazyLogging with FileHash with TargetPath {
 
   /** Initialise Apache Tika && Remote Client **/
@@ -89,9 +88,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
       result ← OptionT(process(found, msg))
-      _ <- OptionT(processParent(msg))
+      _ <- OptionT.liftF(processParent(msg))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
-
     } yield (result, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
@@ -104,9 +102,22 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
             case Some(found) ⇒ flags.error(found.doc, noCheck = true)
             case _ ⇒ // do nothing as error handling will capture
           }
+          // There is no mongo doc - error happened before one was created
           case Failure(_) ⇒ // do nothing as error handling will capture
         }
     })
+  }
+  /**
+   * Return derivative type. This should be in the metadata but isn't enforced in the code so if missing it will be 'unknown'
+   * Looking for MetaString("derivative.type", "rawtext")
+   * @param metadata Option[List[MetaValueUntyped]]
+   * @return String the derivative type eg "unarchived", "rawtext". If none then "unknown"
+   */
+  def getDervivativeType(metadata: Option[List[MetaValueUntyped]]): String = {
+    metadata.getOrElse(List[MetaString](MetaString("derivative.type", "unknown"))).filter(p ⇒ p.getKey == "derivative.type") match {
+      case head::rest ⇒ head.getValue.toString
+      case Nil ⇒ "unknown"
+    }
   }
 
 
@@ -115,7 +126,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[UpdateResult]] = {
+  def processParent(msg: PrefetchMsg): Future[Option[(UpdateResult, UpdateResult)]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
       // Create list of filters by _id, one for each parent origin
@@ -123,24 +134,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
       // TODO get metadata from old derivative
       val derivative: Derivative = Derivative(
-        `type` = "unarchived",
+        `type` = getDervivativeType(msg.metadata),
         path = path
       )
-      collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption().andThen({
-        case Success(_) ⇒ {
-          collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption().andThen({
-            case Success(_) ⇒ {
-            }
-            // TODO does this need to bubble up?
-            case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
-          })
-        }
-        // TODO does this need to bubble up?
-        case Failure(e) => logger.error(s"Failed to update parent doc with new child path. $e")
-      })
+      (for {
+        u1 ← OptionT(collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption())
+        u2 ← OptionT(collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption())
+      } yield (u1, u2)).value
     }
     else {
-      // No derivative.
+      // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
     }
   }
@@ -293,7 +296,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param foundDoc Found Doc
    * @return
    */
-  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inLocalRoot(foundDoc.doc.source))
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
@@ -303,23 +306,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       val root = config.getString("doclib.local.target-dir").replaceFirst("/+$", "")
       Some(Paths.get(s"$root/$relPath").toString)
     }
-  }
 
-  def getRemoteOrigins(origins: List[Origin]): List[Origin] = {
-    origins.filter(o ⇒ {
-      Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
-    })
-  }
+  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o ⇒ {
+    Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
+  })
 
-  def getLocalToRemoteTargetUpdatePath(origin: Origin): (FoundDoc) ⇒ Option[String] ={
-    def getTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getLocalToRemoteTargetUpdatePath(origin: Origin): FoundDoc ⇒ Option[String] = {
+    def getTargetPath(foundDoc: FoundDoc): Option[String] =
       if (inRemoteRoot(foundDoc.doc.source))
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
         val remotePath = Http.generateFilePath(origin.uri.get, Some(config.getString("doclib.remote.target-dir")))
         Some(Paths.get(s"$remotePath").toString)
       }
-    }
     getTargetPath
   }
 
