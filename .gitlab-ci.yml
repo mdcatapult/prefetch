@@ -73,7 +73,6 @@ release:
   stage: build
   image: openjdk:11
   before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
     - apt-get update -yqq
     - apt-get install -yqq apt-transport-https ca-certificates
     - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
