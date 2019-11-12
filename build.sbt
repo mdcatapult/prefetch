@@ -24,7 +24,7 @@ lazy val root = (project in file(".")).
   .settings(
     Defaults.itSettings,
     name              := "consumer-prefetch",
-    scalaVersion      := "2.12.8",
+    scalaVersion      := "2.12.10",
     scalacOptions     ++= Seq("-Ypartial-unification"),
     resolvers         ++= Seq("MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/", "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
     updateOptions     := updateOptions.value.withLatestSnapshots(false),
