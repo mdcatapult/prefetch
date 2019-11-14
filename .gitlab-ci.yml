@@ -89,7 +89,19 @@ release:
     - git config --global user.email "${GIT_RELEASE_EMAIL}"
     - git config --global user.name "${GIT_RELEASE_USER}"
   script:
+    - git checkout master
+    - git pull origin master
     - sbt "release with-defaults"
+    - export RELEASE_TAG=$(git describe --abbrev=0)
+    - >
+      curl --header 'Content-Type: application/json'
+      --header "PRIVATE-TOKEN: $GIT_RELEASE_TOKEN"
+      --data "{ \"name\": \"$RELEASE_TAG\", \"tag_name\": \"$RELEASE_TAG\", \"description\": \"Automated CI Release of $RELEASE_TAG\" }"
+    --request POST https://gitlab.mdcatapult.io/api/v4/projects/$CI_PROJECT_ID/releases
+    - git checkout develop
+    - git pull
+    - git rebase master
+    - git push origin develop
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
