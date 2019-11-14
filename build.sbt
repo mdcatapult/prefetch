@@ -99,15 +99,15 @@ lazy val root = (project in file(".")).
         }
         st
       },
-//      commitReleaseVersion,
-//      tagRelease,
+      commitReleaseVersion,
+      tagRelease,
       { st: State =>
         val extracted = Project.extract(st)
         val ref = extracted.get(thisProjectRef)
         extracted.runAggregated(assembly in Global in ref, st)
       },
 
-//      setNextVersion,
+      setNextVersion,
       { st: State ⇒
         // write version.conf
         st.get(ReleaseKeys.versions) match {
@@ -116,8 +116,8 @@ lazy val root = (project in file(".")).
         }
         st
       },
-//      commitNextVersion,
-//      pushChanges
+      commitNextVersion,
+      pushChanges
     )
   )
 
