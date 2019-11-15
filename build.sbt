@@ -53,7 +53,7 @@ lazy val root = (project in file(".")).
     ),
   )
   .settings(
-    assemblyJarName := "consumer-prefetch.jar",
+    assemblyJarName := "consumer.jar",
     test in assembly := {},
     assemblyMergeStrategy in assembly := {
       case PathList("com", "sun", xs @ _*) => MergeStrategy.first
