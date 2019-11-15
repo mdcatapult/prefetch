@@ -37,6 +37,9 @@ test:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
       - target/scala-2.12/scoverage-report/
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 assemble:
   stage: build
@@ -46,9 +49,12 @@ assemble:
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
-     - target/scala-2.12/consumer-prefetch.jar
+      - target/scala-2.12/consumer.jar
   except:
-    - master
+    refs:
+      - master
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 publish:
   stage: publish
@@ -66,8 +72,10 @@ publish:
       .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
   except:
-    - master
-
+    refs:
+      - master
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 release:
   stage: build
@@ -105,10 +113,12 @@ release:
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
-      - target/scala-2.12/consumer-prefetch.jar
+      - target/scala-2.12/consumer.jar
   only:
     - master
-
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 publish-master:
   stage: publish
@@ -117,14 +127,20 @@ publish-master:
     - release
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - apk add --no-cache bash git openssh-client
+    - git fetch
+    - export RELEASE_TAG=$(git describe --abbrev=0)
   script:
     - >
       docker build --pull
       --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
       --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
       -t "$CI_REGISTRY_IMAGE"
-      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      -t "$CI_REGISTRY_IMAGE:$RELEASE_TAG"
       .
     - docker push "$CI_REGISTRY_IMAGE"
   only:
     - master
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
