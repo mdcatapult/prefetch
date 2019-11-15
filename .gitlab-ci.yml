@@ -130,12 +130,13 @@ publish-master:
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_cREGISTRY
   script:
+    - export RELEASE_TAG=$(git describe --abbrev=0)
     - >
       docker build --pull
       --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
       --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
       -t "$CI_REGISTRY_IMAGE"
-      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      -t "$CI_REGISTRY_IMAGE:$RELEASE_TAG"
       .
     - docker push "$CI_REGISTRY_IMAGE"
   only:
