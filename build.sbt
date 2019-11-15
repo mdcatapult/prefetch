@@ -1,9 +1,5 @@
-import java.io.PrintWriter
-
-import ReleaseTransformations._
-import sbtrelease.{Vcs, Version}
-import sbtassembly.AssemblyPlugin.defaultUniversalScript
-import sbtrelease.ReleasePlugin.autoImport.ReleaseKeys.skipTests
+import Release._
+import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 lazy val configVersion = "1.3.2"
 lazy val akkaVersion = "2.5.25"
@@ -85,54 +81,14 @@ lazy val root = (project in file(".")).
       runClean,
       runTest,
       setReleaseVersion,
-      { st: State ⇒
-        val extracted: Extracted = Project.extract( st )
-        val vcs: Vcs = extracted.get(releaseVcs)
-          .getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
-        st.put(AttributeKey[String]("hash"), vcs.currentHash.slice(0, 8))
-      },
-      { st: State ⇒
-        // write version.conf
-        st.get(ReleaseKeys.versions) match {
-          case Some(v) ⇒ writeVersionFile(v._1, st.get(AttributeKey[String]("hash")))
-          case None ⇒ sys.error("Aborting release. no version number present.")
-        }
-        st
-      },
-      commitReleaseVersion,
+      getShortSha,
+      writeReleaseVersionFile,
+      commitAllRelease,
       tagRelease,
-      { st: State =>
-        val extracted = Project.extract(st)
-        val ref = extracted.get(thisProjectRef)
-        extracted.runAggregated(assembly in Global in ref, st)
-      },
-
+      runAssembly,
       setNextVersion,
-      { st: State ⇒
-        // write version.conf
-        st.get(ReleaseKeys.versions) match {
-          case Some(v) ⇒ writeVersionFile(v._2)
-          case None ⇒ sys.error("Aborting release. no version number present.")
-        }
-        st
-      },
-      commitNextVersion,
+      writeNextVersionFile,
+      commitAllNext,
       pushChanges
     )
   )
-
-def writeVersionFile(version: String, hash: Option[String] = None): Unit = {
-    val ver: Version = Version(version).get
-    val writer = new PrintWriter(new File("src/main/resources/version.conf"))
-    writer.write(
-      s"""version {
-         |  number = "${ver.string}",
-         |  major = ${ver.major},
-         |  minor =  ${ver.subversions.head},
-         |  patch = ${ver.subversions(1)},
-         |  hash =  "${hash.getOrElse(ver.qualifier.get.replaceAll("^-", ""))}"
-         |  hash =  $${?VERSION_HASH}
-         |}
-         |""".stripMargin)
-    writer.close()
-  }
