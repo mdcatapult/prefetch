@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:m="http://ant.apache.org/ivy/maven" xmlns:e="http://ant.apache.org/ivy/extra">
+	<info organisation="org.quartz-scheduler"
+		module="quartz-parent"
+		revision="2.2.0"
+		status="release"
+		publication="20130629210231"
+	>
+		<license name="The Apache Software License, Version 2.0" url="http://www.apache.org/licenses/LICENSE-2.0.txt" />
+		<description homepage="http://www.quartz-scheduler.org">
+		Quartz is a full-featured, open source job scheduling system that
+    can be integrated with, or used along side virtually any J2EE or
+    J2SE application
+		</description>
+		<m:properties__checkstyle-config-file>checkstyle.xml</m:properties__checkstyle-config-file>
+		<m:properties__skipCheckstyle>false</m:properties__skipCheckstyle>
+		<m:properties__terracotta-snapshots-url>http://nexus.terracotta.lan:8080/content/repositories/terracotta-snapshots</m:properties__terracotta-snapshots-url>
+		<m:properties__slf4j.version>1.6.6</m:properties__slf4j.version>
+		<m:properties__checkstyle-header-file>header.txt</m:properties__checkstyle-header-file>
+		<m:properties__checkstyle-suppressions-file>suppressions.xml</m:properties__checkstyle-suppressions-file>
+		<m:properties__log4j.version>1.2.16</m:properties__log4j.version>
+		<m:properties__project.build.sourceEncoding>UTF-8</m:properties__project.build.sourceEncoding>
+		<m:properties__maven-forge-plugin.version>1.0.7</m:properties__maven-forge-plugin.version>
+		<m:properties__skipDeploy>false</m:properties__skipDeploy>
+		<m:properties__c3p0.version>0.9.1.1</m:properties__c3p0.version>
+		<m:properties__terracotta-releases-url>http://nexus.terracotta.lan:8080/content/repositories/terracotta-releases</m:properties__terracotta-releases-url>
+		<m:properties__gmaven-plugin.version>1.4</m:properties__gmaven-plugin.version>
+		<m:properties__terracotta-staging-url>http://nexus.terracotta.lan:8080/content/repositories/terracotta-staging</m:properties__terracotta-staging-url>
+		<e:sbtTransformHash>66ae06089fcb94966237ab5c9b2027616a7dd89d</e:sbtTransformHash>
+		<m:maven.plugins>org.apache.maven.plugins__maven-deploy-plugin__null|org.apache.maven.plugins__maven-source-plugin__null|org.apache.maven.plugins__maven-checkstyle-plugin__null</m:maven.plugins>
+		<m:properties__skipJavadoc>false</m:properties__skipJavadoc>
+	</info>
+	<configurations>
+		<conf name="default" visibility="public" description="runtime dependencies and master artifact can be used with this conf" extends="runtime,master"/>
+		<conf name="master" visibility="public" description="contains only the artifact published by this module itself, with no transitive dependencies"/>
+		<conf name="compile" visibility="public" description="this is the default scope, used if none is specified. Compile dependencies are available in all classpaths."/>
+		<conf name="provided" visibility="public" description="this is much like compile, but indicates you expect the JDK or a container to provide it. It is only available on the compilation classpath, and is not transitive."/>
+		<conf name="runtime" visibility="public" description="this scope indicates that the dependency is not required for compilation, but is for execution. It is in the runtime and test classpaths, but not the compile classpath." extends="compile"/>
+		<conf name="test" visibility="private" description="this scope indicates that the dependency is not required for normal use of the application, and is only available for the test compilation and execution phases." extends="runtime"/>
+		<conf name="system" visibility="public" description="this scope is similar to provided except that you have to provide the JAR which contains it explicitly. The artifact is always available and is not looked up in a repository."/>
+		<conf name="sources" visibility="public" description="this configuration contains the source artifact of this module, if any."/>
+		<conf name="javadoc" visibility="public" description="this configuration contains the javadoc artifact of this module, if any."/>
+		<conf name="optional" visibility="public" description="contains all optional dependencies"/>
+	</configurations>
+	<publications>
+	</publications>
+</ivy-module>
