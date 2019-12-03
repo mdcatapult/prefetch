@@ -271,7 +271,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     "Prefetch metadata can have derivative type" in {
       val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"), MetaString("akey", "avalue"))
-      val derivMetadata = handler.getDervivativeType(Some(metadataMap))
+      val derivMetadata = handler.getDerivativeType(Some(metadataMap))
       assert(derivMetadata == "unarchive")
     }
   }

@@ -23,8 +23,6 @@ import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
-import org.bson.BsonValue
-import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.mongodb.scala.bson.conversions.Bson
@@ -113,7 +111,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param metadata Option[List[MetaValueUntyped]]
    * @return String the derivative type eg "unarchived", "rawtext". If none then "unknown"
    */
-  def getDervivativeType(metadata: Option[List[MetaValueUntyped]]): String = {
+  def getDerivativeType(metadata: Option[List[MetaValueUntyped]]): String = {
     metadata.getOrElse(List[MetaString](MetaString("derivative.type", "unknown"))).filter(p ⇒ p.getKey == "derivative.type") match {
       case head::rest ⇒ head.getValue.toString
       case Nil ⇒ "unknown"
@@ -126,21 +124,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[(UpdateResult, UpdateResult)]] = {
+  def processParent(msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (msg.derivative.getOrElse(false)) {
       // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
       // Create list of filters by _id, one for each parent origin
       val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb").map(parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)))
       val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
-      // TODO get metadata from old derivative
-      val derivative: Derivative = Derivative(
-        `type` = getDervivativeType(msg.metadata),
-        path = path
-      )
-      (for {
-        u1 ← OptionT(collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption())
-        u2 ← OptionT(collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption())
-      } yield (u1, u2)).value
+      for {
+        result ← collection.updateMany(combine(or(originFilter: _*), equal("derivatives.path", msg.source)), set("derivatives.$.path", path)).toFutureOption()
+      } yield (result)
     }
     else {
       // No derivative. Just return a success - we don't do anything with the response
