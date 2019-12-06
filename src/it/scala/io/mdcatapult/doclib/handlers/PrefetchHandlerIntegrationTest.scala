@@ -20,6 +20,7 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -149,6 +150,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       assert(parentUpdate.get.getModifiedCount == 2)
       assert(parentUpdate.get.getMatchedCount == 2)
       assert(parentUpdate.get.getModifiedCount == 2)
+      val parentRecordOne = Await.result(collection.find(mequal("_id", parentIdOne)).toFuture(), 5.seconds)
+      assert(parentRecordOne(0).derivatives.get(0).path == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+      val parentRecordTwo = Await.result(collection.find(mequal("_id", parentIdTwo)).toFuture(), 5.seconds)
+      assert(parentRecordTwo(0).derivatives.get(0).path == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     }
   }
 
