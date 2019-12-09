@@ -13,6 +13,7 @@ import cats.implicits._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
@@ -25,13 +26,14 @@ import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
 import org.bson.BsonValue
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.MongoCollection
+import org.mongodb.scala.{MongoCollection, Observable}
 import org.mongodb.scala.bson.{BsonInt32, ObjectId}
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{and, equal, exists, or}
 import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
+import io.mdcatapult.doclib.models.metadata._
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
@@ -60,6 +62,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
                       collection: MongoCollection[DoclibDoc],
                      ) extends LazyLogging with FileHash with TargetPath {
 
+  /** set props for target path generation */
+  override val doclibConfig: Config = config
+
   /** Initialise Apache Tika && Remote Client **/
   lazy val tika = new Tika()
   lazy val remoteClient = new RemoteClient()
@@ -87,14 +92,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
-      result ← OptionT(process(found, msg))
-      _ <- OptionT.liftF(processParent(msg))
+      newDoc ← OptionT(process(found, msg))
+      _ <- OptionT.liftF(processParent(newDoc, msg))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
-    } yield (result, found.doc)).value.andThen({
+    } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
-        case None ⇒ // do nothing for now, but need to identify the use case
+        case None ⇒ throw new RuntimeException("Unknown Error Occurred")
       }
+      case Failure(e: DoclibDocException) ⇒ flags.error(e.getDoc, noCheck = true)
       case Failure(_) ⇒
         // enforce error flag
         Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
@@ -107,18 +113,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         }
     })
   }
-  /**
-   * Return derivative type. This should be in the metadata but isn't enforced in the code so if missing it will be 'unknown'
-   * Looking for MetaString("derivative.type", "rawtext")
-   * @param metadata Option[List[MetaValueUntyped]]
-   * @return String the derivative type eg "unarchived", "rawtext". If none then "unknown"
-   */
-  def getDervivativeType(metadata: Option[List[MetaValueUntyped]]): String = {
-    metadata.getOrElse(List[MetaString](MetaString("derivative.type", "unknown"))).filter(p ⇒ p.getKey == "derivative.type") match {
-      case head::rest ⇒ head.getValue.toString
-      case Nil ⇒ "unknown"
-    }
-  }
 
 
   /**
@@ -126,23 +120,17 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(msg: PrefetchMsg): Future[Option[(UpdateResult, UpdateResult)]] = {
-    if (msg.derivative.getOrElse(false)) {
-      // TODO maybe parent should be a field in the doc rather than somewhere in the origin list
-      // Create list of filters by _id, one for each parent origin
-      val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb").map(parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)))
-      val path = msg.source.replaceFirst(config.getString("doclib.local.temp-dir"), config.getString("doclib.local.target-dir"))
-      // TODO get metadata from old derivative
-      val derivative: Derivative = Derivative(
-        `type` = getDervivativeType(msg.metadata),
-        path = path
-      )
-      (for {
-        u1 ← OptionT(collection.updateMany(or(originFilter: _*), push("derivatives", derivative)).toFutureOption())
-        u2 ← OptionT(collection.updateMany(or(originFilter: _*), pull("derivatives", equal("path", msg.source))).toFutureOption())
-      } yield (u1, u2)).value
-    }
-    else {
+  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
+    if (doc.derivative) {
+      val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb")
+        .map(parent => combine(
+          equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)),
+          equal("derivatives.path", msg.source)
+        ))
+      val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
+      collection.updateMany(or(originFilter: _*), set("derivatives.$.path", path)).toFutureOption()
+
+    } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
     }
@@ -159,7 +147,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[Any]] = {
+  def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[DoclibDoc]] = {
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     val update = combine(
       getDocumentUpdate(found, msg),
@@ -170,10 +158,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       set("updated", LocalDateTime.now())
     )
     collection.updateOne(equal("_id", found.doc._id), update).toFutureOption().andThen({
-      case Success(_) ⇒ {
-        downstream.send(DoclibMsg(id = found.doc._id.toString))
-      }
+      case Success(_) ⇒ downstream.send(DoclibMsg(id = found.doc._id.toString))
       case Failure(e) => throw e
+    }).flatMap({
+      case Some(_) ⇒ collection.find(equal("_id", found.doc._id)).headOption()
+      case None ⇒ Future.successful(None)
     })
   }
 
@@ -183,8 +172,26 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param msg PrefetchMsg
    * @return
    */
-  def consolidateOrigins(doc: DoclibDoc, msg: PrefetchMsg): List[Origin] = {
-    (doc.origin.getOrElse(List[Origin]()) ::: msg.origin.getOrElse(List[Origin]())).distinct
+  def consolidateOrigins(doc: DoclibDoc, msg: PrefetchMsg): List[Origin] = (
+      doc.origin.getOrElse(List[Origin]()) :::
+      msg.origin.getOrElse(List[Origin]()) :::
+      resolveUpstreamOrigins(msg.source)
+    ).distinct
+
+  /**
+    * Function to find origins that have matching derivative paths
+    * @param path String
+    * @return
+    */
+  def resolveUpstreamOrigins(path: String): List[Origin] = {
+    Await.result(collection.find(equal("derivatives.path", path)).toFuture(), Duration.Inf).map(d ⇒ Origin(
+      scheme = "mongodb",
+      metadata = Some(List(
+        MetaString("db", config.getString("mongo.database")),
+        MetaString("collection", config.getString("mongo.collection")),
+        MetaString("_id", d._id.toHexString)
+      ))
+    )).toList
   }
 
   /**
@@ -301,10 +308,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
       // strips temp dir if present plus any prefixed slashes
-      val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "").replaceFirst(s"^${config.getString("doclib.local.temp-dir")}/*", "")
-      // ensures target dir is prepended
-      val root = config.getString("doclib.local.target-dir").replaceFirst("/+$", "")
-      Some(Paths.get(s"$root/$relPath").toString)
+      val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "")
+      Some(Paths.get(getTargetPath(relPath, config.getString("doclib.local.target-dir"))).toString)
     }
 
   def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o ⇒ {
@@ -374,9 +379,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     val  withExt = """(.*)/(.*)\.(.+)$""".r
     val withoutExt = """(.*)/(.*)$""".r
     targetPath match {
-      case withExt(path, file, ext) ⇒ s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}$file.$ext/$hash.$ext"
-      case withoutExt(path, file) ⇒ s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}$file/$hash"
-      case _ ⇒ throw new Exception("Unable to identify path and filename")
+      case withExt(path, file, ext) ⇒ s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}/$file.$ext/$hash.$ext"
+      case withoutExt(path, file) ⇒ s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}/$file/$hash"
+      case _ ⇒ throw new RuntimeException("Unable to identify path and filename")
     }
   }
 
@@ -590,7 +595,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         case Some(_) ⇒ uri
         case None ⇒ uri.withScheme("file")
       }
-      case Failure(_) ⇒ throw new Exception(s"unable to convert '$source' into valid Uri Object")
+      case Failure(_) ⇒ throw new RuntimeException(s"unable to convert '$source' into valid Uri Object")
     }
   }
 

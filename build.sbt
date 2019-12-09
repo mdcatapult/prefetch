@@ -9,20 +9,23 @@ lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val tikaVersion = "1.21"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.22"
+lazy val doclibCommonVersion = "0.0.28"
+
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend(Test)
 
-lazy val root = (project in file(".")).
-  configs(IntegrationTest)
+lazy val root = (project in file("."))
+  .configs(IntegrationTest)
   .settings(
     Defaults.itSettings,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
     scalacOptions     ++= Seq("-Ypartial-unification"),
-    resolvers         ++= Seq("MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/", "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
+    resolvers         ++= Seq(
+      "MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/",
+      "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
     updateOptions     := updateOptions.value.withLatestSnapshots(false),
     credentials       += {
       val nexusPassword = sys.env.get("NEXUS_PASSWORD")
