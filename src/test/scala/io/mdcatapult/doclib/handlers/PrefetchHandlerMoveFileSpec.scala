@@ -47,6 +47,9 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |  archive {
        |    target-dir: "archive"
        |  }
+       |  derivative {
+       |    target-dir: "derivatives"
+       |  }
        |}
     """.stripMargin)
 

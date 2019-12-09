@@ -49,6 +49,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |  archive {
       |    target-dir: "archive"
       |  }
+      |  derivative {
+      |    target-dir: "derivatives"
+      |  }
       |}
     """.stripMargin)
 
@@ -243,21 +246,21 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         )
       )
 
-      assert(origins.filter(origin => origin.scheme == "mongodb").length == 2)
+      assert(origins.count(origin => origin.scheme == "mongodb") == 2)
     }
 
     "A parent prefetch message which has derivative false should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
-      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
-      assert(result == None)
+      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2 seconds)
+      assert(result.isEmpty)
     }
 
     "A parent prefetch message with no derivative field should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
-      val result = Await.result(handler.processParent(prefetchMsg), 2 seconds)
-      assert(result == None)
+      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2 seconds)
+      assert(result.isEmpty)
     }
 
     "A prefetch message can have derivative type in the metadata" in {
@@ -265,15 +268,10 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val derivMetadata = prefetchMsg.metadata.get.filter(p ⇒ p.getKey == "derivative.type")
       assert(derivMetadata.length == 1)
-      assert(derivMetadata(0).getKey == "derivative.type")
-      assert(derivMetadata(0).getValue == "unarchive")
+      assert(derivMetadata.head.getKey == "derivative.type")
+      assert(derivMetadata.head.getValue == "unarchive")
     }
 
-    "Prefetch metadata can have derivative type" in {
-      val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"), MetaString("akey", "avalue"))
-      val derivMetadata = handler.getDervivativeType(Some(metadataMap))
-      assert(derivMetadata == "unarchive")
-    }
   }
 
 }
