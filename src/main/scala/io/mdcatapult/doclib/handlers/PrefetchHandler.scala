@@ -86,6 +86,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
+    logger.info(f"RECIEVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
