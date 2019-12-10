@@ -1,6 +1,7 @@
 package io.mdcatapult.doclib.handlers
 
 import java.io.File
+import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor._
@@ -20,7 +21,6 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
-import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -29,6 +29,7 @@ import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.language.postfixOps
+import scala.util.Try
 
 class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandlerIntegrationTest", ConfigFactory.parseString(
   """
@@ -52,6 +53,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       |  }
       |  archive {
       |    target-dir: "archive"
+      |  }
+      |  derivative {
+      |    target-dir: "derivatives"
       |  }
       |}
       |mongo {
@@ -121,7 +125,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         _id = childId,
         source = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
         hash = "12345",
-        derivative = false,
+        derivative = true,
         created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
         updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
         mimetype = "text/plain",
@@ -148,6 +152,43 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
       assert(parentUpdate.get.getMatchedCount == 2)
       assert(parentUpdate.get.getModifiedCount == 2)
+    }
+  }
+
+  "A derivative message" should {
+    "cause doc to be updated with derivative true" in {
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val parentIdOne = new ObjectId()
+      val parentDocOne = DoclibDoc(
+        _id = parentIdOne,
+        source = "ingress/derivatives/raw.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain",
+        tags = Some(List[String]())
+      )
+      val origin: List[Origin] = List(
+        Origin(
+          scheme = "mongodb",
+          hostname = None,
+          uri = None,
+          metadata = Some(List(MetaString("_id", parentIdOne.toString))),
+          headers = None
+        )
+      )
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+
+      val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+
+      assert(parentResultOne.get.toString == "The operation completed successfully")
+
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
+      val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
+      assert(docUpdate.get.derivative == true)
+      assert(Files.exists(Paths.get("test/local/derivatives/raw.txt").toAbsolutePath))
     }
   }
 
@@ -186,8 +227,15 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
+  override def beforeAll(): Unit = {
+    Try {
+      Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
+    }
+  }
+
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"remote-ingress"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local"/"derivatives", pwd/"test"/"ingress"/"derivatives"))
   }
 }
