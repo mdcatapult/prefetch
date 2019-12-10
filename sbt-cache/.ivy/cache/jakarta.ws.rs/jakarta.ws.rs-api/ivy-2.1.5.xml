@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:m="http://ant.apache.org/ivy/maven" xmlns:e="http://ant.apache.org/ivy/extra">
+	<info organisation="jakarta.ws.rs"
+		module="jakarta.ws.rs-api"
+		revision="2.1.5"
+		status="release"
+		publication="20190122181029"
+	>
+		<license name="EPL 2.0" url="http://www.eclipse.org/legal/epl-2.0" />
+		<license name="GPL2 w/ CPE" url="https://www.gnu.org/software/classpath/license.html" />
+		<description homepage="https://github.com/eclipse-ee4j/jaxrs-api">
+		Java API for RESTful Web Services
+		</description>
+		<m:properties__spec.version>${last.final.spec.version}</m:properties__spec.version>
+		<m:properties__api.package>javax.ws.rs</m:properties__api.package>
+		<m:properties__new.spec.version>${next.final.spec.version}</m:properties__new.spec.version>
+		<m:properties__legal.doc.folder>${project.basedir}/..</m:properties__legal.doc.folder>
+		<m:properties__project.build.sourceEncoding>UTF-8</m:properties__project.build.sourceEncoding>
+		<m:properties__jaxb.api.version>2.3.2</m:properties__jaxb.api.version>
+		<m:properties__non.final>true</m:properties__non.final>
+		<m:properties__next.final.spec.version>2.1</m:properties__next.final.spec.version>
+		<m:properties__skip.release.tests>false</m:properties__skip.release.tests>
+		<m:properties__maven.bundle.plugin.version>3.5.0</m:properties__maven.bundle.plugin.version>
+		<m:properties__activation.api.version>1.2.1</m:properties__activation.api.version>
+		<m:properties__apidocs.title>JAX-RS ${spec.version} API Specification ${spec.version.revision}</m:properties__apidocs.title>
+		<m:properties__last.final.spec.version>2.1</m:properties__last.final.spec.version>
+		<m:properties__java.version>1.8</m:properties__java.version>
+		<m:properties__maven.compiler.plugin.version>3.7.0</m:properties__maven.compiler.plugin.version>
+		<e:sbtTransformHash>cca7adf4bfb1242d38fa102cb71ffc45ac9b555d</e:sbtTransformHash>
+		<m:properties__jaxb.impl.version>2.3.2</m:properties__jaxb.impl.version>
+		<m:maven.plugins>org.apache.felix__maven-bundle-plugin__null|org.glassfish.build__spec-version-maven-plugin__null|org.apache.maven.plugins__maven-compiler-plugin__null|org.apache.maven.plugins__maven-jar-plugin__null|org.codehaus.mojo__buildnumber-maven-plugin__null|org.apache.maven.plugins__maven-javadoc-plugin__null|org.apache.maven.plugins__maven-source-plugin__null|org.apache.maven.plugins__maven-jxr-plugin__null|org.apache.maven.plugins__maven-checkstyle-plugin__null|org.glassfish.copyright__glassfish-copyright-maven-plugin__null|org.codehaus.mojo__build-helper-maven-plugin__null</m:maven.plugins>
+		<m:properties__maven.javadoc.plugin.version>3.0.0</m:properties__maven.javadoc.plugin.version>
+		<m:properties__milestone.number>01</m:properties__milestone.number>
+	</info>
+	<configurations>
+		<conf name="default" visibility="public" description="runtime dependencies and master artifact can be used with this conf" extends="runtime,master"/>
+		<conf name="master" visibility="public" description="contains only the artifact published by this module itself, with no transitive dependencies"/>
+		<conf name="compile" visibility="public" description="this is the default scope, used if none is specified. Compile dependencies are available in all classpaths."/>
+		<conf name="provided" visibility="public" description="this is much like compile, but indicates you expect the JDK or a container to provide it. It is only available on the compilation classpath, and is not transitive."/>
+		<conf name="runtime" visibility="public" description="this scope indicates that the dependency is not required for compilation, but is for execution. It is in the runtime and test classpaths, but not the compile classpath." extends="compile"/>
+		<conf name="test" visibility="private" description="this scope indicates that the dependency is not required for normal use of the application, and is only available for the test compilation and execution phases." extends="runtime"/>
+		<conf name="system" visibility="public" description="this scope is similar to provided except that you have to provide the JAR which contains it explicitly. The artifact is always available and is not looked up in a repository."/>
+		<conf name="sources" visibility="public" description="this configuration contains the source artifact of this module, if any."/>
+		<conf name="javadoc" visibility="public" description="this configuration contains the javadoc artifact of this module, if any."/>
+		<conf name="optional" visibility="public" description="contains all optional dependencies"/>
+	</configurations>
+	<publications>
+		<artifact name="jakarta.ws.rs-api" type="bundle" ext="jar" conf="master"/>
+	</publications>
+	<dependencies>
+		<dependency org="junit" name="junit" rev="4.11" force="true" conf="test->runtime(*),master(compile)"/>
+		<dependency org="org.mockito" name="mockito-core" rev="2.22.0" force="true" conf="test->runtime(*),master(compile)"/>
+	</dependencies>
+</ivy-module>

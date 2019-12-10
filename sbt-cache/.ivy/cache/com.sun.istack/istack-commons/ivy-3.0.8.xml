@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:m="http://ant.apache.org/ivy/maven" xmlns:e="http://ant.apache.org/ivy/extra">
+	<info organisation="com.sun.istack"
+		module="istack-commons"
+		revision="3.0.8"
+		status="release"
+		publication="20181227144939"
+	>
+		<license name="Eclipse Distribution License - v 1.0" url="http://www.eclipse.org/org/documents/edl-v10.php" />
+		<description homepage="">
+		istack common utility code
+		</description>
+		<m:dependency.management__junit__junit__version>4.12</m:dependency.management__junit__junit__version>
+		<m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__scope>provided</m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__scope>
+		<m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__exclusion_0>*__*</m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__exclusion_0>
+		<m:dependency.management__org.apache.maven__maven-model__version>3.5.2</m:dependency.management__org.apache.maven__maven-model__version>
+		<m:dependency.management__org.apache.maven.resolver__maven-resolver-api__version>1.1.1</m:dependency.management__org.apache.maven.resolver__maven-resolver-api__version>
+		<m:dependency.management__dom4j__dom4j__version>1.6.1</m:dependency.management__dom4j__dom4j__version>
+		<m:dependency.management__org.apache.maven__maven-artifact__version>3.5.2</m:dependency.management__org.apache.maven__maven-artifact__version>
+		<m:dependency.management__org.apache.maven__maven-model__exclusion_0>*__*</m:dependency.management__org.apache.maven__maven-model__exclusion_0>
+		<m:properties__sonatypeOssDistMgmtReleasesUrl>https://oss.sonatype.org/service/local/staging/deploy/maven2/</m:properties__sonatypeOssDistMgmtReleasesUrl>
+		<m:dependency.management__org.apache.maven__maven-plugin-api__exclusion_0>*__*</m:dependency.management__org.apache.maven__maven-plugin-api__exclusion_0>
+		<m:dependency.management__org.codehaus.plexus__plexus-utils__version>3.1.0</m:dependency.management__org.codehaus.plexus__plexus-utils__version>
+		<m:dependency.management__org.apache.maven__maven-settings__version>3.5.2</m:dependency.management__org.apache.maven__maven-settings__version>
+		<m:dependency.management__org.apache.maven.resolver__maven-resolver-api__exclusion_0>*__*</m:dependency.management__org.apache.maven.resolver__maven-resolver-api__exclusion_0>
+		<m:properties__maven.api.version>3.5.2</m:properties__maven.api.version>
+		<e:sbtTransformHash>819b483f9b929704d2dd027a8fed2606022f355b</e:sbtTransformHash>
+		<m:dependency.management__org.apache.ant__ant__version>1.10.5</m:dependency.management__org.apache.ant__ant__version>
+		<m:properties__sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/</m:properties__sonatypeOssDistMgmtSnapshotsUrl>
+		<m:maven.plugins>org.codehaus.mojo__buildnumber-maven-plugin__null|org.apache.felix__maven-bundle-plugin__null|org.codehaus.mojo__build-helper-maven-plugin__null</m:maven.plugins>
+		<m:dependency.management__junit__junit__scope>test</m:dependency.management__junit__junit__scope>
+		<m:properties__legal.doc.source>${maven.multiModuleProjectDirectory}/..</m:properties__legal.doc.source>
+		<m:properties__resolver.version>1.1.1</m:properties__resolver.version>
+		<m:dependency.management__jakarta.activation__jakarta.activation-api__version>1.2.1</m:dependency.management__jakarta.activation__jakarta.activation-api__version>
+		<m:properties__findbugs.threshold>Low</m:properties__findbugs.threshold>
+		<m:properties__findbugs.exclude>exclude.xml</m:properties__findbugs.exclude>
+		<m:properties__findbugs.skip>false</m:properties__findbugs.skip>
+		<m:dependency.management__org.apache.maven.resolver__maven-resolver-impl__version>1.1.1</m:dependency.management__org.apache.maven.resolver__maven-resolver-impl__version>
+		<m:properties__project.build.sourceEncoding>UTF-8</m:properties__project.build.sourceEncoding>
+		<m:dependency.management__org.glassfish.jaxb__codemodel__version>2.3.2</m:dependency.management__org.glassfish.jaxb__codemodel__version>
+		<m:dependency.management__org.apache.maven__maven-core__version>3.5.2</m:dependency.management__org.apache.maven__maven-core__version>
+		<m:dependency.management__args4j__args4j__version>2.33</m:dependency.management__args4j__args4j__version>
+		<m:dependency.management__org.testng__testng__version>6.14.2</m:dependency.management__org.testng__testng__version>
+		<m:properties__vendor.name>Oracle Corporation</m:properties__vendor.name>
+		<m:dependency.management__org.apache.maven__maven-plugin-api__version>3.5.2</m:dependency.management__org.apache.maven__maven-plugin-api__version>
+		<m:dependency.management__org.apache.ant__ant-junit__version>1.10.5</m:dependency.management__org.apache.ant__ant-junit__version>
+		<m:dependency.management__org.apache.maven.resolver__maven-resolver-impl__exclusion_0>*__*</m:dependency.management__org.apache.maven.resolver__maven-resolver-impl__exclusion_0>
+		<m:dependency.management__org.testng__testng__scope>test</m:dependency.management__org.testng__testng__scope>
+		<m:dependency.management__org.apache.maven__maven-artifact__exclusion_0>*__*</m:dependency.management__org.apache.maven__maven-artifact__exclusion_0>
+		<m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__version>3.5</m:dependency.management__org.apache.maven.plugin-tools__maven-plugin-annotations__version>
+		<m:dependency.management__org.apache.maven__maven-core__exclusion_0>*__*</m:dependency.management__org.apache.maven__maven-core__exclusion_0>
+	</info>
+	<configurations>
+		<conf name="default" visibility="public" description="runtime dependencies and master artifact can be used with this conf" extends="runtime,master"/>
+		<conf name="master" visibility="public" description="contains only the artifact published by this module itself, with no transitive dependencies"/>
+		<conf name="compile" visibility="public" description="this is the default scope, used if none is specified. Compile dependencies are available in all classpaths."/>
+		<conf name="provided" visibility="public" description="this is much like compile, but indicates you expect the JDK or a container to provide it. It is only available on the compilation classpath, and is not transitive."/>
+		<conf name="runtime" visibility="public" description="this scope indicates that the dependency is not required for compilation, but is for execution. It is in the runtime and test classpaths, but not the compile classpath." extends="compile"/>
+		<conf name="test" visibility="private" description="this scope indicates that the dependency is not required for normal use of the application, and is only available for the test compilation and execution phases." extends="runtime"/>
+		<conf name="system" visibility="public" description="this scope is similar to provided except that you have to provide the JAR which contains it explicitly. The artifact is always available and is not looked up in a repository."/>
+		<conf name="sources" visibility="public" description="this configuration contains the source artifact of this module, if any."/>
+		<conf name="javadoc" visibility="public" description="this configuration contains the javadoc artifact of this module, if any."/>
+		<conf name="optional" visibility="public" description="contains all optional dependencies"/>
+	</configurations>
+	<publications>
+	</publications>
+	<dependencies>
+		<dependency org="junit" name="junit" rev="4.12" force="true" conf="test->runtime(*),master(compile)"/>
+	</dependencies>
+</ivy-module>
