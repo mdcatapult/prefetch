@@ -1,5 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
 import java.nio.file.Paths
 
 import com.typesafe.config.{Config, ConfigFactory}
@@ -34,5 +35,27 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
     assert(file.exists)
     val sourcePath = Paths.get(s"${config.getString("doclib.remote.temp-dir")}","http", "orbit.dtu.dk", "en", "publications", s"$hashedName.$queryHash.pdf").toString
     assert(result.get.source == sourcePath)
+  }
+
+  "A valid HTTPS URL" should "download a file successfully" in {
+    val uri = Uri.parse("https://www.google.com/humans.txt")
+    //val expectedSize = 286
+    val result: Option[DownloadResult] = Http.download(uri)
+    assert(result.isDefined)
+    assert(result.get.isInstanceOf[DownloadResult])
+    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
+    assert(file.exists)
+    //assert(file.length == expectedSize)
+  }
+
+  "A valid HTTP URL" should "download a file successfully" in {
+    val uri = Uri.parse("http://www.google.com/robots.txt")
+    //val expectedSize = 7246
+    val result: Option[DownloadResult] = Http.download(uri)
+    assert(result.isDefined)
+    assert(result.get.isInstanceOf[DownloadResult])
+    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
+    assert(file.exists)
+    //assert(file.length == expectedSize)
   }
 }
