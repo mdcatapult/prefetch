@@ -8,7 +8,8 @@ project/target
 /tmp
 
 *.cfx
-/test/
+/test/ingress
+/test/local
 
 *.local.conf
 
