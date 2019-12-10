@@ -11,3 +11,5 @@ project/target
 /test/
 
 *.local.conf
+
+/sbt-cache*

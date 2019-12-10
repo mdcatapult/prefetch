@@ -20,6 +20,7 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -144,11 +145,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           headers = None)
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-      val parentUpdate: Option[(UpdateResult, UpdateResult)] = Await.result(handler.processParent(prefetchMsg), 5 seconds)
-      assert(parentUpdate.get._1.getMatchedCount == 2)
-      assert(parentUpdate.get._1.getModifiedCount == 2)
-      assert(parentUpdate.get._2.getMatchedCount == 2)
-      assert(parentUpdate.get._2.getModifiedCount == 2)
+      val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
+      assert(parentUpdate.get.getMatchedCount == 2)
+      assert(parentUpdate.get.getModifiedCount == 2)
     }
   }
 
@@ -189,6 +188,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List((pwd/"test"/"remote-ingress")))
+    deleteDirectories(List(pwd/"test"/"remote-ingress"))
   }
 }
