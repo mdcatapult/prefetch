@@ -120,7 +120,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
-      val originFilter = msg.origin.get.filter(origin => origin.scheme == "mongodb")
+      // origins by this point should have been processed updated and consolidated so use doc origins and not msg ones
+      val originFilter = doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb")
         .map(parent => combine(
           equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString)),
           equal("derivatives.path", msg.source)
