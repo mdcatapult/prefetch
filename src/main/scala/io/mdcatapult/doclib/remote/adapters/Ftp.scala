@@ -55,7 +55,7 @@ object Ftp extends Adapter with FileHash {
       .withPort(url.port.getOrElse(21))
       .withCredentials(getFTPCredentials(url))
       .withBinary(true)
-      .withPassiveMode(true)
+//      .withPassiveMode(true)
 
   /**
     * build FTPS config
@@ -68,7 +68,7 @@ object Ftp extends Adapter with FileHash {
       .withPort(url.port.getOrElse(21))
       .withCredentials(getFTPCredentials(url))
       .withBinary(true)
-      .withPassiveMode(true)
+//      .withPassiveMode(true)
 
   /**
     * Build SFTP config
