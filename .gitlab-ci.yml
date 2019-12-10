@@ -129,6 +129,8 @@ publish-master:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
     - apk add --no-cache bash git openssh-client
     - git fetch
+    - git checkout master
+    - git pull origin master
     - export RELEASE_TAG=$(git describe --abbrev=0)
   script:
     - >
