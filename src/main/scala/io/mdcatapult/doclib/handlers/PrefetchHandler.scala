@@ -126,7 +126,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         .map(
           parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString))
         )
-      collection.updateMany(combine(or(originFilter: _*), equal("derivatives.path", msg.source)), set("derivatives.$.path", path)).toFutureOption()
+      collection.updateMany(combine(equal("derivatives.path", msg.source),or(originFilter: _*)), set("derivatives.$.path", path)).toFutureOption()
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
