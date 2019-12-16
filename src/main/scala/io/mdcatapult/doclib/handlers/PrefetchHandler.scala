@@ -10,6 +10,7 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
+import com.mongodb.client.model._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -29,12 +30,15 @@ import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
+import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success, Try}
+import collection.JavaConverters._
+
 
 /**
  * Handler to perform prefetch of source supplied in Prefetch Messages
@@ -114,28 +118,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
 
   /**
-   * Update parent "origin" documents with the new source for the derivative
+   * Update all documents that specify the supplied msg.source as a derivative with the new path
    * @param msg PrefetchMsg
    * @return
    */
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      // origins by this point should have been processed updated and consolidated so use doc origins and not msg ones
-      val originFilter = doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb")
-        .map(
-          parent => equal("_id", new ObjectId(parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString))
-        )
-      collection.updateMany(combine(equal("derivatives.path", msg.source),or(originFilter: _*)), set("derivatives.$.path", path)).toFutureOption()
+      val opts = UpdateOptions().arrayFilters(List(equal("elem.path", msg.source)).asJava)
+      collection.updateMany(equal("derivatives.path", msg.source), set("derivatives.$[elem].path", path), opts).toFutureOption()
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
     }
-  }
-
-  def parentId(metadata: List[MetaValueUntyped]): Any = {
-    val origin:List[MetaValueUntyped] = metadata.filter(m => m.getKey == "_id")
-    origin.head.getValue
   }
 
   /**
