@@ -1,7 +1,9 @@
 services:
   - docker:dind
-  - mongo:latest
-  - rabbitmq:latest
+  - name: mongo:latest
+    alias: mongo
+  - name: rabbitmq:latest
+    alias: rabbitmq
 
 stages:
   - test
