@@ -2,7 +2,7 @@ services:
   - docker:dind
   - name: mongo:latest
     alias: mongo
-  - name: rabbitmq:latest
+  - name: rabbitmq:management
     alias: rabbitmq
 
 stages:
@@ -50,7 +50,7 @@ test:
     RABBITMQ_USERNAME: guest
     RABBITMQ_PASSWORD: guest
   before_script:
-    - curl -I http://guest:guest@rabbitmq:8080/api/overview
+    - curl -I http://guest:guest@rabbitmq:15672/api/overview
   script:
     - sbt clean coverage test it:test coverageReport
   artifacts:
