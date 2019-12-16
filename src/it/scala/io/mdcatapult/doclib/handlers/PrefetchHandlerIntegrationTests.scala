@@ -139,9 +139,13 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           headers = None)
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-      val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
-      assert(parentUpdate.get.getMatchedCount == 2)
-      assert(parentUpdate.get.getModifiedCount == 2)
+      val parentUpdate: List[Option[UpdateResult]] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
+      assert(parentUpdate.length == 2)
+      parentUpdate.foreach(r => {
+        assert(r.get.getMatchedCount == 1)
+        assert(r.get.getModifiedCount == 1)
+      })
+
     }
   }
 
@@ -177,7 +181,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
-      assert(docUpdate.get.derivative == true)
+      assert(docUpdate.get.derivative)
       assert(Files.exists(Paths.get("test/local/derivatives/raw.txt").toAbsolutePath))
     }
   }

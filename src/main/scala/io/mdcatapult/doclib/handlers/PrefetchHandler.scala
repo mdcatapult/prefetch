@@ -135,7 +135,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         ))
     } else {
       // No derivative. Just return a success - we don't do anything with the response
-      Future.successful(List(None))
+      Future.successful(List())
     }
   }
 
