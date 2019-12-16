@@ -49,9 +49,8 @@ test:
     RABBITMQ_HOST: rabbitmq
     RABBITMQ_USERNAME: guest
     RABBITMQ_PASSWORD: guest
-  before_script:
-    - curl -I http://guest:guest@rabbitmq:15672/api/overview
   script:
+    - curl -I http://guest:guest@rabbitmq:15672/api/overview
     - sbt clean coverage test it:test coverageReport
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
