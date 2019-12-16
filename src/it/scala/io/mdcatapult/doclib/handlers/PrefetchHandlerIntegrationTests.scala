@@ -58,17 +58,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       |    target-dir: "derivatives"
       |  }
       |}
-      |mongo {
-      |  database: "prefetch-test"
-      |  collection: "documents"
-      |  connection {
-      |    username: "doclib"
-      |    password: "doclib"
-      |    database: "admin"
-      |    hosts: ["localhost"]
-      |  }
-      |}
-    """.stripMargin)
+    """.stripMargin).withFallback(ConfigFactory.load())
 
   /** Initialise Mongo **/
 
