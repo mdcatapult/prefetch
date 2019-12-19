@@ -1,10 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.io.File
-
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.remote.DownloadResult
 import org.scalatest.FlatSpec
 
 class HttpSpec extends FlatSpec {
@@ -19,28 +16,6 @@ class HttpSpec extends FlatSpec {
       |  }
       |}
     """.stripMargin)
-
-  "A valid HTTPS URL" should "download a file successfully" in {
-    val uri = Uri.parse("https://www.google.com/humans.txt")
-    //val expectedSize = 286
-    val result: Option[DownloadResult] = Http.download(uri)
-    assert(result.isDefined)
-    assert(result.get.isInstanceOf[DownloadResult])
-    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
-    assert(file.exists)
-    //assert(file.length == expectedSize)
-  }
-
-  "A valid HTTP URL" should "download a file successfully" in {
-    val uri = Uri.parse("http://www.google.com/robots.txt")
-    //val expectedSize = 7246
-    val result: Option[DownloadResult] = Http.download(uri)
-    assert(result.isDefined)
-    assert(result.get.isInstanceOf[DownloadResult])
-    val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
-    assert(file.exists)
-    //assert(file.length == expectedSize)
-  }
 
   "An URL to nowhere" should "throw an Exception" in {
     val uri = Uri.parse("http://www.a.b.c/something")
