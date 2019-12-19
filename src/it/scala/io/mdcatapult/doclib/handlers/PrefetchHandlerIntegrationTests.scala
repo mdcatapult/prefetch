@@ -111,19 +111,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       assert(parentResultOne.get.toString == "The operation completed successfully")
       assert(parentResultTwo.get.toString == "The operation completed successfully")
 
-      val childDoc = DoclibDoc(
-        _id = childId,
-        source = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
-        hash = "12345",
-        derivative = true,
-        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-        mimetype = "text/plain",
-        tags = Some(List[String]())
-      )
-      val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
-      assert(childResult.get.toString == "The operation completed successfully")
-      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val origin: List[Origin] = List(Origin(
         scheme = "mongodb",
         hostname = None,
@@ -138,9 +125,23 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           metadata = Some(List(MetaString("_id", parentIdTwo.toString))),
           headers = None)
       )
-      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
+      val childDoc = DoclibDoc(
+      _id = childId,
+      source = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
+      hash = "12345",
+      derivative = true,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]()),
+      origin = Some(origin)
+      )
+      val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
+      assert(childResult.get.toString == "The operation completed successfully")
+      val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
       val parentUpdate: List[Option[UpdateResult]] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
-      assert(parentUpdate.length == 2)
+;      assert(parentUpdate.length == 2)
       parentUpdate.foreach(r => {
         assert(r.get.getMatchedCount == 1)
         assert(r.get.getModifiedCount == 1)
