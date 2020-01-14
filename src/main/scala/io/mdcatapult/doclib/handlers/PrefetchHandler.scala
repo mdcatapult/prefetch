@@ -203,7 +203,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     remoteClient.origUrl(Uri.parse(source))
 
   /**
-   * Add an origin to a document if it does not already contain it
+   * Add an origin to a document if it does not already contain it.
+   * We are not doing a deep check of the origin just that it is for
+   * a new URL
    */
   def addOrigin(doc: DoclibDoc, origin: Origin): List[Origin] = {
     doc.origin.get.map(o ⇒ o.uri == origin.uri).contains(true) match {
