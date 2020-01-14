@@ -262,6 +262,17 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(updatedDoc.origin.get.length == 3)
       }
     }
+
+    "Adding the same url to a doc" should {
+      "not be be inserted in the origin as metadata" in {
+        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val foundDoc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
+
+        Await.result(handler.addAllOrigins(foundDoc.doc, similarUri.toString()), 5.seconds)
+        val updatedDoc = Await.result(collection.find(mequal("_id", foundDoc.doc._id)).toFuture(), 5.seconds).head
+        assert(updatedDoc.origin.get.length == 3)
+      }
+    }
   }
 
   override def beforeAll(): Unit = {
@@ -275,8 +286,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   }
 
   override def afterAll(): Unit = {
+    Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     Await.result(collection.drop().toFuture(), 5.seconds)
     deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"remote", pwd/"test"/"ingress", pwd/"test"/"local"/"derivatives", pwd/"test"/"ingress"/"derivatives"))
   }
 }
