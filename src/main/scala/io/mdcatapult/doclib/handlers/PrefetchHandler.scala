@@ -10,7 +10,6 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
-import com.mongodb.client.model._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -34,10 +33,10 @@ import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success, Try}
-import collection.JavaConverters._
 
 
 /**
@@ -96,7 +95,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       started: UpdateResult ← OptionT(flags.start(found.doc))
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      origins <- OptionT(addAllOrigins(newDoc, msg.source))
+      _ <- OptionT(addAllOrigins(newDoc, msg.source))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
     } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
@@ -181,7 +180,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       resolveUpstreamOrigins(msg.source)
     ).distinct
 
-
+  /**
+   * Convenience method to find and combine the origins in a
+   * document with a new source
+   *
+   * @param doc: DoclibDoc
+   * @param source String
+   * @return Future[Option[List[Origin]]]
+   */
   def addAllOrigins(doc: DoclibDoc, source: String): Future[Option[List[Origin]]] = {
     (for {
       origin ← OptionT.liftF(findOrigin(source))
@@ -190,15 +196,28 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     } yield (origins)).value
   }
 
+  /**
+   * Given a source uri find the non-redirected origin
+   */
   def findOrigin(source: String): Future[Origin] =
     remoteClient.origUrl(Uri.parse(source))
 
+  /**
+   * Add an origin to a document if it does not already contain it
+   */
   def addOrigin(doc: DoclibDoc, origin: Origin): List[Origin] = {
-    (doc.origin.getOrElse(List[Origin]()) ::: origin :: Nil).distinct
+    doc.origin.get.map(o ⇒ o.uri == origin.uri).contains(true) match {
+      case true ⇒ doc.origin.getOrElse(List[Origin]())
+      case false ⇒ (doc.origin.getOrElse(List[Origin]()) ::: origin :: Nil).distinct
+    }
   }
 
+  /**
+   * Update the origins for a document in the db
+   */
   def updateOrigins(doc: DoclibDoc, origins: List[Origin]): Future[Option[UpdateResult]] =
     collection.updateOne(equal("_id", doc._id), set("origin", origins)).toFutureOption()
+
   /**
     * Function to find origins that have matching derivative paths
     * @param path String
