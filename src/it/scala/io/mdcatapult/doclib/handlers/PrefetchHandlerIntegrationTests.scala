@@ -21,6 +21,7 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -40,9 +41,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
-    """
+    s"""
       |doclib {
-      |  root: "./test"
+      |  root: "${pwd}/test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -227,6 +228,38 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         val origDoc = Await.result(handler.findLocalDocument(Uri.parse(docLocation)), 5.seconds).get
         val fetchedDoc = Await.result(handler.findLocalDocument(Uri.parse(docLocation)), 5.seconds).get
         assert(origDoc.doc._id == fetchedDoc.doc._id)
+      }
+    }
+
+    "A redirected url" should {
+      "be persisted in the origin" in {
+        val uri = Uri.parse("https://ndownloader.figshare.com/files/3906475")
+        val redirectedUrl = Await.result(handler.remoteClient.resolve(uri), 5.seconds)
+        assert(uri != redirectedUrl.uri.get)
+        assert(redirectedUrl.metadata.get.filter(p ⇒ p.getKey == "original.uri").head.getValue == uri.toString())
+      }
+    }
+
+    "Multiple urls which redirect to the same url" should {
+      "be inserted in the origin as metadata" in {
+        val origUri = Uri.parse("https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+
+        // create initial document
+        val newDoc = Await.result(handler.findDocument(origUri), Duration.Inf).get
+        val docLibDoc = Await.result(handler.process(newDoc, PrefetchMsg(origUri.toString())), Duration.Inf).get
+
+        // add the original and redirected origins to the doc
+        Await.result(handler.addAllOrigins(docLibDoc, origUri.toString()), 5.seconds)
+        val insertedDoc = Await.result(collection.find(mequal("_id", newDoc.doc._id)).toFuture(), 5.seconds).head
+        // check that it has the original and redirected origin
+        assert(insertedDoc.origin.get.length == 2)
+        val foundDoc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
+        val processedDoc = Await.result(handler.process(foundDoc, PrefetchMsg(similarUri.toString())), Duration.Inf).get
+        // update the origins for the second "original" url
+        Await.result(handler.addAllOrigins(processedDoc, similarUri.toString()), 5.seconds)
+        val updatedDoc = Await.result(collection.find(mequal("_id", foundDoc.doc._id)).toFuture(), 5.seconds).head
+        assert(updatedDoc.origin.get.length == 3)
       }
     }
   }
