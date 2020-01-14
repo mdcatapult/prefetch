@@ -272,6 +272,77 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(derivMetadata.head.getValue == "unarchive")
     }
 
+    "combine origins" in {
+      val origins: List[Origin] = List(Origin(
+        scheme = "http",
+        hostname = None,
+        uri = Some(Uri.parse("http://a/url/file.txt")),
+        metadata = None,
+        headers = None
+      ),
+        Origin(
+          scheme = "https",
+          hostname = None,
+          uri = Some(Uri.parse("https://a/url/file.txt")),
+          metadata = None,
+          headers = None
+        ),
+        Origin(
+          scheme = "https",
+          hostname = None,
+          uri = Some(Uri.parse("https://a/redirected/url/file.txt")),
+          metadata = None,
+          headers = None
+        )
+      )
+      val additionalOrigin = Origin(
+        scheme = "https",
+        hostname = None,
+        uri = Some(Uri.parse("https://another/redirected/url/file.txt")),
+        metadata = None,
+        headers = None
+      )
+      val doc = createNewDoc("http://a/url/file.txt").copy(origin = Some(origins))
+      val updatedOrigins = handler.addOrigin(doc, additionalOrigin)
+      assert(updatedOrigins.length == 4)
+    }
+
+    "not add a new origin with an existing url" in {
+      val origins: List[Origin] = List(Origin(
+        scheme = "http",
+        hostname = None,
+        uri = Some(Uri.parse("http://a/url/file.txt")),
+        metadata = None,
+        headers = None
+      ),
+        Origin(
+          scheme = "https",
+          hostname = None,
+          uri = Some(Uri.parse("https://a/url/file.txt")),
+          metadata = None,
+          headers = None
+        ),
+        Origin(
+          scheme = "https",
+          hostname = None,
+          uri = Some(Uri.parse("https://a/redirected/url/file.txt")),
+          metadata = None,
+          headers = None
+        )
+      )
+      val additionalOrigin = Origin(
+        scheme = "https",
+        hostname = None,
+        uri = Some(Uri.parse("https://a/redirected/url/file.txt")),
+        metadata = None,
+        headers = None
+      )
+      val doc = createNewDoc("http://a/url/file.txt").copy(origin = Some(origins))
+      val updatedOrigins = handler.addOrigin(doc, additionalOrigin)
+      assert(updatedOrigins.length == 3)
+      assert(updatedOrigins == origins)
+    }
+
   }
 
 }
