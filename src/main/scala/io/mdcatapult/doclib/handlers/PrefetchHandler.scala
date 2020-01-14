@@ -72,6 +72,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
+  val remotePrefixes = List("https", "http")
+
   /**
    * Case class for handling the various permutations of local and remote documents
    *
@@ -189,11 +191,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return Future[Option[List[Origin]]]
    */
   def addAllOrigins(doc: DoclibDoc, source: String): Future[Option[List[Origin]]] = {
-    (for {
-      origin ← OptionT.liftF(findOrigin(source))
-      origins ← OptionT.pure[Future](addOrigin(doc, origin))
-      _ ← OptionT(updateOrigins(doc, origins))
-    } yield (origins)).value
+    remotePrefixes.exists(source.startsWith) match {
+      case true ⇒
+        (for {
+          origin ← OptionT.liftF(findOrigin(source))
+          origins ← OptionT.pure[Future](addOrigin(doc, origin))
+          _ ← OptionT(updateOrigins(doc, origins))
+        } yield (origins)).value
+      case false ⇒ Future.successful(Some(List[Origin]()))
+    }
   }
 
   /**

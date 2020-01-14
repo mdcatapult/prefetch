@@ -342,6 +342,27 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(updatedOrigins.length == 3)
       assert(updatedOrigins == origins)
     }
+    val prefixes = List("ftp://" → "ftp", "sftp://" -> "sftp", "ftps://" -> "ftps", "/" -> "file")
+    prefixes.foreach { prefix ⇒
+      s"not add origins for ${prefix._2}" in {
+        val origins: List[Origin] = List(Origin(
+          scheme = "http",
+          hostname = None,
+          uri = Some(Uri.parse(s"${prefix._1}a/url/file.txt")),
+          metadata = None,
+          headers = None
+        )
+        )
+        val doc = createNewDoc("ftp://a/file.txt").copy(origin = Some(origins))
+        handler.addAllOrigins(doc, "ftp://a/file.txt") map {
+          result ⇒ {
+            assert(result.get.length == 0)
+          }
+        }
+
+      }
+    }
+
 
   }
 
