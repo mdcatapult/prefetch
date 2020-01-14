@@ -19,7 +19,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
@@ -96,6 +96,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       started: UpdateResult ← OptionT(flags.start(found.doc))
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
+      origins <- OptionT(addAllOrigins(newDoc, msg.source))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
     } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
@@ -115,7 +116,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         }
     })
   }
-
 
   /**
    * Update parent "origin" documents with the new source for the derivative
@@ -181,6 +181,24 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       resolveUpstreamOrigins(msg.source)
     ).distinct
 
+
+  def addAllOrigins(doc: DoclibDoc, source: String): Future[Option[List[Origin]]] = {
+    (for {
+      origin ← OptionT.liftF(findOrigin(source))
+      origins ← OptionT.pure[Future](addOrigin(doc, origin))
+      _ ← OptionT(updateOrigins(doc, origins))
+    } yield (origins)).value
+  }
+
+  def findOrigin(source: String): Future[Origin] =
+    remoteClient.origUrl(Uri.parse(source))
+
+  def addOrigin(doc: DoclibDoc, origin: Origin): List[Origin] = {
+    (doc.origin.getOrElse(List[Origin]()) ::: origin :: Nil).distinct
+  }
+
+  def updateOrigins(doc: DoclibDoc, origins: List[Origin]): Future[Option[UpdateResult]] =
+    collection.updateOne(equal("_id", doc._id), set("origin", origins)).toFutureOption()
   /**
     * Function to find origins that have matching derivative paths
     * @param path String
@@ -536,6 +554,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] =
     (for { // assumes remote
+      origOrigin: Origin ← OptionT.liftF(remoteClient.origUrl(uri))
       origin: Origin ← OptionT.liftF(remoteClient.resolve(uri))
       downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origin.uri.get))
       (doc, archivable) ← OptionT(findOrCreateDoc(origin.uri.get.toString, downloaded.hash, Some(or(
