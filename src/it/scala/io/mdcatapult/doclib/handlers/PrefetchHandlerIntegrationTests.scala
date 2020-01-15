@@ -214,6 +214,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         handler.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
       }
     }
+  }
 
     "Moving a file with the same source and target" should {
       "return the original file path" in {
@@ -273,7 +274,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(updatedDoc.origin.get.length == 3)
       }
     }
-  }
 
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
@@ -290,6 +290,5 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     // These may or may not exist but are all removed anyway
     Await.result(collection.drop().toFuture(), 5.seconds)
     deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress"))
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"remote", pwd/"test"/"ingress", pwd/"test"/"local"/"derivatives", pwd/"test"/"ingress"/"derivatives"))
   }
 }
