@@ -520,9 +520,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         s"^${config.getString("doclib.local.temp-dir")}",
         config.getString("doclib.local.target-dir")
       ))
-      md5 ← OptionT.some[Future](md5(s"$doclibRoot${uri.path.toString}"))
-      (doc, archivable) ← OptionT(findOrCreateDoc(uri.path.toString, md5, Some(or(
-        equal("source", uri.path.toString),
+      md5 ← OptionT.some[Future](md5(s"$doclibRoot${uri.path.toStringRaw}"))
+      (doc, archivable) ← OptionT(findOrCreateDoc(uri.path.toStringRaw, md5, Some(or(
+        equal("source", uri.path.toStringRaw),
         equal("source", target)
       ))))
     } yield FoundDoc(doc, archivable)).value
