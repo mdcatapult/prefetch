@@ -2,7 +2,7 @@ import Release._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.5.25"
+lazy val akkaVersion = "2.5.26"
 lazy val catsVersion = "2.0.0"
 lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
@@ -15,6 +15,7 @@ lazy val doclibCommonVersion = "0.0.28"
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend(Test)
+concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)
