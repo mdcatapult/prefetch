@@ -220,17 +220,30 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(path.success.value == new File("/a/path/to/a/file.txt").toPath)
       }
     }
+
+    "A file with a space in the path" should {
+      "be found" in {
+        val docLocation = "local/test file.txt"
+        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
+        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
+        assert(origDoc.doc._id == fetchedDoc.doc._id)
+      }
+    }
   }
 
   override def beforeAll(): Unit = {
+    Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/local").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
     }
   }
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local"/"derivatives", pwd/"test"/"ingress"/"derivatives"))
+    Await.result(collection.drop().toFuture(), 5.seconds)
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress"))
   }
 }
