@@ -42,6 +42,7 @@ lazy val root = (project in file("."))
       "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-actor"             % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j"             % akkaVersion,
+      "com.typesafe.akka" %% "akka-http"              % "10.1.11",
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
       "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
