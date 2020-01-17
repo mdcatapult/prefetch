@@ -3,13 +3,11 @@ package io.mdcatapult.doclib.remote
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
+import better.files.Dsl._
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import better.files.Dsl._
 import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalamock.scalatest.MockFactory
 import org.scalatest.{AsyncWordSpecLike, BeforeAndAfterAll, Matchers, OptionValues}
-import org.scalatest.concurrent.ScalaFutures
 
 import scala.concurrent.ExecutionContextExecutor
 
@@ -51,13 +49,13 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
   val client = new Client()
 
-  "A valid http URI " should {
+  "A valid https URI " should {
     "be downloadable" in {
-      val uri: Uri =  Uri.parse("http://www.bbc.co.uk/news")
+      val uri: Uri =  Uri.parse("https://www.bbc.co.uk/news")
       val a = client.download(uri)
-      assert(a.value.origin.value == "http://www.bbc.co.uk/news")
-      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/http/www.bbc.co.uk/news.html")
-      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/http/www.bbc.co.uk/news.html")
+      assert(a.value.origin.value == "https://www.bbc.co.uk/news")
+      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/www.bbc.co.uk/news.html")
+      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/www.bbc.co.uk/news.html")
     }
   }
 

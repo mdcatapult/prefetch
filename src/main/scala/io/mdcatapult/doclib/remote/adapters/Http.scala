@@ -6,8 +6,8 @@ import java.nio.file.Paths
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.{Http ⇒ AkkaHttp}
-import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.FileIO
+import akka.stream.{ActorMaterializer, StreamTcpException}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
@@ -39,7 +39,7 @@ object Http extends Adapter with FileHash {
   }
 
   /**
-   * Fetches contents of URI using low level request and writes to file
+   * Fetches contents of URI using akka http and writes to file
    *
    * This method will not facilitate any form of Javascript rendering
    * Converts url to path using naive assumption that we are using linux
@@ -50,7 +50,7 @@ object Http extends Adapter with FileHash {
    * @return
    */
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
-    implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp", config)
+    implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executor: ExecutionContextExecutor = system.dispatcher
     val doclibRoot = config.getString("doclib.root")
@@ -61,10 +61,15 @@ object Http extends Adapter with FileHash {
 
     tempTarget.getParentFile.mkdirs()
 
-    val responseFuture: Future[HttpResponse] = retrieve(uri)
+    val responseFuture: Future[HttpResponse] = retrieve(uri).recover {
+      // Something happened before fetching file, might want to do something about it....
+      case streamException: StreamTcpException => throw streamException
+      case e: Exception ⇒ throw e
+    }
     val response = responseFuture.map {
       case HttpResponse(StatusCodes.OK, headers, entity, _) ⇒ {
-        entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath))
+        val finishedWriting = entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath))
+        Await.result(finishedWriting, Duration.Inf)
         Some(DownloadResult(
           source = tempPath,
           hash = md5(tempTarget.getAbsolutePath),
@@ -74,6 +79,7 @@ object Http extends Adapter with FileHash {
       }
       case resp @ HttpResponse(status, _, _, _) ⇒ {
         resp.discardEntityBytes()
+        println(resp)
         throw new Exception(s"Unable to process $uri with status code $status")
       }
     }
