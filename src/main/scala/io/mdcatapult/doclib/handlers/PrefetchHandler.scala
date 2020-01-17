@@ -78,10 +78,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * Case class for handling the various permutations of local and remote documents
    *
    * @param doc      Document
-   * @param origin   PrefetchOrigin
+   * @param origins   PrefetchOrigin
    * @param download DownloadResult
    */
-  sealed case class FoundDoc(doc: DoclibDoc, archiveable: Option[List[DoclibDoc]] = None, origin: Option[Origin] = None, download: Option[DownloadResult] = None)
+  sealed case class FoundDoc(doc: DoclibDoc, archiveable: Option[List[DoclibDoc]] = None, origins: Option[List[Origin]] = None, download: Option[DownloadResult] = None)
 
   /**
    * handle msg from rabbitmq
@@ -97,7 +97,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       started: UpdateResult ← OptionT(flags.start(found.doc))
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(addAllOrigins(newDoc, msg.source))
       _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
     } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
@@ -172,59 +171,17 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   /**
    * build consolidated list of origins from doc and msg
-   * @param doc Document
+   * @param found FoundDoc
    * @param msg PrefetchMsg
    * @return
    */
-  def consolidateOrigins(doc: DoclibDoc, msg: PrefetchMsg): List[Origin] = (
-      doc.origin.getOrElse(List[Origin]()) :::
+  def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
+      found.doc.origin.getOrElse(List[Origin]()) :::
+      found.origins.getOrElse(List[Origin]()) :::
       msg.origin.getOrElse(List[Origin]()) :::
       resolveUpstreamOrigins(msg.source)
     ).distinct
 
-  /**
-   * Convenience method to find and combine the origins in a
-   * document with a new source
-   *
-   * @param doc: DoclibDoc
-   * @param source String
-   * @return Future[Option[List[Origin]]]
-   */
-  def addAllOrigins(doc: DoclibDoc, source: String): Future[Option[List[Origin]]] = {
-    remotePrefixes.exists(source.startsWith) match {
-      case true ⇒
-        (for {
-          origin ← OptionT.liftF(findOrigin(source))
-          origins ← OptionT.pure[Future](addOrigin(doc, origin))
-          _ ← OptionT(updateOrigins(doc, origins))
-        } yield (origins)).value
-      case false ⇒ Future.successful(Some(List[Origin]()))
-    }
-  }
-
-  /**
-   * Given a source uri find the non-redirected origin
-   */
-  def findOrigin(source: String): Future[Origin] =
-    remoteClient.origUrl(Uri.parse(source))
-
-  /**
-   * Add an origin to a document if it does not already contain it.
-   * We are not doing a deep check of the origin just that it is for
-   * a new URL
-   */
-  def addOrigin(doc: DoclibDoc, origin: Origin): List[Origin] = {
-    doc.origin.get.map(o ⇒ o.uri == origin.uri).contains(true) match {
-      case true ⇒ doc.origin.getOrElse(List[Origin]())
-      case false ⇒ (doc.origin.getOrElse(List[Origin]()) ::: origin :: Nil).distinct
-    }
-  }
-
-  /**
-   * Update the origins for a document in the db
-   */
-  def updateOrigins(doc: DoclibDoc, origins: List[Origin]): Future[Option[UpdateResult]] =
-    collection.updateOne(equal("_id", doc._id), set("origin", origins)).toFutureOption()
 
   /**
     * Function to find origins that have matching derivative paths
@@ -468,12 +425,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return Bson
    */
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
-    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc.doc, msg)
+    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) ⇒
         val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
-        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ d.uri.toString == foundDoc.origin.get.uri.toString)
-        (source, foundDoc.origin.get :: filteredDocOrigin)
+        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.get.map(_.uri.toString).contains( d.uri.toString))
+        (source, foundDoc.origins.get ::: filteredDocOrigin)
 
       case None ⇒
         val remoteOrigins = getRemoteOrigins(currentOrigins)
@@ -581,14 +538,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] =
     (for { // assumes remote
-      origOrigin: Origin ← OptionT.liftF(remoteClient.origUrl(uri))
-      origin: Origin ← OptionT.liftF(remoteClient.resolve(uri))
-      downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origin.uri.get))
-      (doc, archivable) ← OptionT(findOrCreateDoc(origin.uri.get.toString, downloaded.hash, Some(or(
-        equal("origin.uri", origin.uri.get.toString),
-        equal("source", origin.uri.get.toString)
+      origins: List[Origin] ← OptionT.liftF(remoteClient.resolve(uri))
+      downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origins.head.uri.get))
+      (doc, archivable) ← OptionT(findOrCreateDoc(origins.head.uri.get.toString, downloaded.hash, Some(or(
+        equal("origin.uri", origins.head.uri.get.toString),
+        equal("source", origins.head.uri.get.toString)
       ))))
-           } yield FoundDoc(doc, archivable, origin = Some(origin), download = Some(downloaded))).value
+           } yield FoundDoc(doc, archivable, origins = Some(origins), download = Some(downloaded))).value
 
 
   /**
