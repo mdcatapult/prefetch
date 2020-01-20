@@ -72,6 +72,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
+  sealed case class PrefetchUri(uri: Uri, raw: String)
+
   val remotePrefixes = List("https", "http")
 
   /**
@@ -499,32 +501,32 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
   /**
    * retrieves a document based on url or filepath
    *
-   * @param uri io.lemonlabs.uri.Uri
+   * @param URI PrefetchUri
    * @return
    */
-  def findDocument(uri: Uri): Future[Option[FoundDoc]] =
-    uri.schemeOption match {
-      case None ⇒ throw new UndefinedSchemeException(uri)
-      case Some("file") ⇒ findLocalDocument(uri)
-      case _ ⇒ findRemoteDocument(uri)
+  def findDocument(URI: PrefetchUri): Future[Option[FoundDoc]] =
+    URI.uri.schemeOption match {
+      case None ⇒ throw new UndefinedSchemeException(URI.uri)
+      case Some("file") ⇒ findLocalDocument(URI.raw)
+      case _ ⇒ findRemoteDocument(URI.uri)
     }
 
 
   /**
    * retrieves document from mongo based on supplied uri being for a local source
    *
-   * @param uri io.lemonlabs.uri.Uri
+   * @param source String
    * @return
    */
-  def findLocalDocument(uri: Uri): Future[Option[FoundDoc]] =
+  def findLocalDocument(source: String): Future[Option[FoundDoc]] =
     (for {
-      target: String ← OptionT.some[Future](uri.path.toString.replaceFirst(
+      target: String ← OptionT.some[Future](source.replaceFirst(
         s"^${config.getString("doclib.local.temp-dir")}",
         config.getString("doclib.local.target-dir")
       ))
-      md5 ← OptionT.some[Future](md5(s"$doclibRoot${uri.path.toStringRaw}"))
-      (doc, archivable) ← OptionT(findOrCreateDoc(uri.path.toStringRaw, md5, Some(or(
-        equal("source", uri.path.toStringRaw),
+      md5 ← OptionT.some[Future](md5(s"$doclibRoot$source"))
+      (doc, archivable) ← OptionT(findOrCreateDoc(source, md5, Some(or(
+        equal("source", source),
         equal("source", target)
       ))))
     } yield FoundDoc(doc, archivable)).value
@@ -594,11 +596,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param source String
    * @return
    */
-  def toUri(source: String): Uri = {
+  def toUri(source: String): PrefetchUri = {
     Uri.parseTry(source) match {
       case Success(uri) ⇒ uri.schemeOption match {
-        case Some(_) ⇒ uri
-        case None ⇒ uri.withScheme("file")
+        case Some(_) ⇒ PrefetchUri(uri, source)
+        case None ⇒ PrefetchUri(uri.withScheme("file"), source)
       }
       case Failure(_) ⇒ throw new RuntimeException(s"unable to convert '$source' into valid Uri Object")
     }

@@ -226,8 +226,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     "A file with a space in the path" should {
       "be found" in {
         val docLocation = "local/test file.txt"
-        val origDoc = Await.result(handler.findLocalDocument(Uri.parse(docLocation)), 5.seconds).get
-        val fetchedDoc = Await.result(handler.findLocalDocument(Uri.parse(docLocation)), 5.seconds).get
+        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
+        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
         assert(origDoc.doc._id == fetchedDoc.doc._id)
       }
     }
@@ -245,12 +245,14 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     "Multiple urls which redirect to the same url" should {
       "be inserted in the origin as metadata" in {
-        val uriWithRedirect = Uri.parse("https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
-        val similarUriUriWithRedirect = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val sourceRedirect = "https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val uriWithRedirect = Uri.parse(sourceRedirect)
+        val similarUri = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val similarUriUriWithRedirect = Uri.parse(similarUri)
         val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
 
         // create initial document
-        val firstDoc = Await.result(handler.findDocument(uriWithRedirect), Duration.Inf).get
+        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(uriWithRedirect, sourceRedirect)), Duration.Inf).get
         val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
 
         docLibDoc.origin.get match {
@@ -260,7 +262,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           case _ => fail("Expected origins to be a list")
         }
 
-        val secondDoc = Await.result(handler.findDocument(similarUriUriWithRedirect), Duration.Inf).get
+        val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUriUriWithRedirect, similarUri)), Duration.Inf).get
         assert(secondDoc.doc._id == firstDoc.doc._id)
 
         val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
@@ -281,8 +283,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     "Adding the same url to a doc" should {
       // @todo: depends on previous tests output, needs refactor to isolate with test fixture
       "not be be result in a duplicate origins" in {
-        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
-        val doc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
+        val source = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val similarUri = Uri.parse(source)
+        val doc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, source)), Duration.Inf).get
         assert(doc.origins.get.size == 3)
       }
     }
@@ -300,7 +303,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   override def afterAll(): Unit = {
     Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
-    Await.result(collection.drop().toFuture(), 5.seconds)
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local"))
   }
 }
