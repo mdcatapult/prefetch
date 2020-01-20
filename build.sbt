@@ -24,8 +24,8 @@ lazy val root = (project in file("."))
     scalaVersion      := "2.12.10",
     scalacOptions     ++= Seq("-Ypartial-unification"),
     resolvers         ++= Seq(
-      "MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/",
-      "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
+      "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
+      "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
     updateOptions     := updateOptions.value.withLatestSnapshots(false),
     credentials       += {
       val nexusPassword = sys.env.get("NEXUS_PASSWORD")
