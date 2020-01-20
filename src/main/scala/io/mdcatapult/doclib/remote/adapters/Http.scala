@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.{Http ⇒ AkkaHttp}
 import akka.stream.scaladsl.FileIO
-import akka.stream.{ActorMaterializer, StreamTcpException}
+import akka.stream.{ActorMaterializer, IOResult, StreamTcpException}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
@@ -50,6 +50,8 @@ object Http extends Adapter with FileHash {
    * @return
    */
   def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
+    //TODO We should probably turn this all into futures and for-comps but is a bigger refactor
+    // and something for another issue.
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executor: ExecutionContextExecutor = system.dispatcher
@@ -61,6 +63,7 @@ object Http extends Adapter with FileHash {
 
     tempTarget.getParentFile.mkdirs()
 
+    // Get the http response
     val responseFuture: Future[HttpResponse] = retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
       case streamException: StreamTcpException => throw streamException
@@ -68,22 +71,28 @@ object Http extends Adapter with FileHash {
     }
     val response = responseFuture.map {
       case HttpResponse(StatusCodes.OK, headers, entity, _) ⇒ {
-        val finishedWriting = entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath))
-        Await.result(finishedWriting, Duration.Inf)
-        Some(DownloadResult(
-          source = tempPath,
-          hash = md5(tempTarget.getAbsolutePath),
-          origin = Some(uri.toString),
-          target = Some(finalTarget.getAbsolutePath)
-        ))
+        entity
       }
       case resp @ HttpResponse(status, _, _, _) ⇒ {
         resp.discardEntityBytes()
-        println(resp)
         throw new Exception(s"Unable to process $uri with status code $status")
       }
     }
     // TODO Not sure we should really wait for ever but how long?
-    Await.result(response, Duration.Inf)
+    val entity = Await.result(response, Duration.Inf)
+    // We have the response entity so write it to file
+    val finishedWriting = entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
+      // Something happened writing the file, might want to do something with it
+      case e: Exception ⇒ throw e
+    }
+    Await.result(finishedWriting, Duration.Inf) match {
+      case IOResult(count, status) ⇒
+        Some(DownloadResult(
+        source = tempPath,
+        hash = md5(tempTarget.getAbsolutePath),
+        origin = Some(uri.toString),
+        target = Some(finalTarget.getAbsolutePath)
+      ))
+    }
   }
 }
