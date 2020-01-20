@@ -9,6 +9,7 @@ import akka.http.scaladsl.{Http ⇒ AkkaHttp}
 import akka.stream.scaladsl.FileIO
 import akka.stream.{ActorMaterializer, IOResult, StreamTcpException}
 import com.typesafe.config.Config
+import better.files.{File ⇒ ScalaFile, _}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash
@@ -60,7 +61,10 @@ object Http extends Adapter with FileHash {
     val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
     val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
     val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
-
+    val (tempPathFinal: String, tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
+      case orig if orig == tempTarget.getName ⇒ (tempPath, tempTarget.toString, finalTarget.toString)
+      case hashed ⇒ (tempPath.replace(tempTarget.getName, hashed), tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
+    }
     tempTarget.getParentFile.mkdirs()
 
     // Get the http response
@@ -88,11 +92,11 @@ object Http extends Adapter with FileHash {
     Await.result(finishedWriting, Duration.Inf) match {
       case IOResult(count, status) ⇒
         Some(DownloadResult(
-        source = tempPath,
-        hash = md5(tempTarget.getAbsolutePath),
-        origin = Some(uri.toString),
-        target = Some(finalTarget.getAbsolutePath)
-      ))
+          source = tempPathFinal,
+          hash = md5(new File(tempTargetFinal).getAbsolutePath),
+          origin = Some(uri.toString),
+          target = Some(new File(finalTargetFinal).getAbsolutePath)
+        ))
     }
   }
 }
