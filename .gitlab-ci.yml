@@ -39,7 +39,7 @@ before_script:
 
 test:
   stage: test
-  image: openjdk:14
+  image: openjdk:14-slim
   variables:
     MONGO_HOST: mongo
     MONGO_DATABASE: prefetch-test
@@ -62,7 +62,7 @@ test:
 
 assemble:
   stage: build
-  image: openjdk:14
+  image: openjdk:14-slim
   script:
     - sbt assembly
   artifacts:
@@ -98,7 +98,7 @@ publish:
 
 release:
   stage: build
-  image: openjdk:14
+  image: openjdk:14-slim
   before_script:
     - apt-get update -yqq
     - apt-get install -yqq apt-transport-https ca-certificates
