@@ -43,7 +43,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   implicit val config: Config = ConfigFactory.parseString(
     s"""
       |doclib {
-      |  root: "${pwd}/test"
+      |  root: "$pwd/test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -235,43 +235,55 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     "A redirected url" should {
       "be persisted in the origin" in {
         val uri = Uri.parse("https://ndownloader.figshare.com/files/3906475")
-        val redirectedUrl = Await.result(handler.remoteClient.resolve(uri), 5.seconds)
-        assert(uri != redirectedUrl.uri.get)
-        assert(redirectedUrl.metadata.get.filter(p ⇒ p.getKey == "original.uri").head.getValue == uri.toString())
+        Await.result(handler.remoteClient.resolve(uri), 5.seconds) match {
+          case canonical :: rest =>
+            assert(canonical.uri.get != uri)
+            assert(rest.head.uri.get == uri)
+        }
       }
     }
 
     "Multiple urls which redirect to the same url" should {
       "be inserted in the origin as metadata" in {
-        val origUri = Uri.parse("https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
-        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val uriWithRedirect = Uri.parse("https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val similarUriUriWithRedirect = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
 
         // create initial document
-        val newDoc = Await.result(handler.findDocument(origUri), Duration.Inf).get
-        val docLibDoc = Await.result(handler.process(newDoc, PrefetchMsg(origUri.toString())), Duration.Inf).get
+        val firstDoc = Await.result(handler.findDocument(uriWithRedirect), Duration.Inf).get
+        val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
 
-        // add the original and redirected origins to the doc
-        Await.result(handler.addAllOrigins(docLibDoc, origUri.toString()), 5.seconds)
-        val insertedDoc = Await.result(collection.find(mequal("_id", newDoc.doc._id)).toFuture(), 5.seconds).head
-        // check that it has the original and redirected origin
-        assert(insertedDoc.origin.get.length == 2)
-        val foundDoc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
-        val processedDoc = Await.result(handler.process(foundDoc, PrefetchMsg(similarUri.toString())), Duration.Inf).get
-        // update the origins for the second "original" url
-        Await.result(handler.addAllOrigins(processedDoc, similarUri.toString()), 5.seconds)
-        val updatedDoc = Await.result(collection.find(mequal("_id", foundDoc.doc._id)).toFuture(), 5.seconds).head
-        assert(updatedDoc.origin.get.length == 3)
+        docLibDoc.origin.get match {
+          case canonical :: rest =>
+            assert(canonical.uri.get == canonicalUri)
+            assert(rest.head.uri.get == uriWithRedirect)
+          case _ => fail("Expected origins to be a list")
+        }
+
+        val secondDoc = Await.result(handler.findDocument(similarUriUriWithRedirect), Duration.Inf).get
+        assert(secondDoc.doc._id == firstDoc.doc._id)
+
+        val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
+        assert(updatedDocLibDoc.origin.get.size == 3)
+
+        updatedDocLibDoc.origin.get match {
+          case canonical :: rest =>
+            assert(canonical.uri.get == canonicalUri)
+            assert(rest.head.uri.get == uriWithRedirect)
+            assert(rest(1).uri.get == similarUriUriWithRedirect)
+          case _ => fail("Expected origins to be a list")
+        }
+
       }
     }
 
-    "Adding the same url to a doc" should {
-      "not be be inserted in the origin as metadata" in {
-        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
-        val foundDoc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
 
-        Await.result(handler.addAllOrigins(foundDoc.doc, similarUri.toString()), 5.seconds)
-        val updatedDoc = Await.result(collection.find(mequal("_id", foundDoc.doc._id)).toFuture(), 5.seconds).head
-        assert(updatedDoc.origin.get.length == 3)
+    "Adding the same url to a doc" should {
+      // @todo: depends on previous tests output, needs refactor to isolate with test fixture
+      "not be be result in a duplicate origins" in {
+        val similarUri = Uri.parse("http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf")
+        val doc = Await.result(handler.findDocument(similarUri), Duration.Inf).get
+        assert(doc.origins.get.size == 3)
       }
     }
 
