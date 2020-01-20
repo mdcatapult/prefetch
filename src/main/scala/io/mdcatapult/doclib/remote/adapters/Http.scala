@@ -17,6 +17,8 @@ import io.mdcatapult.doclib.util.FileHash
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
+case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull)  extends Exception()
+
 case class Http(uri: Uri)
 
 object Http extends Adapter with FileHash {
@@ -67,13 +69,11 @@ object Http extends Adapter with FileHash {
     }
     tempTarget.getParentFile.mkdirs()
 
-    // Get the http response
-    val responseFuture: Future[HttpResponse] = retrieve(uri).recover {
+    Await.result(retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
       case streamException: StreamTcpException => throw streamException
-      case e: Exception ⇒ throw e
-    }
-    val response = responseFuture.map {
+      case e: Exception ⇒ throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
+    } map {
       case HttpResponse(StatusCodes.OK, headers, entity, _) ⇒ {
         entity
       }
@@ -81,22 +81,19 @@ object Http extends Adapter with FileHash {
         resp.discardEntityBytes()
         throw new Exception(s"Unable to process $uri with status code $status")
       }
-    }
-    // TODO Not sure we should really wait for ever but how long?
-    val entity = Await.result(response, Duration.Inf)
-    // We have the response entity so write it to file
-    val finishedWriting = entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
-      // Something happened writing the file, might want to do something with it
-      case e: Exception ⇒ throw e
-    }
-    Await.result(finishedWriting, Duration.Inf) match {
-      case IOResult(count, status) ⇒
+    } flatMap {
+      entity: ResponseEntity ⇒ entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
+        // Something happened before fetching file, might want to do something about it....
+        case e: Exception ⇒ throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
+      }
+    } map {
+      result ⇒
         Some(DownloadResult(
           source = tempPathFinal,
           hash = md5(new File(tempTargetFinal).getAbsolutePath),
           origin = Some(uri.toString),
           target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))
-    }
+    }, Duration.Inf)
   }
 }

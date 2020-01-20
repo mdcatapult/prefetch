@@ -1,7 +1,9 @@
 package io.mdcatapult.doclib.remote
 
+import java.nio.file.{Files, Paths}
+
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorMaterializer, StreamTcpException}
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
 import com.typesafe.config.{Config, ConfigFactory}
@@ -59,6 +61,15 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
     }
   }
 
+  "An invalid https URI " should {
+    "throw an exception" in {
+      val uri: Uri =  Uri.parse("https://a.b.c")
+      assertThrows[StreamTcpException] {
+        client.download(uri)
+      }
+    }
+  }
+
   "A valid FTP URI " should {
     "be downloadable" in {
       val uri = Uri.parse("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
@@ -66,6 +77,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
       assert(a.value.origin.value == "ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
       assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
+      assert(Files.exists(Paths.get(s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.temp-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")))
     }
   }
 
