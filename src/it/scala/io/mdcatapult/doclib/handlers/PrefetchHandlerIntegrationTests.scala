@@ -252,7 +252,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
 
         // create initial document
-        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(uriWithRedirect, sourceRedirect)), Duration.Inf).get
+        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).get
         val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
 
         docLibDoc.origin.get match {
@@ -262,7 +262,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           case _ => fail("Expected origins to be a list")
         }
 
-        val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUriUriWithRedirect, similarUri)), Duration.Inf).get
+        val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
         assert(secondDoc.doc._id == firstDoc.doc._id)
 
         val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
@@ -285,7 +285,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       "not be be result in a duplicate origins" in {
         val source = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
         val similarUri = Uri.parse(source)
-        val doc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, source)), Duration.Inf).get
+        val doc = Await.result(handler.findDocument(handler.PrefetchUri(source, Some(similarUri))), Duration.Inf).get
         assert(doc.origins.get.size == 3)
       }
     }
