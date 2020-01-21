@@ -72,7 +72,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
-  sealed case class PrefetchUri(uri: Uri, raw: String)
+  sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
   val remotePrefixes = List("https", "http")
 
@@ -505,10 +505,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def findDocument(URI: PrefetchUri): Future[Option[FoundDoc]] =
-    URI.uri.schemeOption match {
-      case None ⇒ throw new UndefinedSchemeException(URI.uri)
-      case Some("file") ⇒ findLocalDocument(URI.raw)
-      case _ ⇒ findRemoteDocument(URI.uri)
+    URI.uri match {
+      case Some(uri) => uri.schemeOption match {
+        case None ⇒ throw new UndefinedSchemeException(uri)
+        case Some("file") ⇒ findLocalDocument(URI.raw)
+        case _ ⇒ findRemoteDocument(uri)
+      }
+      case None =>findLocalDocument(URI.raw)
     }
 
 
@@ -591,7 +594,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
   }
 
   /**
-   * converts provided source into valid Uri object
+   * wraps supplied string in a PrefetchUri object with an optional Lemonlabs Uri property
+   *
+   * If unable to convert the url or no scheme/protocol identified then assumes file path and not URL
    *
    * @param source String
    * @return
@@ -599,10 +604,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
   def toUri(source: String): PrefetchUri = {
     Uri.parseTry(source) match {
       case Success(uri) ⇒ uri.schemeOption match {
-        case Some(_) ⇒ PrefetchUri(uri, source)
-        case None ⇒ PrefetchUri(uri.withScheme("file"), source)
+        case Some(_) ⇒ PrefetchUri(source, Some(uri))
+        case None ⇒ PrefetchUri(source, Some(uri.withScheme("file")))
       }
-      case Failure(_) ⇒ throw new RuntimeException(s"unable to convert '$source' into valid Uri Object")
+      case Failure(_) ⇒ PrefetchUri(source, None)
     }
   }
 
