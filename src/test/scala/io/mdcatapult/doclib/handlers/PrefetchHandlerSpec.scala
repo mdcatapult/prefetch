@@ -274,4 +274,11 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
   }
 
+  "An invalid URI should fail to convert" in {
+    val path = "ingress/derivatives/derivatives/derivatives/remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/OA/PMC3621900-PMC3625899/unarchived_PMC3624804.zip/unarchived_supp_btt083_SPEDRE_SourceFiles.zip/unarchived_SPEDRE_SourceFiles.zip/Supplementary Source Files/Akt model/Noise=10%/GA_LM_Akt.cps"
+    val result = handler.toUri(path)
+    assert(result.raw == path)
+    assert(result.uri.isEmpty)
+  }
+
 }
