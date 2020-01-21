@@ -2,7 +2,7 @@ import Release._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.5.25"
+lazy val akkaVersion = "2.5.26"
 lazy val catsVersion = "2.0.0"
 lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
@@ -15,17 +15,21 @@ lazy val doclibCommonVersion = "0.0.28"
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend(Test)
+concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)
   .settings(
     Defaults.itSettings,
+//    Forking fixes a akka logging classloader test issue but sbt recommend setting ClassLoadLayeringStrategy instead to ScalaLibrary or Flat
+//    fork in Test := true,
+    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
     scalacOptions     ++= Seq("-Ypartial-unification"),
     resolvers         ++= Seq(
-      "MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/",
-      "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
+      "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
+      "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
     updateOptions     := updateOptions.value.withLatestSnapshots(false),
     credentials       += {
       val nexusPassword = sys.env.get("NEXUS_PASSWORD")
@@ -42,6 +46,7 @@ lazy val root = (project in file("."))
       "com.typesafe.akka" %% "akka-testkit"           % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-actor"             % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j"             % akkaVersion,
+      "com.typesafe.akka" %% "akka-http"              % "10.1.11",
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
       "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
@@ -52,7 +57,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-core"                  % catsVersion,
       "io.mdcatapult.doclib" %% "common"              % doclibCommonVersion,
       "com.github.seratch" %% "awscala"               % awsScalaVersion,
-      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion,
+      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion
     ),
   )
   .settings(
