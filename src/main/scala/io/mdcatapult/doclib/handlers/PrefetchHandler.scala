@@ -600,7 +600,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         case Some(_) ⇒ PrefetchUri(uri, source)
         case None ⇒ PrefetchUri(uri.withScheme("file"), source)
       }
-      case Failure(_) ⇒ throw new RuntimeException(s"unable to convert '$source' into valid Uri Object")
+      case Failure(err) ⇒ throw new RuntimeException(s"unable to convert '$source' into valid Uri Object", err)
     }
   }
 
