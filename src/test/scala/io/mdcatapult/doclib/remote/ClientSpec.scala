@@ -1,5 +1,7 @@
 package io.mdcatapult.doclib.remote
 
+import java.net.URL
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.{Config, ConfigFactory}
@@ -10,8 +12,8 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor}
 
 class ClientSpec extends FlatSpec{
-  val wsConfFile = getClass.getResource("/test/ws.conf")
-  val wsConfig = ConfigFactory.parseURL(wsConfFile)
+  val wsConfFile: URL = getClass.getResource("/test/ws.conf")
+  val wsConfig: Config = ConfigFactory.parseURL(wsConfFile)
   implicit val config: Config = ConfigFactory.parseString(
     """
       |doclib {
@@ -28,19 +30,19 @@ class ClientSpec extends FlatSpec{
 
   "A valid http URL that redirects to https" should "resolve to a valid Prefetch Origin" in {
     val result = Await.result(client.resolve(Uri.parse("http://news.bbc.co.uk")), Duration.Inf)
-    assert(result.scheme == "https")
-    assert(result.uri.get.schemeOption.get == "https")
-    assert(result.uri.get.toUrl.hostOption.get.toString == "www.bbc.co.uk")
-    assert(result.uri.get.toUrl.path.toAbsolute.toString == "/news")
-    assert(result.hostname.get == "www.bbc.co.uk")
+    assert(result.head.scheme == "https")
+    assert(result.head.uri.get.schemeOption.get == "https")
+    assert(result.head.uri.get.toUrl.hostOption.get.toString == "www.bbc.co.uk")
+    assert(result.head.uri.get.toUrl.path.toAbsolute.toString == "/news")
+    assert(result.head.hostname.get == "www.bbc.co.uk")
   }
 
   "A valid ftp URL" should "resolve to a valid Prefetch Origin" in {
     val source = Uri.parse("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
     val result = Await.result(client.resolve(source), Duration.Inf)
-    assert(result.scheme == "ftp")
-    assert(result.uri.get == source)
-    assert(result.hostname.get == "ftp.ebi.ac.uk")
+    assert(result.head.scheme == "ftp")
+    assert(result.head.uri.get == source)
+    assert(result.head.hostname.get == "ftp.ebi.ac.uk")
   }
 
   "An unsupported scheme" should "throw an exception" in {

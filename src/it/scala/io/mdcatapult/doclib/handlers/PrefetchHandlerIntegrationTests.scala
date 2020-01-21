@@ -21,6 +21,7 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
+import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -40,9 +41,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
-    """
+    s"""
       |doclib {
-      |  root: "./test"
+      |  root: "$pwd/test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -213,6 +214,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         handler.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
       }
     }
+  }
 
     "Moving a file with the same source and target" should {
       "return the original file path" in {
@@ -229,7 +231,64 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(origDoc.doc._id == fetchedDoc.doc._id)
       }
     }
-  }
+
+    "A redirected url" should {
+      "be persisted in the origin" in {
+        val uri = Uri.parse("https://ndownloader.figshare.com/files/3906475")
+        Await.result(handler.remoteClient.resolve(uri), 5.seconds) match {
+          case canonical :: rest =>
+            assert(canonical.uri.get != uri)
+            assert(rest.head.uri.get == uri)
+        }
+      }
+    }
+
+    "Multiple urls which redirect to the same url" should {
+      "be inserted in the origin as metadata" in {
+        val sourceRedirect = "https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val uriWithRedirect = Uri.parse(sourceRedirect)
+        val similarUri = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val similarUriUriWithRedirect = Uri.parse(similarUri)
+        val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
+
+        // create initial document
+        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).get
+        val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
+
+        docLibDoc.origin.get match {
+          case canonical :: rest =>
+            assert(canonical.uri.get == canonicalUri)
+            assert(rest.head.uri.get == uriWithRedirect)
+          case _ => fail("Expected origins to be a list")
+        }
+
+        val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
+        assert(secondDoc.doc._id == firstDoc.doc._id)
+
+        val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
+        assert(updatedDocLibDoc.origin.get.size == 3)
+
+        updatedDocLibDoc.origin.get match {
+          case canonical :: rest =>
+            assert(canonical.uri.get == canonicalUri)
+            assert(rest.head.uri.get == uriWithRedirect)
+            assert(rest(1).uri.get == similarUriUriWithRedirect)
+          case _ => fail("Expected origins to be a list")
+        }
+
+      }
+    }
+
+
+    "Adding the same url to a doc" should {
+      // @todo: depends on previous tests output, needs refactor to isolate with test fixture
+      "not be be result in a duplicate origins" in {
+        val source = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+        val similarUri = Uri.parse(source)
+        val doc = Await.result(handler.findDocument(handler.PrefetchUri(source, Some(similarUri))), Duration.Inf).get
+        assert(doc.origins.get.size == 3)
+      }
+    }
 
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
@@ -242,8 +301,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   }
 
   override def afterAll(): Unit = {
+    Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
-    Await.result(collection.drop().toFuture(), 5.seconds)
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local"))
   }
 }

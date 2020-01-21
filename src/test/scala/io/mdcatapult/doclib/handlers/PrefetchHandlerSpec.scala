@@ -98,8 +98,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val fetchedMetadata = prefetchMsg.metadata
       assert(fetchedMetadata.get.length == 1)
-      assert(fetchedMetadata.get(0).getKey == "doi")
-      assert(fetchedMetadata.get(0).getValue == "10.1101/327015")
+      assert(fetchedMetadata.get.head.getKey == "doi")
+      assert(fetchedMetadata.get.head.getValue == "10.1101/327015")
     }
 
     "correctly identify when a file path is targeting the local root" in {
@@ -114,18 +114,18 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative local path for local files from a relative ingress path" in {
-      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(createNewDoc("ingress/cheese/stinking-bishop.cz")))
+      val result = handler.getLocalUpdateTargetPath(handler.FoundDoc(createNewDoc("ingress/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
     "return an relative local path for local files from a relative local path" in {
-      val result = handler.getLocalUpdateTargetPath(new handler.FoundDoc(createNewDoc("local/cheese/stinking-bishop.cz")))
+      val result = handler.getLocalUpdateTargetPath(handler.FoundDoc(createNewDoc("local/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
 
     "return an relative remote path for remote files from a relative remote ingress path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(doc =
+      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(doc =
         createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         download = Some(DownloadResult("remote-ingress/cheese/stinking-bishop.cz", "1234567890", target = Some("remote/cheese/stinking-bishop.cz")))
       ))
@@ -133,7 +133,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative remote path for remote files from a relative remote path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(createNewDoc("remote/cheese/stinking-bishop.cz")))
+      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(createNewDoc("remote/cheese/stinking-bishop.cz")))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
@@ -148,7 +148,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative doclib path for remote files from a relative remote-ingress path" in {
-      val result = handler.getRemoteUpdateTargetPath(new handler.FoundDoc(
+      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(
         doc = createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         None,
         None,
@@ -166,7 +166,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = new handler.FoundDoc(
+      val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         None,
         None,
@@ -185,7 +185,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = new handler.FoundDoc(
+      val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         None,
         None,
@@ -204,7 +204,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = new handler.FoundDoc(
+      val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         None,
         None,
@@ -271,7 +271,6 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(derivMetadata.head.getKey == "derivative.type")
       assert(derivMetadata.head.getValue == "unarchive")
     }
-
   }
 
   "An invalid URI should fail to convert" in {

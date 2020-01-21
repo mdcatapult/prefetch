@@ -10,7 +10,6 @@ import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
 import cats.implicits._
-import com.mongodb.client.model._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
@@ -19,7 +18,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
@@ -34,10 +33,10 @@ import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success, Try}
-import collection.JavaConverters._
 
 
 /**
@@ -75,14 +74,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
+  val remotePrefixes = List("https", "http")
+
   /**
    * Case class for handling the various permutations of local and remote documents
    *
    * @param doc      Document
-   * @param origin   PrefetchOrigin
+   * @param origins   PrefetchOrigin
    * @param download DownloadResult
    */
-  sealed case class FoundDoc(doc: DoclibDoc, archiveable: Option[List[DoclibDoc]] = None, origin: Option[Origin] = None, download: Option[DownloadResult] = None)
+  sealed case class FoundDoc(doc: DoclibDoc, archiveable: Option[List[DoclibDoc]] = None, origins: Option[List[Origin]] = None, download: Option[DownloadResult] = None)
 
   /**
    * handle msg from rabbitmq
@@ -117,7 +118,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         }
     })
   }
-
 
   /**
    * Update parent "origin" documents with the new source for the derivative
@@ -173,15 +173,17 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
 
   /**
    * build consolidated list of origins from doc and msg
-   * @param doc Document
+   * @param found FoundDoc
    * @param msg PrefetchMsg
    * @return
    */
-  def consolidateOrigins(doc: DoclibDoc, msg: PrefetchMsg): List[Origin] = (
-      doc.origin.getOrElse(List[Origin]()) :::
+  def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
+      found.doc.origin.getOrElse(List[Origin]()) :::
+      found.origins.getOrElse(List[Origin]()) :::
       msg.origin.getOrElse(List[Origin]()) :::
       resolveUpstreamOrigins(msg.source)
     ).distinct
+
 
   /**
     * Function to find origins that have matching derivative paths
@@ -425,12 +427,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return Bson
    */
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
-    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc.doc, msg)
+    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) ⇒
         val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
-        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ d.uri.toString == foundDoc.origin.get.uri.toString)
-        (source, foundDoc.origin.get :: filteredDocOrigin)
+        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.get.map(_.uri.toString).contains( d.uri.toString))
+        (source, foundDoc.origins.get ::: filteredDocOrigin)
 
       case None ⇒
         val remoteOrigins = getRemoteOrigins(currentOrigins)
@@ -541,13 +543,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] =
     (for { // assumes remote
-      origin: Origin ← OptionT.liftF(remoteClient.resolve(uri))
-      downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origin.uri.get))
-      (doc, archivable) ← OptionT(findOrCreateDoc(origin.uri.get.toString, downloaded.hash, Some(or(
-        equal("origin.uri", origin.uri.get.toString),
-        equal("source", origin.uri.get.toString)
+      origins: List[Origin] ← OptionT.liftF(remoteClient.resolve(uri))
+      downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origins.head.uri.get))
+      (doc, archivable) ← OptionT(findOrCreateDoc(origins.head.uri.get.toString, downloaded.hash, Some(or(
+        equal("origin.uri", origins.head.uri.get.toString),
+        equal("source", origins.head.uri.get.toString)
       ))))
-           } yield FoundDoc(doc, archivable, origin = Some(origin), download = Some(downloaded))).value
+           } yield FoundDoc(doc, archivable, origins = Some(origins), download = Some(downloaded))).value
 
 
   /**

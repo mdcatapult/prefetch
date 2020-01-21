@@ -21,12 +21,15 @@ lazy val root = (project in file("."))
   .configs(IntegrationTest)
   .settings(
     Defaults.itSettings,
+//    Forking fixes a akka logging classloader test issue but sbt recommend setting ClassLoadLayeringStrategy instead to ScalaLibrary or Flat
+//    fork in Test := true,
+    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
     scalacOptions     ++= Seq("-Ypartial-unification"),
     resolvers         ++= Seq(
-      "MDC Nexus Releases" at "http://nexus.mdcatapult.io/repository/maven-releases/",
-      "MDC Nexus Snapshots" at "http://nexus.mdcatapult.io/repository/maven-snapshots/"),
+      "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
+      "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
     updateOptions     := updateOptions.value.withLatestSnapshots(false),
     credentials       += {
       val nexusPassword = sys.env.get("NEXUS_PASSWORD")
@@ -54,7 +57,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-core"                  % catsVersion,
       "io.mdcatapult.doclib" %% "common"              % doclibCommonVersion,
       "com.github.seratch" %% "awscala"               % awsScalaVersion,
-      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion,
+      "com.github.pathikrit"  %% "better-files"       % betterFilesVersion
     ),
   )
   .settings(

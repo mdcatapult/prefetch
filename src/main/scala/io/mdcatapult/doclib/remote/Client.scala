@@ -4,10 +4,12 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
-import io.mdcatapult.doclib.models.Origin
-import io.mdcatapult.doclib.models.metadata.MetaInt
+import io.mdcatapult.doclib.exception.DoclibDocException
+import io.mdcatapult.doclib.models.{DoclibDoc, Origin}
+import io.mdcatapult.doclib.models.metadata.{MetaInt, MetaString}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.FileHash
+import play.api.libs.ws.StandaloneWSRequest
 import play.api.libs.ws.ahc._
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -18,7 +20,11 @@ class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected 
 class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) extends FileHash {
 
   /** initialise web client **/
-  lazy val httpClient = StandaloneAhcWSClient(AhcWSClientConfigFactory.forConfig(config))
+  lazy val ahcwsCconfig: AhcWSClientConfig = AhcWSClientConfigFactory.forConfig(config)
+  lazy val httpClient: StandaloneAhcWSClient = StandaloneAhcWSClient(AhcWSClientConfigFactory.forConfig(config))
+
+  final class UnableToFollow(source: String, cause: Throwable = None.orNull)
+    extends RuntimeException(f"Cannot follow redirect for '$source' as no valid Location header present", cause)
 
   /**
     * does an initial check of a provided remote resource and returns a Resolved response
@@ -26,25 +32,35 @@ class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: Ac
     * @param source io.lemonlabs.uri.Uri
     * @return
     */
-  def resolve(source: Uri): Future[Origin] = source.schemeOption match {
+  def resolve(source: Uri): Future[List[Origin]] = source.schemeOption match {
       //TODO What should the metatdata be ("status": 200) ?
-    case Some("http" | "https") ⇒ httpClient.url(source.toString).head().map(r =>
-      Origin(
-        scheme = r.uri.getScheme,
-        hostname = Some(r.uri.getHost),
-        uri = Some(Uri.parse(r.uri.toString)),
-        headers = Some(r.headers),
-        metadata = Some(List(MetaInt("status", r.status))))
-    )
-    case Some("ftp" | "ftps" | "sftp") ⇒ Future.successful(Origin(
-      scheme = source.schemeOption.get,
-      hostname = Some(source.toJavaURI.getHost),
-      uri = Some(source),
-      headers = None,
-      metadata = None))
+    case Some("http" | "https") ⇒ httpClient.url(source.toString).head().flatMap(response => {
+        if (!List(301,302).contains(response.status)) {
+          Future.successful(List(makeOrigin(response)))
+        } else {
+          resolve(Uri.parse(response.header("Location").getOrElse(throw new UnableToFollow(source.toStringRaw)))).map( redirectOrigin =>
+            redirectOrigin ++ List(makeOrigin(response))
+          )
+        }
+      })
+    case Some("ftp" | "ftps" | "sftp") ⇒ Future.successful(List(makeOrigin(source)))
     case Some(unsupported) ⇒ throw new UnsupportedSchemeException(unsupported)
     case None ⇒ throw new UndefinedSchemeException(source)
   }
+
+  protected def makeOrigin(response: StandaloneWSRequest#Response): Origin = Origin(
+    scheme = response.uri.getScheme,
+    hostname = Some(response.uri.getHost),
+    uri = Some(Uri.parse(response.uri.toString)),
+    headers = Some(response.headers),
+    metadata = Some(List(MetaInt("status", response.status))))
+
+  protected def makeOrigin(source: Uri): Origin = Origin(
+    scheme = source.schemeOption.get,
+    hostname = Some(source.toJavaURI.getHost),
+    uri = Some(source),
+    headers = None,
+    metadata = None)
 
   def download(source: Uri): Option[DownloadResult] = source match {
     case Http(result: DownloadResult) ⇒ Some(result)
