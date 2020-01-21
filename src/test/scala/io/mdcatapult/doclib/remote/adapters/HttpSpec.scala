@@ -1,5 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import akka.stream.StreamTcpException
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import org.scalatest.FlatSpec
@@ -19,18 +20,18 @@ class HttpSpec extends FlatSpec {
 
   "An URL to nowhere" should "throw an Exception" in {
     val uri = Uri.parse("http://www.a.b.c/something")
-    val caught = intercept[Exception] {
+    assertThrows[StreamTcpException] {
       Http.download(uri)
     }
-    assert(caught.getMessage == "Unable to retrieve headers for URL http://www.a.b.c/something")
   }
 
   "A valid URL with unknown file" should "throw an Exception" in {
-    val uri = Uri.parse("http://www.google.com/this-is-an-invalid-file.pdf")
+    val source = "http://www.google.com/this-is-an-invalid-file.pdf"
+    val uri = Uri.parse(source)
     val caught = intercept[Exception] {
       Http.download(uri)
     }
-    assert(caught.getMessage == "Unable to process URL with resolved status code of 404")
+    assert(caught.getMessage == s"Unable to process $source with status code 404 Not Found")
   }
 
   "A filename that is shorter than 255 chars" should "not be changed" in {
