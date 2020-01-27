@@ -5,7 +5,6 @@ import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time.{LocalDateTime, ZoneOffset}
 
-import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import better.files._
 import cats.data._
@@ -18,13 +17,13 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
-import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
@@ -32,12 +31,12 @@ import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
+import org.mongodb.scala.{Completed, MongoCollection}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
-
 
 /**
  * Handler to perform prefetch of source supplied in Prefetch Messages
@@ -48,16 +47,14 @@ import scala.util.{Failure, Success, Try}
  *
  * @param downstream downstream queue to push Document Library messages onto
  * @param archiver queue to push all archived documents to
- * @param ac ActorSystem
+ * @param ec ExecutionContext
  * @param materializer ActorMateriaizer
- * @param ex ExecutionContext
  * @param config Config
  * @param collection MongoCollection[Document] to read documents from
  */
 class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[DoclibMsg])
-                     (implicit ac: ActorSystem,
+                     (implicit ec: ExecutionContext,
                       materializer: ActorMaterializer,
-                      ex: ExecutionContextExecutor,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
                      ) extends LazyLogging with FileHash with TargetPath {
@@ -83,7 +80,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param origins   PrefetchOrigin
    * @param download DownloadResult
    */
-  sealed case class FoundDoc(doc: DoclibDoc, archiveable: Option[List[DoclibDoc]] = None, origins: Option[List[Origin]] = None, download: Option[DownloadResult] = None)
+  sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
 
   /**
    * handle msg from rabbitmq
@@ -93,7 +90,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
-    logger.info(f"RECIEVED: ${msg.source}")
+    logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       started: UpdateResult ← OptionT(flags.start(found.doc))
@@ -111,10 +108,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
           case Success(value: Option[FoundDoc]) ⇒ value match {
             case Some(found) ⇒ flags.error(found.doc, noCheck = true)
-            case _ ⇒ // do nothing as error handling will capture
+            case _ ⇒ () // do nothing as error handling will capture
           }
           // There is no mongo doc - error happened before one was created
-          case Failure(_) ⇒ // do nothing as error handling will capture
+          case Failure(_) ⇒ () // do nothing as error handling will capture
         }
     })
   }
@@ -179,7 +176,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
       found.doc.origin.getOrElse(List[Origin]()) :::
-      found.origins.getOrElse(List[Origin]()) :::
+      found.origins :::
       msg.origin.getOrElse(List[Origin]()) :::
       resolveUpstreamOrigins(msg.source)
     ).distinct
@@ -352,12 +349,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    *
    * @todo send errors to queue without killing the rest of the process
    */
-  def sendDocumentsToArchiver(docs: Option[List[DoclibDoc]]): Future[Unit] = {
-    Try(docs.getOrElse(List()).foreach(doc ⇒ archiver.send(DoclibMsg(doc._id.toHexString)))) match {
-      case Success(_) ⇒ Future.successful()
+  def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
+    Try(docs.foreach(doc ⇒ archiver.send(DoclibMsg(doc._id.toHexString)))) match {
+      case Success(_) ⇒ Future.successful( () )
       case Failure(_) ⇒
         // send to error handling?
-        Future.successful()
+        Future.successful( () )
     }
   }
 
@@ -405,7 +402,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     targetPathGenerator(foundDoc) match {
       case Some(targetPath) ⇒
         val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-        val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toString) else docHash
+        val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
         if (docHash != currentHash)
         // file already exists at target location but is not the same file, archive the old one then add the new one
           Await.result(updateFile(foundDoc, tempPath, getArchivePath(targetPath, currentHash), Some(targetPath)), Duration.Inf)
@@ -431,8 +428,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) ⇒
         val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
-        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.get.map(_.uri.toString).contains( d.uri.toString))
-        (source, foundDoc.origins.get ::: filteredDocOrigin)
+        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.map(_.uri.toString).contains( d.uri.toString))
+        (source, foundDoc.origins ::: filteredDocOrigin)
 
       case None ⇒
         val remoteOrigins = getRemoteOrigins(currentOrigins)
@@ -511,7 +508,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         case Some("file") ⇒ findLocalDocument(URI.raw)
         case _ ⇒ findRemoteDocument(uri)
       }
-      case None =>findLocalDocument(URI.raw)
+      case None => findLocalDocument(URI.raw)
     }
 
 
@@ -542,14 +539,25 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] =
-    (for { // assumes remote
-      origins: List[Origin] ← OptionT.liftF(remoteClient.resolve(uri))
-      downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(origins.head.uri.get))
-      (doc, archivable) ← OptionT(findOrCreateDoc(origins.head.uri.get.toString, downloaded.hash, Some(or(
-        equal("origin.uri", origins.head.uri.get.toString),
-        equal("source", origins.head.uri.get.toString)
-      ))))
-           } yield FoundDoc(doc, archivable, origins = Some(origins), download = Some(downloaded))).value
+    (
+      for { // assumes remote
+        origins: List[Origin] ← OptionT.liftF(remoteClient.resolve(uri))
+        originUri = origins.head.uri.get
+        downloaded: DownloadResult ← OptionT.fromOption[Future](remoteClient.download(originUri))
+        (doc, archivable) ← OptionT(
+          findOrCreateDoc(
+            originUri.toString,
+            downloaded.hash,
+            Some(
+              or(
+                equal("origin.uri", originUri.toString),
+                equal("source", originUri.toString)
+              )
+            )
+          )
+        )
+      } yield FoundDoc(doc, archivable, origins = origins, download = Option(downloaded))
+    ).value
 
 
   /**
@@ -559,38 +567,41 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param hash String
    * @return
    */
-  def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, Option[List[DoclibDoc]])]] = {
+  def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
     collection.find(
       or(
         equal("hash", hash),
         query.getOrElse(combine())
       )
     ).sort(descending("created")).toFuture()
-      .map({
-        case latest :: archivable ⇒
-          if (latest.hash == hash) {
-            Some(latest, Some(archivable))
-          } else {
-            Some(createDoc(source, hash), Some(latest :: archivable))
-          }
-        case Nil ⇒ Some(createDoc(source, hash), None)
+      .flatMap({
+        case latest :: archivable if latest.hash == hash ⇒
+          Future.successful(latest -> archivable)
+        case archivable =>
+          createDoc(source, hash).map(doc => doc -> archivable.toList)
       })
+      .map(Some.apply)
   }
 
-  def createDoc(source: String, hash: String): DoclibDoc = {
-    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+  def createDoc(source: String, hash: String): Future[DoclibDoc] = {
+    val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
+
     val newDoc = DoclibDoc(
       _id = new ObjectId(),
       source = source,
       hash = hash,
       derivative = false,
-      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      created = createdTime,
+      updated = createdTime,
       mimetype = "",
       tags = Some(List[String]())
     )
-    Await.result(collection.insertOne(newDoc).toFutureOption(), Duration.Inf)
-    newDoc
+
+    val inserted: Future[Option[Completed]] =
+      collection.insertOne(newDoc).toFutureOption()
+
+    inserted.map(_ => newDoc)
   }
 
   /**

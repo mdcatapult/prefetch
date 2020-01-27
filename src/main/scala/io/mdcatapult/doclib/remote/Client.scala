@@ -1,23 +1,21 @@
 package io.mdcatapult.doclib.remote
 
-import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
-import io.mdcatapult.doclib.exception.DoclibDocException
-import io.mdcatapult.doclib.models.{DoclibDoc, Origin}
-import io.mdcatapult.doclib.models.metadata.{MetaInt, MetaString}
+import io.mdcatapult.doclib.models.Origin
+import io.mdcatapult.doclib.models.metadata.MetaInt
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.FileHash
 import play.api.libs.ws.StandaloneWSRequest
 import play.api.libs.ws.ahc._
 
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContext, Future}
 
 class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
-class Client()(implicit config: Config, ex: ExecutionContextExecutor, system: ActorSystem, materializer: ActorMaterializer) extends FileHash {
+class Client()(implicit config: Config, ec: ExecutionContext, materializer: ActorMaterializer) extends FileHash {
 
   /** initialise web client **/
   lazy val ahcwsCconfig: AhcWSClientConfig = AhcWSClientConfigFactory.forConfig(config)

@@ -3,18 +3,17 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 lazy val configVersion = "1.3.2"
 lazy val akkaVersion = "2.5.26"
-lazy val catsVersion = "2.0.0"
+lazy val catsVersion = "2.1.0"
 lazy val opRabbitVersion = "2.1.0"
 lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val tikaVersion = "1.21"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.35"
-
+lazy val doclibCommonVersion = "0.0.38"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
-lazy val IntegrationTest = config("it") extend(Test)
+lazy val IntegrationTest = config("it") extend Test
 concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 
 lazy val root = (project in file("."))
@@ -26,7 +25,15 @@ lazy val root = (project in file("."))
     classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
-    scalacOptions     ++= Seq("-Ypartial-unification"),
+    scalacOptions ++= Seq(
+      "-encoding", "utf-8",
+      "-unchecked",
+      "-deprecation",
+      "-explaintypes",
+      "-feature",
+      "-Xlint",
+      "-Ypartial-unification",
+    ),
     resolvers         ++= Seq(
       "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
       "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
@@ -64,13 +71,13 @@ lazy val root = (project in file("."))
     assemblyJarName := "consumer.jar",
     test in assembly := {},
     assemblyMergeStrategy in assembly := {
-      case PathList("com", "sun", xs @ _*) => MergeStrategy.first
-      case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first
-      case PathList("javax", "activation", xs @ _*) => MergeStrategy.first
+      case PathList("com", "sun", _*) => MergeStrategy.first
+      case PathList("javax", "servlet", _*) => MergeStrategy.first
+      case PathList("javax", "activation", _*) => MergeStrategy.first
       case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
       case PathList(xs @ _*) if xs.last == "module-info.class" => MergeStrategy.first
-      case PathList("org", "apache", "commons", xs @ _*) => MergeStrategy.first
-      case PathList("com", "ctc", "wstx", xs @ _*) => MergeStrategy.first
+      case PathList("org", "apache", "commons", _*) => MergeStrategy.first
+      case PathList("com", "ctc", "wstx", _*) => MergeStrategy.first
       case PathList(xs @ _*) if xs.last == "public-suffix-list.txt" => MergeStrategy.first
       case PathList(xs @ _*) if xs.last == ".gitkeep" => MergeStrategy.discard
       case "META-INF/jpms.args" => MergeStrategy.discard
