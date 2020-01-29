@@ -94,7 +94,7 @@ object Ftp extends Adapter with FileHash {
     case Some("ftps") ⇒ AkkaFtps.fromPath(url.path.toString(), getFtpsSettings(url))
     case Some("sftp") ⇒ AkkaSftp.fromPath(url.path.toString(), getSftpSettings(url))
     case Some(unknown) ⇒ throw new UnsupportedSchemeException(unknown)
-    case  None ⇒ throw new UndefinedSchemeException(url)
+    case None ⇒ throw new UndefinedSchemeException(url)
   }
 
   /**
