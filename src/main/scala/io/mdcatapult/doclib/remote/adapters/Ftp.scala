@@ -6,7 +6,7 @@ import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.stream.alpakka.ftp.FtpCredentials.AnonFtpCredentials
-import akka.stream.alpakka.ftp.scaladsl.{Ftp ⇒ AkkaFtp, Ftps ⇒ AkkaFtps, Sftp ⇒ AkkaSftp}
+import akka.stream.alpakka.ftp.scaladsl.{Ftp => AkkaFtp, Ftps => AkkaFtps, Sftp => AkkaSftp}
 import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, SftpSettings}
 import akka.stream.scaladsl.{FileIO, Source}
 import akka.stream.{ActorMaterializer, IOResult}
@@ -15,10 +15,12 @@ import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash
+import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success}
+
 object Ftp extends Adapter with FileHash {
 
   val protocols = List("ftp", "ftps", "sftp")
@@ -114,12 +116,12 @@ object Ftp extends Adapter with FileHash {
 
     tempTarget.getParentFile.mkdirs()
     val r: Future[IOResult] = retrieve(uri.toUrl)
-      .runWith(FileIO.toFile(tempTarget))
+      .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath))
 
     val a = r.map(ioresult ⇒ ioresult.status match {
         case Success(_) ⇒ Some(DownloadResult(
           source = tempPath,
-          hash = md5(tempTarget.getAbsolutePath),
+          hash = md5(tempTarget.getAbsoluteFile),
           origin = Some(uri.toString),
           target = Some(finalTarget.getAbsolutePath)
         ))

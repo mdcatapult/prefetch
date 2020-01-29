@@ -5,17 +5,18 @@ import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.{Http ⇒ AkkaHttp}
+import akka.http.scaladsl.{Http => AkkaHttp}
 import akka.stream.scaladsl.FileIO
-import akka.stream.{ActorMaterializer, IOResult, StreamTcpException}
+import akka.stream.{ActorMaterializer, StreamTcpException}
+import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
-import better.files.{File ⇒ ScalaFile, _}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash
+import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, Future}
 
 case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull)  extends Exception()
 
@@ -57,7 +58,8 @@ object Http extends Adapter with FileHash {
     // and something for another issue.
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
     implicit val materializer: ActorMaterializer = ActorMaterializer()
-    implicit val executor: ExecutionContextExecutor = system.dispatcher
+    import system.dispatcher
+
     val doclibRoot = config.getString("doclib.root")
     val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
     val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
@@ -74,23 +76,21 @@ object Http extends Adapter with FileHash {
       case streamException: StreamTcpException => throw streamException
       case e: Exception ⇒ throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
     } map {
-      case HttpResponse(StatusCodes.OK, headers, entity, _) ⇒ {
+      case HttpResponse(StatusCodes.OK, _, entity, _) ⇒
         entity
-      }
-      case resp @ HttpResponse(status, _, _, _) ⇒ {
+      case resp @ HttpResponse(status, _, _, _) ⇒
         resp.discardEntityBytes()
         throw new Exception(s"Unable to process $uri with status code $status")
-      }
     } flatMap {
       entity: ResponseEntity ⇒ entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
         // Something happened before fetching file, might want to do something about it....
         case e: Exception ⇒ throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
       }
     } map {
-      result ⇒
+      _ ⇒
         Some(DownloadResult(
           source = tempPathFinal,
-          hash = md5(new File(tempTargetFinal).getAbsolutePath),
+          hash = md5(new File(tempTargetFinal)),
           origin = Some(uri.toString),
           target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))

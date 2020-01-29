@@ -5,8 +5,8 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File ⇒ ScalaFile}
-import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
+import better.files.{File => ScalaFile}
+import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -17,12 +17,13 @@ import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
-import org.mongodb.scala.bson.{BsonInt32, ObjectId}
+import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
+import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContextExecutor}
 
 /**
  * PrefetchHandler Spec with Actor test system and config
@@ -56,7 +57,6 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     """.stripMargin)
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
-  implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
@@ -150,8 +150,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "return an relative doclib path for remote files from a relative remote-ingress path" in {
       val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(
         doc = createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
-        None,
-        None,
+        Nil,
+        Nil,
         Some(DownloadResult("", "", None, Some("remote/cheese/stinking-bishop.cz")))
 
       ))
@@ -168,8 +168,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       )
       val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
-        None,
-        None,
+        Nil,
+        Nil,
         None
       )
       val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
@@ -187,8 +187,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       )
       val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
-        None,
-        None,
+        Nil,
+        Nil,
         None
       )
       val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
@@ -206,8 +206,8 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       )
       val foundDoc = handler.FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
-        None,
-        None,
+        Nil,
+        Nil,
         None
       )
       val targetPath = handler.getLocalToRemoteTargetUpdatePath(origin)
@@ -252,14 +252,14 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "A parent prefetch message which has derivative false should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
-      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2 seconds)
+      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
       assert(result.isEmpty)
     }
 
     "A parent prefetch message with no derivative field should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
-      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2 seconds)
+      val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
       assert(result.isEmpty)
     }
 

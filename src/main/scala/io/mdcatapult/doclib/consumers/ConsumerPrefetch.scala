@@ -11,12 +11,11 @@ import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Queue
 import org.mongodb.scala.MongoCollection
 
-import scala.concurrent.ExecutionContextExecutor
-
 object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
   def start()(implicit as: ActorSystem, materializer: ActorMaterializer, mongo: Mongo): SubscriptionRef = {
-    implicit val ex: ExecutionContextExecutor = as.dispatcher
+    import as.dispatcher
+
     implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
 
     /** initialise queues **/

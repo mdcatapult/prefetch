@@ -21,7 +21,6 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
-import org.mongodb.scala.model.Filters.{equal ⇒ mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
@@ -239,6 +238,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
           case canonical :: rest =>
             assert(canonical.uri.get != uri)
             assert(rest.head.uri.get == uri)
+          case Nil => fail("no origins found")
         }
       }
     }
@@ -286,7 +286,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         val source = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
         val similarUri = Uri.parse(source)
         val doc = Await.result(handler.findDocument(handler.PrefetchUri(source, Some(similarUri))), Duration.Inf).get
-        assert(doc.origins.get.size == 3)
+        assert(doc.origins.size == 3)
       }
     }
 

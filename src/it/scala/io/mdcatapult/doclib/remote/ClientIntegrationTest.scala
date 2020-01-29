@@ -83,7 +83,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List((pwd/"test"/"remote-ingress")))
+    deleteDirectories(List(pwd/"test"/"remote-ingress"))
   }
 
 
