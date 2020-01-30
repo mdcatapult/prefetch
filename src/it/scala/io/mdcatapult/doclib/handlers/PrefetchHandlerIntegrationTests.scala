@@ -60,13 +60,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       |}
       |mongo {
       |  database: "prefetch_test"
-      |  collection: "documents_integration"
-      |  connection {
-      |    username: "doclib"
-      |    password: "doclib"
-      |    database: "admin"
-      |    hosts: ["localhost"]
-      |  }
+      |  collection: "documents"
       |}
     """.stripMargin).withFallback(ConfigFactory.load())
 
