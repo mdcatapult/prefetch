@@ -331,10 +331,46 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
       assert(result.get.toString == "The operation completed successfully")
 
-      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(true))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
       assert(docUpdate.get.metadata.get.toSet == (doclibDoc.metadata.get ::: metadataMap).toSet)
       assert(docUpdate.get.tags.get.toSet == (doclibDoc.tags.get ::: extraTags).toSet)
+    }
+  }
+
+  "A doc with no tags or metadata" can {
+    "have new tags and metadata added" in {
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val docId = new ObjectId()
+      val doclibDoc = DoclibDoc(
+        _id = docId,
+        source = "local/metadata-tags-test/file.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain"
+      )
+      val origin: List[Origin] = List(
+        Origin(
+          scheme = "mongodb",
+          hostname = None,
+          uri = None,
+          metadata = Some(List(MetaString("an", "origin"))),
+          headers = None
+        )
+      )
+      val metadataMap: List[MetaString] = List(MetaString("key", "value"), MetaString("key2", "value2"))
+      val extraTags = List("one", "two")
+      val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
+
+      assert(result.get.toString == "The operation completed successfully")
+
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
+      val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+      assert(docUpdate.get.metadata.get.toSet == metadataMap.toSet)
+      assert(docUpdate.get.tags.get.toSet == extraTags.toSet)
     }
   }
 
@@ -349,7 +385,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   }
 
   override def afterAll(): Unit = {
-//    Await.result(collection.drop().toFutureOption(), 5.seconds)
+    Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
