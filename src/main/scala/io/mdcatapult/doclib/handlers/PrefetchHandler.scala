@@ -33,6 +33,7 @@ import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 import org.mongodb.scala.{Completed, MongoCollection}
 
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -268,10 +269,18 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @param file File
    */
   def removeFile(file: File): Unit = {
-    if (file.isFile || (file.isDirectory && file.listFiles.isEmpty)) {
-      file.delete
-      removeFile(file.getParentFile)
+
+    @tailrec
+    def remove(o: Option[File]) {
+      o match {
+        case Some(f) if f.isFile || Option(f.listFiles()).exists(_.isEmpty) =>
+          file.delete()
+          remove(Option(f.getParentFile))
+        case _ => ()
+      }
     }
+
+    remove(Option(file))
   }
 
   /**

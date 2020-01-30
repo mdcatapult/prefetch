@@ -18,7 +18,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
 
-class QueueIntegrationTest extends TestKit(ActorSystem("PrefetchHandlerSpec", ConfigFactory.parseString(
+class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", ConfigFactory.parseString(
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
@@ -27,20 +27,21 @@ class QueueIntegrationTest extends TestKit(ActorSystem("PrefetchHandlerSpec", Co
   with BeforeAndAfterAll with MockFactory with ScalaFutures {
 
   "A queue" should {
-    "be created if it does not exists" in {
+    "be created if it does not exist" in {
 
       class MessageHandler(downstream: Queue[DoclibMsg]) {
-        def handle(msg: DoclibMsg, key: String): Unit = {
-        }
+        def handle(msg: DoclibMsg, key: String): Unit = ()
       }
       implicit val timeout: Timeout = Timeout(5 seconds)
       implicit val config: Config = ConfigFactory.load()
 
       // This first queue is just a convenience to boot the downstream queue
       // Note that we need to include a topic if we want the queue to be created
-      val convenienceQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("a-test-queue", Option(config.getString("op-rabbit.topic-exchange-name")))
-      val downstreamQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("downstream-test-queue", Option(config.getString("op-rabbit.topic-exchange-name")))
-      val upstreamQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("upstream-test-queue", Option("amq.topic"))
+      val consumerName = Option(config.getString("op-rabbit.topic-exchange-name"))
+
+      val convenienceQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("a-test-queue", consumerName)
+      val downstreamQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("downstream-test-queue", consumerName)
+      val upstreamQueue: Queue[DoclibMsg] = new Queue[DoclibMsg]("upstream-test-queue", consumerName)
 
       upstreamQueue.subscribe(new MessageHandler(downstreamQueue).handle)
       val downstreamSubscription: SubscriptionRef = downstreamQueue.subscribe(new MessageHandler(convenienceQueue).handle)

@@ -18,7 +18,7 @@ import io.mdcatapult.doclib.util.HashUtils.md5
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull)  extends Exception()
+case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull) extends Exception
 
 case class Http(uri: Uri)
 
@@ -39,7 +39,7 @@ object Http extends Adapter with FileHash {
   protected def retrieve(uri: Uri)(implicit actor: ActorSystem): Future[HttpResponse] = uri.schemeOption match  {
     case Some("http") | Some("https") ⇒ AkkaHttp().singleRequest(HttpRequest(uri = uri.toString()))
     case Some(unknown) ⇒ throw new UnsupportedSchemeException(unknown)
-    case  None ⇒ throw new UndefinedSchemeException(uri)
+    case None ⇒ throw new UndefinedSchemeException(uri)
   }
 
   /**
