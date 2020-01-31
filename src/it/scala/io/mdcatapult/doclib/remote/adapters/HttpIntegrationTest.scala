@@ -14,7 +14,7 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
   implicit val config: Config = ConfigFactory.parseString(
     s"""
       |doclib {
-      |  root: "${pwd/"test"}"
+      |  root: "${pwd/"test"/"http-test"}"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -57,5 +57,10 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
     assert(file.exists)
     //assert(file.length == expectedSize)
+  }
+
+  override def afterAll {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List(pwd/"test"/"http-test"))
   }
 }

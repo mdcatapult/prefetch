@@ -42,7 +42,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   implicit val config: Config = ConfigFactory.parseString(
     s"""
       |doclib {
-      |  root: "$pwd/test"
+      |  root: "$pwd/test/prefetch-test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -187,7 +187,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
       assert(docUpdate.get.derivative)
-      assert(Files.exists(Paths.get("test/local/derivatives/raw.txt").toAbsolutePath))
+      assert(Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath))
     }
   }
 
@@ -371,16 +371,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
-      Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
-      Files.createDirectories(Paths.get("test/local").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivatives/raw.txt").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
     }
   }
 
   override def afterAll(): Unit = {
     Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
+    deleteDirectories(List(pwd/"test"/"prefetch-test"))
   }
 }
