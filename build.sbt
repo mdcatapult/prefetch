@@ -14,15 +14,16 @@ lazy val doclibCommonVersion = "0.0.38"
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend Test
-concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
+// Tests now use different dirs so can be run concurrently
+//concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)
   .settings(
     Defaults.itSettings,
 //    Forking fixes a akka logging classloader test issue but sbt recommend setting ClassLoadLayeringStrategy instead to ScalaLibrary or Flat
-//    fork in Test := true,
-    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
+    fork in Test := true,
+//    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
     scalacOptions ++= Seq(
