@@ -1,17 +1,19 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import akka.stream.StreamTcpException
+import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.util.DirectoryDelete
 import io.mdcatapult.doclib.util.HashUtils.md5
-import org.scalatest.FlatSpec
+import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 
-class HttpSpec extends FlatSpec {
+class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
       |doclib {
-      |  root: ./test
+      |  root: "${pwd/"test"}"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -102,6 +104,14 @@ class HttpSpec extends FlatSpec {
     val fileName = "news.74bdbe0d010151d2d42f6768eca1290c.pdf"
     val hashName = Http.hashOrOriginal(origUri, fileName)
     assert(hashName == fileName)
+  }
+
+  override def afterAll = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List(
+      pwd/"test"/"remote-ingress",
+      pwd/"test"/"remote")
+    )
   }
 
 }

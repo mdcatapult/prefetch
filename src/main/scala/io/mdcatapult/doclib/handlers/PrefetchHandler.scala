@@ -84,6 +84,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
   sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
 
   /**
+   * If a file has zero length then prefetch will not process it during ingest.
+   *
+   * @param filePath The path to the zero length file
+   * @param doc The mongodb record which references this file
+   */
+  class ZeroLengthFileException(filePath: String, doc: DoclibDoc) extends Exception(s"$filePath has zero length and will not be processed further. See doclib record ${doc._id} for more details.")
+
+  /**
    * handle msg from rabbitmq
    *
    * @param msg PrefetchMsg
@@ -115,6 +123,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
           case Failure(_) ⇒ () // do nothing as error handling will capture
         }
     })
+  }
+
+  def zeroLength(filePath:String): Boolean = {
+    val absPath = (doclibRoot/filePath).path
+    val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
+    attrs.size == 0
   }
 
   /**
@@ -407,21 +421,25 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def handleFileUpdate(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc ⇒ Option[String], inRightLocation: String ⇒ Boolean): Option[Path] = {
-    val docHash: String = foundDoc.doc.hash
-    targetPathGenerator(foundDoc) match {
-      case Some(targetPath) ⇒
-        val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-        val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
-        if (docHash != currentHash)
-        // file already exists at target location but is not the same file, archive the old one then add the new one
-          Await.result(updateFile(foundDoc, tempPath, getArchivePath(targetPath, currentHash), Some(targetPath)), Duration.Inf)
-        else if (!inRightLocation(foundDoc.doc.source))
-          moveFile(tempPath, targetPath)
-        else { // not a new file or a file that requires updating so we will just cleanup the temp file
-          removeFile(tempPath)
-          None
-        }
-      case None ⇒ None
+    if (!zeroLength(tempPath)) {
+      val docHash: String = foundDoc.doc.hash
+      targetPathGenerator(foundDoc) match {
+        case Some(targetPath) ⇒
+          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+          val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
+          if (docHash != currentHash)
+          // file already exists at target location but is not the same file, archive the old one then add the new one
+            Await.result(updateFile(foundDoc, tempPath, getArchivePath(targetPath, currentHash), Some(targetPath)), Duration.Inf)
+          else if (!inRightLocation(foundDoc.doc.source))
+            moveFile(tempPath, targetPath)
+          else { // not a new file or a file that requires updating so we will just cleanup the temp file
+            removeFile(tempPath)
+            None
+          }
+        case None ⇒ None
+      }
+    } else {
+      throw new ZeroLengthFileException(tempPath, foundDoc.doc)
     }
   }
 

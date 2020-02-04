@@ -289,12 +289,48 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(doc.origins.size == 3)
       }
     }
+  "Prefetch handler" can {
+    "calculate if a file has zero length " in {
+      val source = "ingress/zero_length_file.txt"
+      assert(handler.zeroLength(source))
+    }
+  }
+
+  "Prefetch handler" can {
+    "calculate if a file has length greater than zero " in {
+      val source = "ingress/non_zero_length_file.txt"
+      assert(!handler.zeroLength(source))
+    }
+  }
+
+  "If a file has zero length it" should {
+    "not be processed" in {
+      val id = new ObjectId()
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val doc = DoclibDoc(
+        _id = id,
+        source = "ingress/zero_length_file.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain",
+        tags = Some(List[String]())
+      )
+      assertThrows[handler.ZeroLengthFileException] {
+        handler.handleFileUpdate(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+      }
+    }
+  }
 
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/non_zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/non_zero_length_file.txt").toAbsolutePath)
       Files.createDirectories(Paths.get("test/local").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
     }
