@@ -20,9 +20,10 @@ trait Adapter {
     *
     * @param uri io.lemonlabs.uri.Uri
     * @param root root of path to generate
+    * @param fileName optional filename which, if defined, will replace the last part of the uri
     * @return
     */
-  def generateFilePath(uri: Uri, root: Option[String] = None): String = {
+  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String] = None): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
     val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
@@ -33,14 +34,23 @@ trait Adapter {
         .foldLeft(""){_ + _}
     }"
 
-    def generateBasename(path: Path) = {
-      val endsWithSlash = """(.*/)$""".r
+    def insertQueryHash(pathEnd: String): String = {
       val hasExtension = """(.*)\.(.*)$""".r
-      path.toString match {
-        case endsWithSlash(p) ⇒ s"${p}index$queryHash.html"
+
+      pathEnd match {
+        case "" ⇒ s"index$queryHash.html"
         case hasExtension(p, ext) ⇒ s"$p$queryHash.$ext"
         case p ⇒ s"$p$queryHash.html"
       }
+    }
+
+    def generateBasename(path: Path): String = {
+      val lastPathPart =
+        fileName.getOrElse(path.parts.last)
+
+      val hashedLastPathPart = insertQueryHash(lastPathPart)
+
+      "/" + (path.parts.init ++ Vector(hashedLastPathPart)).mkString("/")
     }
 
     s"$targetDir/${
