@@ -314,11 +314,39 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
+  "A file with the same contents" should {
+    "not create two docs" in {
+      val docLocation = "ingress/zero_length_file.txt"
+      val docLocation2 = "ingress/zero_length_file2.txt"
+      val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
+      val fetchedDoc = Await.result(handler.findLocalDocument(docLocation2), 5.seconds).get
+      assert(origDoc.doc._id == fetchedDoc.doc._id)
+    }
+  }
+
+  "A file with the same name but different contents" should {
+    "create two docs" in {
+      val doclibRoot = config.getString("doclib.root")
+      val ingressDir = config.getString("doclib.local.temp-dir")
+      val firstDoc = "aFile.txt"
+      val secondDoc = "aFile.txt"
+      val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/first/$firstDoc").createFileIfNotExists(createParents = true)
+      val docFile2: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/second/$secondDoc").createFileIfNotExists(createParents = true)
+      docFile.appendLine("Some contents")
+      docFile2.appendLine("Different contents")
+      val origDoc = Await.result(handler.findLocalDocument(Paths.get(ingressDir, "first", firstDoc).toString), 5.seconds).get
+      val fetchedDoc = Await.result(handler.findLocalDocument(Paths.get(ingressDir, "second", firstDoc).toString), 5.seconds).get
+      assert(origDoc.doc._id != fetchedDoc.doc._id)
+    }
+  }
+
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file2.txt").toAbsolutePath)
       Files.createDirectories(Paths.get("test/local").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
     }
@@ -327,6 +355,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   override def afterAll(): Unit = {
     Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
 }
