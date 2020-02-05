@@ -8,6 +8,7 @@ import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
+import better.files.{File ⇒ ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
@@ -15,6 +16,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
+import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
@@ -289,6 +291,28 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(doc.origins.size == 3)
       }
     }
+
+  "Different zero length files " should {
+    "have the same md5" in {
+      val sourceFile = "https/path/to/"
+      val doclibRoot = config.getString("doclib.root")
+      val ingressDir = config.getString("doclib.local.temp-dir")
+      val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/$sourceFile/aFile.txt").createFileIfNotExists(createParents = true)
+      val docFile2: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/$sourceFile/aFile2.txt").createFileIfNotExists(createParents = true)
+      val docFile3: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/$sourceFile/aFile3.txt").createFileIfNotExists(createParents = true)
+      for {
+        tempFile <- docFile.toTemporary
+        tempFile2 <- docFile2.toTemporary
+        tempFile3 <- docFile3.toTemporary
+
+      } {
+        val fileHash = md5(tempFile.toJava)
+        val fileHash2 = md5(tempFile2.toJava)
+        val fileHash3 = md5(tempFile3.toJava)
+        fileHash should (equal (fileHash2) and equal (fileHash3))
+      }
+    }
+  }
 
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)

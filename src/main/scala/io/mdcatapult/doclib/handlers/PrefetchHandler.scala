@@ -533,7 +533,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
         s"^${config.getString("doclib.local.temp-dir")}",
         config.getString("doclib.local.target-dir")
       ))
-      md5 ← OptionT.some[Future](md5(s"$doclibRoot$source"))
+      md5 ← OptionT.some[Future](md5(Paths.get(s"$doclibRoot$source").toFile))
       (doc, archivable) ← OptionT(findOrCreateDoc(source, md5, Some(or(
         equal("source", source),
         equal("source", target)
