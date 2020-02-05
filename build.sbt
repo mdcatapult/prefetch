@@ -21,8 +21,8 @@ lazy val root = (project in file("."))
   .settings(
     Defaults.itSettings,
 //    Forking fixes a akka logging classloader test issue but sbt recommend setting ClassLoadLayeringStrategy instead to ScalaLibrary or Flat
-//    fork in Test := true,
-    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
+    fork in Test := true,
+//    classLoaderLayeringStrategy in Test := ClassLoaderLayeringStrategy.Flat,
     name              := "consumer-prefetch",
     scalaVersion      := "2.12.10",
     scalacOptions ++= Seq(
