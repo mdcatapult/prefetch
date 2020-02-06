@@ -59,8 +59,9 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
     //assert(file.length == expectedSize)
   }
 
-  override def afterAll {
+  override def afterAll = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd/"test"/"http-test"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
 }
