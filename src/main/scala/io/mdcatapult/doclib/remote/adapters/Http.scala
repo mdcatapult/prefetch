@@ -68,21 +68,24 @@ object Http extends Adapter with FileHash {
       case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
     } map {
       case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-        Headers.filename(headers) -> entity
+        (Headers.filename(headers), Headers.contentType(headers), entity)
       case resp @ HttpResponse(status, _, _, _) =>
         resp.discardEntityBytes()
         throw new Exception(s"Unable to process $uri with status code $status")
-    } flatMap { x: (Option[String], ResponseEntity) =>
-      val (fileName, entity) = x
+    } flatMap { x: (Option[String], Option[String], ResponseEntity) =>
+      val (fileName, contentType, entity) = x
 
-      val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), fileName)
-      val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), fileName)
+      val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), fileName, contentType)
+      val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), fileName, contentType)
+
       val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
       val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
+
       val (tempPathFinal: String, tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
         case orig if orig == tempTarget.getName => (tempPath, tempTarget.toString, finalTarget.toString)
         case hashed => (tempPath.replace(tempTarget.getName, hashed), tempTarget.toString.replace(tempTarget.getName, hashed), finalTarget.toString.replace(finalTarget.getName, hashed))
       }
+
       tempTarget.getParentFile.mkdirs()
 
       val r: Future[IOResult] =

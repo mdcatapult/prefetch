@@ -7,7 +7,7 @@ import org.scalatest.OptionValues._
 
 class HeadersSpec extends FlatSpec with Matchers with MockFactory {
 
-  "An Headers.filename" should "find filename from Content-Disposition with filename*" in {
+  "Headers.filename" should "find filename from Content-Disposition with filename*" in {
     val header = stub[HttpHeader]
 
     (header.lowercaseName _).when().returns("content-disposition")
@@ -67,7 +67,59 @@ class HeadersSpec extends FlatSpec with Matchers with MockFactory {
     Headers.filename(headers).value should be("DETERMINATION OF VP IN CRUDE_SM_VER.pdf")
   }
 
+  it should "not find filename from a sequence of headers when Content-Disposition is not in list of headers" in {
+    val headers = Seq(stub[HttpHeader], stub[HttpHeader], stub[HttpHeader])
+
+    (headers.head.lowercaseName _).when().returns("content-type")
+    (headers.head.value _).when().returns("application/pdf")
+
+    (headers.last.lowercaseName _).when().returns("content-length")
+    (headers.last.value _).when().returns("133694")
+
+    Headers.filename(headers) should be(None)
+  }
+
   it should "find no filename from an empty sequence" in {
     Headers.filename(Seq()) should be(None)
+  }
+
+  "Headers.contentType" should "find content type from header with Content-Type" in {
+    val header = stub[HttpHeader]
+
+    (header.lowercaseName _).when().returns("content-type")
+    (header.value _).when().returns("application/pdf")
+
+    Headers.contentType(Seq(header)).value should be("application/pdf")
+  }
+
+  it should "find content type from a sequence of headers" in {
+    val headers = Seq(stub[HttpHeader], stub[HttpHeader], stub[HttpHeader])
+
+    (headers(1).lowercaseName _).when().returns("content-disposition")
+    (headers(1).value _).when().returns("attachment; filename*=\"DETERMINATION OF VP IN CRUDE_SM_VER.pdf\"")
+
+    (headers.head.lowercaseName _).when().returns("content-type")
+    (headers.head.value _).when().returns("text/html")
+
+    (headers.last.lowercaseName _).when().returns("content-length")
+    (headers.last.value _).when().returns("133694")
+
+    Headers.contentType(headers).value should be("text/html")
+  }
+
+  it should "not find a content type from a sequence of headers when Content-Type is not in list of headers" in {
+    val headers = Seq(stub[HttpHeader], stub[HttpHeader], stub[HttpHeader])
+
+    (headers(1).lowercaseName _).when().returns("content-disposition")
+    (headers(1).value _).when().returns("attachment; filename*=\"DETERMINATION OF VP IN CRUDE_SM_VER.pdf\"")
+
+    (headers.last.lowercaseName _).when().returns("content-length")
+    (headers.last.value _).when().returns("133694")
+
+    Headers.contentType(headers) should be(None)
+  }
+
+  it should "find no content type from an empty sequence" in {
+    Headers.contentType(Seq()) should be(None)
   }
 }
