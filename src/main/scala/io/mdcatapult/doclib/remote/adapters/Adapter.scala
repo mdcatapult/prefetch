@@ -23,7 +23,7 @@ trait Adapter {
     * @param fileName optional filename which, if defined, will replace the last part of the uri
     * @return
     */
-  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String] = None): String = {
+  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
     val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
@@ -45,12 +45,9 @@ trait Adapter {
     }
 
     def generateBasename(path: Path): String = {
-      val lastPathPart =
-        fileName.getOrElse(path.parts.last)
+      val hashedLastPathPart = insertQueryHash(path.parts.last)
 
-      val hashedLastPathPart = insertQueryHash(lastPathPart)
-
-      "/" + (path.parts.init ++ Vector(hashedLastPathPart)).mkString("/")
+      "/" + (path.parts.init ++ Vector(hashedLastPathPart) ++ fileName.toVector).mkString("/")
     }
 
     s"$targetDir/${

@@ -109,8 +109,8 @@ object Ftp extends Adapter with FileHash {
     implicit val executor: ExecutionContextExecutor = system.dispatcher
 
     val doclibRoot = config.getString("doclib.root")
-    val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")))
-    val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")))
+    val remotePath = generateFilePath(uri, Option(config.getString("doclib.remote.target-dir")), None)
+    val tempPath = generateFilePath(uri, Option(config.getString("doclib.remote.temp-dir")), None)
     val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
     val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
 
