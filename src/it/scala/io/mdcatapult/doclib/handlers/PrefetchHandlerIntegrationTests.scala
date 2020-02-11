@@ -44,7 +44,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   implicit val config: Config = ConfigFactory.parseString(
     s"""
       |doclib {
-      |  root: "$pwd/test"
+      |  root: "$pwd/test/prefetch-test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -59,6 +59,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       |  derivative {
       |    target-dir: "derivatives"
       |  }
+      |}
+      |mongo {
+      |  database: "prefetch_test"
+      |  collection: "documents"
       |}
     """.stripMargin).withFallback(ConfigFactory.load())
 
@@ -185,7 +189,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
       assert(docUpdate.get.derivative)
-      assert(Files.exists(Paths.get("test/local/derivatives/raw.txt").toAbsolutePath))
+      assert(Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath))
     }
   }
 
@@ -326,6 +330,81 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
+  "Processing the same doc with additional metadata" should {
+    "add the metadata to the doclib doc" in {
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val docId = new ObjectId()
+      val doclibDoc = DoclibDoc(
+        _id = docId,
+        source = "local/metadata-tags-test/file.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain",
+        tags = Some(List[String]("one")),
+        metadata = Some(List(MetaString("key", "value")))
+      )
+      val origin: List[Origin] = List(
+        Origin(
+          scheme = "mongodb",
+          hostname = None,
+          uri = None,
+          metadata = Some(List(MetaString("an", "origin"))),
+          headers = None
+        )
+      )
+      val metadataMap: List[MetaString] = List(MetaString("key2", "value2"), MetaString("key3", "value3"))
+      val extraTags = List("two", "three")
+      val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
+
+      assert(result.get.toString == "The operation completed successfully")
+
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
+      val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+      assert(docUpdate.get.metadata.get.toSet == (doclibDoc.metadata.get ::: metadataMap).toSet)
+      assert(docUpdate.get.tags.get.toSet == (doclibDoc.tags.get ::: extraTags).toSet)
+    }
+  }
+
+  "A doc with no tags or metadata" can {
+    "have new tags and metadata added" in {
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val docId = new ObjectId()
+      val doclibDoc = DoclibDoc(
+        _id = docId,
+        source = "local/metadata-tags-test/file2.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain"
+      )
+      val origin: List[Origin] = List(
+        Origin(
+          scheme = "mongodb",
+          hostname = None,
+          uri = None,
+          metadata = Some(List(MetaString("an", "origin"))),
+          headers = None
+        )
+      )
+      val metadataMap: List[MetaString] = List(MetaString("key", "value"), MetaString("key2", "value2"))
+      val extraTags = List("one", "two")
+      val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
+
+      assert(result.get.toString == "The operation completed successfully")
+
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
+      val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+      assert(docUpdate.get.metadata.get.toSet == metadataMap.toSet)
+      assert(docUpdate.get.tags.get.toSet == extraTags.toSet)
+
+    }
+  }
+
   "Different zero length files " should {
     "have the same md5" in {
       val sourceFile = "https/path/to/"
@@ -377,19 +456,22 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
-      Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
-      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file.txt").toAbsolutePath)
-      Files.copy(Paths.get("test/non_zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/non_zero_length_file.txt").toAbsolutePath)
-      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file2.txt").toAbsolutePath)
-      Files.createDirectories(Paths.get("test/local").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/ingress/metadata-tags-test").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivatives/raw.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/non_zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/non_zero_length_file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
     }
   }
 
   override def afterAll(): Unit = {
     Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
+    deleteDirectories(List(pwd/"test"/"prefetch-test"))
   }
 }

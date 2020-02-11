@@ -12,14 +12,14 @@ import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
-    """
-      |doclib {
-      |  root: "./test"
-      |  remote {
-      |    target-dir: "remote"
-      |    temp-dir: "remote-ingress"
-      |  }
-      |}
+    s"""
+       |doclib {
+       |  root: "${pwd/"test"/"ftp-test"}"
+       |  remote {
+       |    target-dir: "remote"
+       |    temp-dir: "remote-ingress"
+       |  }
+       |}
     """.stripMargin)
 
   "A valid anonymous FTP URL" should "download a file successfully" in {
@@ -39,8 +39,10 @@ class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAft
     }
   }
 
+
   override def afterAll = {
     // These may or may not exist but are all removed anyway
+    deleteDirectories(List(pwd/"test"/"ftp-test"))
     deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
 

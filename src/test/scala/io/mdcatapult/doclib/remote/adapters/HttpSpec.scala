@@ -11,9 +11,9 @@ import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
-    """
+    s"""
       |doclib {
-      |  root: "${pwd/"test"}"
+      |  root: "$pwd/"test""
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"

@@ -14,7 +14,8 @@ lazy val doclibCommonVersion = "0.0.38"
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend Test
-concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
+// Tests now use different dirs so can be run concurrently
+//concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)
