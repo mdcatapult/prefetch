@@ -368,6 +368,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       assert(docUpdate.get.metadata.get.toSet == metadataMap.toSet)
       assert(docUpdate.get.tags.get.toSet == extraTags.toSet)
 
+    }
+  }
+
   "Different zero length files " should {
     "have the same md5" in {
       val sourceFile = "https/path/to/"
@@ -424,11 +427,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
       Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/ingress/derivatives/raw.txt").toAbsolutePath)
-      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file.txt").toAbsolutePath)
-      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/ingress/zero_length_file2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file2.txt").toAbsolutePath)
       Files.createDirectories(Paths.get("test/local").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/local/test file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
     }
   }
 
@@ -436,6 +438,5 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     Await.result(collection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd/"test"/"prefetch-test"))
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
 }
