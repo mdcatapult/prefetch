@@ -1,11 +1,13 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{UndefinedSchemeException, UnsupportedSchemeException}
-import org.scalatest.FlatSpec
+import io.mdcatapult.doclib.util.DirectoryDelete
+import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 
-class FtpSpec extends FlatSpec {
+class FtpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -58,6 +60,13 @@ class FtpSpec extends FlatSpec {
     assertThrows[UndefinedSchemeException] {
       Ftp.download(uri)
     }
+  }
+  override def afterAll = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List(
+      pwd / "test" / "remote-ingress",
+      pwd / "test" / "remote")
+    )
   }
 
 }

@@ -295,6 +295,40 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(doc.origins.size == 3)
       }
     }
+  "Prefetch handler" can {
+    "calculate if a file has zero length " in {
+      val source = "ingress/zero_length_file.txt"
+      assert(handler.zeroLength(source))
+    }
+  }
+
+  "Prefetch handler" can {
+    "calculate if a file has length greater than zero " in {
+      val source = "ingress/non_zero_length_file.txt"
+      assert(!handler.zeroLength(source))
+    }
+  }
+
+  "If a file has zero length it" should {
+    "not be processed" in {
+      val id = new ObjectId()
+      val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+      val doc = DoclibDoc(
+        _id = id,
+        source = "ingress/zero_length_file.txt",
+        hash = "12345",
+        derivative = false,
+        derivatives = None,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain",
+        tags = Some(List[String]())
+      )
+      assertThrows[handler.ZeroLengthFileException] {
+        handler.handleFileUpdate(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+      }
+    }
+  }
 
   "Processing the same doc with additional metadata" should {
     "add the metadata to the doclib doc" in {
@@ -340,7 +374,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val docId = new ObjectId()
       val doclibDoc = DoclibDoc(
         _id = docId,
-        source = "local/metadata-tags-test/file.txt",
+        source = "local/metadata-tags-test/file2.txt",
         hash = "12345",
         derivative = false,
         derivatives = None,
@@ -363,7 +397,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
       assert(result.get.toString == "The operation completed successfully")
 
-      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
       assert(docUpdate.get.metadata.get.toSet == metadataMap.toSet)
       assert(docUpdate.get.tags.get.toSet == extraTags.toSet)
@@ -423,14 +457,15 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     Await.result(collection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivatives/raw.txt").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/ingress/metadata-tags-test").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivatives/raw.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
-      Files.createDirectories(Paths.get("test/ingress/derivatives").toAbsolutePath)
+      Files.copy(Paths.get("test/non_zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/non_zero_length_file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file2.txt").toAbsolutePath)
-      Files.createDirectories(Paths.get("test/local").toAbsolutePath)
-      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
     }
   }
 

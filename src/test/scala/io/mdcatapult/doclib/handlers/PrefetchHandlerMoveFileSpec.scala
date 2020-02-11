@@ -75,6 +75,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       val ingressDir = config.getString("doclib.local.temp-dir")
       val localTargetDir = config.getString("doclib.local.target-dir")
       val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/$sourceFile").createFileIfNotExists(createParents = true)
+      docFile.appendLine("Not an empty file")
       for {
         tempFile <- docFile.toTemporary
       } {
@@ -112,6 +113,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       val remoteIngressDir = config.getString("doclib.remote.temp-dir")
       val remoteTargetDir = config.getString("doclib.remote.target-dir")
       val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$remoteIngressDir/$sourceFile").createFileIfNotExists(createParents = true)
+      docFile.appendLine("Not an empty file")
       for {
         tempFile <- docFile.toTemporary
       } {
