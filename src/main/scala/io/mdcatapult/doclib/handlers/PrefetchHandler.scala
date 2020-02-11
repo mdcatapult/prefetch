@@ -152,10 +152,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    */
   def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[DoclibDoc]] = {
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
+    //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
+    // during the prefetch process. Changed it to 'set' just in case...
     val update = combine(
       getDocumentUpdate(found, msg),
-      addEachToSet("tags", msg.tags.getOrElse(List[String]()).distinct:_*),
-      set("metadata", msg.metadata.getOrElse(List[MetaValueUntyped]())),
+      set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
+      set("metadata", (msg.metadata.getOrElse(List[MetaValueUntyped]()) ::: found.doc.metadata.getOrElse(List[MetaValueUntyped]())).distinct),
       set("derivative", msg.derivative.getOrElse(false)),
       set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
