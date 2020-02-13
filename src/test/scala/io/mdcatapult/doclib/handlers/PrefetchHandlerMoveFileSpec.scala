@@ -10,11 +10,12 @@ import better.files.File.Attributes
 import better.files.{File => ScalaFile}
 import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
+import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs}
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.util.{DirectoryDelete, FileHash, MongoCodecs}
 import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.doclib.util.{DirectoryDelete, FileHash, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -63,7 +64,11 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val handler = new PrefetchHandler(downstream, archiver)
+
+  private val readLimiter = SemaphoreLimitedExecution.create(1)
+  private val writeLimiter = SemaphoreLimitedExecution.create(1)
+
+  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
 
   "The handler" should {

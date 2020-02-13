@@ -8,10 +8,11 @@ import akka.actor._
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
-import better.files.{File ⇒ ScalaFile}
+import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin}
@@ -78,7 +79,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val handler = new PrefetchHandler(downstream, archiver)
+
+  private val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
+  private val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
+
+  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
   "Parent docs" should {
     "be updated wth new child info" in {

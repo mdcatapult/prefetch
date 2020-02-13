@@ -12,6 +12,7 @@ import cats.implicits._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.concurrency.LimitedExecution
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
@@ -40,20 +41,25 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 /**
- * Handler to perform prefetch of source supplied in Prefetch Messages
- * Will automatically identify file and create a new entry in the document library
- * if it is a "remote" file it will attempt to retrieve the file and ensure consistency
- * all files receive an md5 hash of its contents if there is a detectable difference between
- * hashes it will attempt to archive and update appropriately
- *
- * @param downstream downstream queue to push Document Library messages onto
- * @param archiver queue to push all archived documents to
- * @param ec ExecutionContext
- * @param materializer ActorMateriaizer
- * @param config Config
- * @param collection MongoCollection[Document] to read documents from
- */
-class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[DoclibMsg])
+  * Handler to perform prefetch of source supplied in Prefetch Messages
+  * Will automatically identify file and create a new entry in the document library
+  * if it is a "remote" file it will attempt to retrieve the file and ensure consistency
+  * all files receive an md5 hash of its contents if there is a detectable difference between
+  * hashes it will attempt to archive and update appropriately
+  *
+  * @param downstream downstream queue to push Document Library messages onto
+  * @param archiver queue to push all archived documents to
+  * @param readLimiter used to limit number of concurrent reads from Mongo
+  * @param writeLimiter used to limit number of concurrent writes to Mongo
+  * @param ec ExecutionContext
+  * @param materializer ActorMateriaizer
+  * @param config Config
+  * @param collection MongoCollection[Document] to read documents from
+  */
+class PrefetchHandler(downstream: Sendable[DoclibMsg],
+                      archiver: Sendable[DoclibMsg],
+                      readLimiter: LimitedExecution,
+                      writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
                       materializer: ActorMaterializer,
                       config: Config,
@@ -99,24 +105,27 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
+    def flag[T](f: DoclibFlags => Future[T]): Future[T] =
+      writeLimiter(flags) {f}
+
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-      started: UpdateResult ← OptionT(flags.start(found.doc))
+      started: UpdateResult ← OptionT(flag {_.start(found.doc)})
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(flags.end(found.doc, started.getModifiedCount > 0))
+      _ <- OptionT(flag {_.end(found.doc, noCheck=started.getModifiedCount > 0)})
     } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
         case None ⇒ throw new RuntimeException("Unknown Error Occurred")
       }
-      case Failure(e: DoclibDocException) ⇒ flags.error(e.getDoc, noCheck = true)
+      case Failure(e: DoclibDocException) ⇒ flag {_.error(e.getDoc, noCheck = true)}
       case Failure(_) ⇒
         // enforce error flag
         Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
           case Success(value: Option[FoundDoc]) ⇒ value match {
-            case Some(found) ⇒ flags.error(found.doc, noCheck = true)
+            case Some(found) ⇒ flag {_.error(found.doc, noCheck = true)}
             case _ ⇒ () // do nothing as error handling will capture
           }
           // There is no mongo doc - error happened before one was created
@@ -144,7 +153,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
           parent => {
             val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
-            collection.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
+            writeLimiter(collection) {
+              _.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
+            }
           }
         ))
     } else {
@@ -176,12 +187,18 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
       set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
-    collection.updateOne(equal("_id", found.doc._id), update).toFutureOption().andThen({
+    writeLimiter(collection) {
+      _.updateOne(equal("_id", found.doc._id), update).toFutureOption()
+    }.andThen({
       case Success(_) ⇒ downstream.send(DoclibMsg(id = found.doc._id.toString))
       case Failure(e) => throw e
     }).flatMap({
-      case Some(_) ⇒ collection.find(equal("_id", found.doc._id)).headOption()
-      case None ⇒ Future.successful(None)
+      case Some(_) ⇒
+        readLimiter(collection) {
+          _.find(equal("_id", found.doc._id)).headOption()
+        }
+      case None ⇒
+        Future.successful(None)
     })
   }
 
@@ -205,14 +222,21 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     * @return
     */
   def resolveUpstreamOrigins(path: String): List[Origin] = {
-    Await.result(collection.find(equal("derivatives.path", path)).toFuture(), Duration.Inf).map(d ⇒ Origin(
-      scheme = "mongodb",
-      metadata = Some(List(
-        MetaString("db", config.getString("mongo.database")),
-        MetaString("collection", config.getString("mongo.collection")),
-        MetaString("_id", d._id.toHexString)
-      ))
-    )).toList
+    Await.result(
+      readLimiter(collection) {
+        _.find(equal("derivatives.path", path)).toFuture()
+      },
+      Duration.Inf
+    ).map(d ⇒
+      Origin(
+        scheme = "mongodb",
+        metadata = Some(List(
+          MetaString("db", config.getString("mongo.database")),
+          MetaString("collection", config.getString("mongo.collection")),
+          MetaString("_id", d._id.toHexString)
+        ))
+      )
+    ).toList
   }
 
   /**
@@ -597,19 +621,23 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    collection.find(
-      or(
-        equal("hash", hash),
-        query.getOrElse(combine())
+    readLimiter(collection) {
+      _.find(
+        or(
+          equal("hash", hash),
+          query.getOrElse(combine())
+        )
       )
-    ).sort(descending("created")).toFuture()
+        .sort(descending("created"))
+        .toFuture()
+    }
       .flatMap({
         case latest :: archivable if latest.hash == hash ⇒
           Future.successful(latest -> archivable)
         case archivable =>
           createDoc(source, hash).map(doc => doc -> archivable.toList)
       })
-      .map(Some.apply)
+      .map(Option.apply)
   }
 
   def createDoc(source: String, hash: String): Future[DoclibDoc] = {
@@ -628,7 +656,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg], archiver: Sendable[Doclib
     )
 
     val inserted: Future[Option[Completed]] =
-      collection.insertOne(newDoc).toFutureOption()
+      writeLimiter(collection) {
+        _.insertOne(newDoc).toFutureOption()
+      }
 
     inserted.map(_ => newDoc)
   }
