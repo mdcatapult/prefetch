@@ -41,21 +41,21 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 /**
-  * Handler to perform prefetch of source supplied in Prefetch Messages
-  * Will automatically identify file and create a new entry in the document library
-  * if it is a "remote" file it will attempt to retrieve the file and ensure consistency
-  * all files receive an md5 hash of its contents if there is a detectable difference between
-  * hashes it will attempt to archive and update appropriately
-  *
-  * @param downstream downstream queue to push Document Library messages onto
-  * @param archiver queue to push all archived documents to
-  * @param readLimiter used to limit number of concurrent reads from Mongo
-  * @param writeLimiter used to limit number of concurrent writes to Mongo
-  * @param ec ExecutionContext
-  * @param materializer ActorMateriaizer
-  * @param config Config
-  * @param collection MongoCollection[Document] to read documents from
-  */
+ * Handler to perform prefetch of source supplied in Prefetch Messages
+ * Will automatically identify file and create a new entry in the document library
+ * if it is a "remote" file it will attempt to retrieve the file and ensure consistency
+ * all files receive an md5 hash of its contents if there is a detectable difference between
+ * hashes it will attempt to archive and update appropriately
+ *
+ * @param downstream   downstream queue to push Document Library messages onto
+ * @param archiver     queue to push all archived documents to
+ * @param readLimiter  used to limit number of concurrent reads from Mongo
+ * @param writeLimiter used to limit number of concurrent writes to Mongo
+ * @param ec           ExecutionContext
+ * @param materializer ActorMateriaizer
+ * @param config       Config
+ * @param collection   MongoCollection[Document] to read documents from
+ */
 class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       archiver: Sendable[DoclibMsg],
                       readLimiter: LimitedExecution,
@@ -84,7 +84,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * Case class for handling the various permutations of local and remote documents
    *
    * @param doc      Document
-   * @param origins   PrefetchOrigin
+   * @param origins  PrefetchOrigin
    * @param download DownloadResult
    */
   sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
@@ -93,9 +93,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * If a file has zero length then prefetch will not process it during ingest.
    *
    * @param filePath The path to the zero length file
-   * @param doc The mongodb record which references this file
+   * @param doc      The mongodb record which references this file
    */
   class ZeroLengthFileException(filePath: String, doc: DoclibDoc) extends Exception(s"$filePath has zero length and will not be processed further. See doclib record ${doc._id} for more details.")
+
+  /**
+   * If a file has zero length then prefetch will not process it during ingest.
+   *
+   * @param doc The mongodb record which references this file
+   */
+  class SilentValidationException(doc: DoclibDoc) extends DoclibDocException(doc, "Suppressed exception for Validation")
 
   /**
    * handle msg from rabbitmq
@@ -106,26 +113,38 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     def flag[T](f: DoclibFlags => Future[T]): Future[T] =
-      writeLimiter(flags) {f}
+      writeLimiter(flags) {
+        f
+      }
 
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-      started: UpdateResult ← OptionT(flag {_.start(found.doc)})
+      if valid(msg, found)
+      started: UpdateResult ← OptionT(flag {
+        _.start(found.doc)
+      })
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(flag {_.end(found.doc, noCheck=started.getModifiedCount > 0)})
+      _ <- OptionT(flag {
+        _.end(found.doc, noCheck = started.getModifiedCount > 0)
+      })
     } yield (newDoc, found.doc)).value.andThen({
       case Success(r) ⇒ r match {
         case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
         case None ⇒ throw new RuntimeException("Unknown Error Occurred")
       }
-      case Failure(e: DoclibDocException) ⇒ flag {_.error(e.getDoc, noCheck = true)}
+      case Failure(e: SilentValidationException) => // do nothing, silently ignored
+      case Failure(e: DoclibDocException) ⇒ flag {
+        _.error(e.getDoc, noCheck = true)
+      }
       case Failure(_) ⇒
         // enforce error flag
         Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
           case Success(value: Option[FoundDoc]) ⇒ value match {
-            case Some(found) ⇒ flag {_.error(found.doc, noCheck = true)}
+            case Some(found) ⇒ flag {
+              _.error(found.doc, noCheck = true)
+            }
             case _ ⇒ () // do nothing as error handling will capture
           }
           // There is no mongo doc - error happened before one was created
@@ -134,14 +153,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     })
   }
 
-  def zeroLength(filePath:String): Boolean = {
-    val absPath = (doclibRoot/filePath).path
+  def zeroLength(filePath: String): Boolean = {
+    val absPath = (doclibRoot / filePath).path
     val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
     attrs.size == 0
   }
 
   /**
    * Update parent "origin" documents with the new source for the derivative
+   *
    * @param msg PrefetchMsg
    * @return
    */
@@ -151,13 +171,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       // origins by this point should have been processed updated and consolidated so use doc origins and not msg ones
       val opts = UpdateOptions().arrayFilters(List(equal("elem.path", msg.source)).asJava)
       Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
-          parent => {
-            val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
-            writeLimiter(collection) {
-              _.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
-            }
+        parent => {
+          val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
+          writeLimiter(collection) {
+            _.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
           }
-        ))
+        }
+      ))
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(List())
@@ -165,14 +185,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   def parentId(metadata: List[MetaValueUntyped]): Any = {
-    val origin:List[MetaValueUntyped] = metadata.filter(m => m.getKey == "_id")
+    val origin: List[MetaValueUntyped] = metadata.filter(m => m.getKey == "_id")
     origin.head.getValue
   }
 
   /**
    * process the found documents and generate an update to apply to the document before pushing downstream
+   *
    * @param found FoundDoc
-   * @param msg PrefetchMsg
+   * @param msg   PrefetchMsg
    * @return
    */
   def process(found: FoundDoc, msg: PrefetchMsg): Future[Option[DoclibDoc]] = {
@@ -204,12 +225,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * build consolidated list of origins from doc and msg
+   *
    * @param found FoundDoc
-   * @param msg PrefetchMsg
+   * @param msg   PrefetchMsg
    * @return
    */
   def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
-      found.doc.origin.getOrElse(List[Origin]()) :::
+    found.doc.origin.getOrElse(List[Origin]()) :::
       found.origins :::
       msg.origin.getOrElse(List[Origin]()) :::
       resolveUpstreamOrigins(msg.source)
@@ -217,10 +239,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
 
   /**
-    * Function to find origins that have matching derivative paths
-    * @param path String
-    * @return
-    */
+   * Function to find origins that have matching derivative paths
+   *
+   * @param path String
+   * @return
+   */
   def resolveUpstreamOrigins(path: String): List[Origin] = {
     Await.result(
       readLimiter(collection) {
@@ -241,6 +264,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
+   *
    * @param source current relative source path
    * @param target relative target path to move file to
    * @return
@@ -255,6 +279,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
+   *
    * @param source current absolute source path
    * @param target absolute target path to move file to
    * @return
@@ -272,6 +297,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * Copies a file to a new location
+   *
    * @param source source path
    * @param target target path
    * @return
@@ -287,6 +313,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * Copies a file to a new location
+   *
    * @param source source path
    * @param target target path
    * @return
@@ -299,13 +326,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * Silently remove file and empty parent dirs
+   *
    * @param source String
    */
-  def removeFile(source:String): Unit = removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
+  def removeFile(source: String): Unit = removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
 
 
   /**
    * Silently remove file and empty parent dirs
+   *
    * @param file File
    */
   def removeFile(file: File): Unit = {
@@ -325,6 +354,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * tests if source string starts with the configured remote target-dir
+   *
    * @param source String
    * @return
    */
@@ -333,6 +363,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * tests if source string starts with the configured local target-dir
+   *
    * @param source String
    * @return
    */
@@ -341,6 +372,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * Tests if found Document currently in the remote root and is not returns the appropriate download target
+   *
    * @param foundDoc Found Document and remote data
    * @return
    */
@@ -353,6 +385,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * determines appropriate local target path if required
+   *
    * @param foundDoc Found Doc
    * @return
    */
@@ -377,12 +410,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         val remotePath = Http.generateFilePath(origin.uri.get, Option(config.getString("doclib.remote.target-dir")), None, None)
         Some(Paths.get(s"$remotePath").toString)
       }
+
     getTargetPath
   }
 
   /**
    *
-   * @param foundDoc document to be archived
+   * @param foundDoc      document to be archived
    * @param archiveSource string file to copy
    * @param archiveTarget string location to archive the document to
    * @return
@@ -400,10 +434,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
     Try(docs.foreach(doc ⇒ archiver.send(DoclibMsg(doc._id.toHexString)))) match {
-      case Success(_) ⇒ Future.successful( () )
+      case Success(_) ⇒ Future.successful(())
       case Failure(_) ⇒
         // send to error handling?
-        Future.successful( () )
+        Future.successful(())
     }
   }
 
@@ -425,11 +459,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * generate an archive for the found document
+   *
    * @param targetPath the found doc
    * @return
    */
   def getArchivePath(targetPath: String, hash: String): String = {
-    val  withExt = """(.*)/(.*)\.(.+)$""".r
+    val withExt = """(.*)/(.*)\.(.+)$""".r
     val withoutExt = """(.*)/(.*)$""".r
     targetPath match {
       case withExt(path, file, ext) ⇒ s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}/$file.$ext/$hash.$ext"
@@ -440,10 +475,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   /**
    * Handles the potential update of a document and is associated file based on supplied properties
-   * @param foundDoc the found document
-   * @param tempPath the path of the temporary file either remote or local
+   *
+   * @param foundDoc            the found document
+   * @param tempPath            the path of the temporary file either remote or local
    * @param targetPathGenerator function to generate the absolute target path for the file
-   * @param inRightLocation function to test if the current document source path is in the right location
+   * @param inRightLocation     function to test if the current document source path is in the right location
    * @return
    */
   def handleFileUpdate(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc ⇒ Option[String], inRightLocation: String ⇒ Boolean): Option[Path] = {
@@ -473,7 +509,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * Builds a document update with updates source and origins
    *
    * @param foundDoc FoundDoc
-   * @param msg    PrefetchMsg
+   * @param msg      PrefetchMsg
    * @return Bson
    */
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
@@ -481,7 +517,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) ⇒
         val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
-        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.map(_.uri.toString).contains( d.uri.toString))
+        val filteredDocOrigin = currentOrigins.filterNot(d ⇒ foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
         (source, foundDoc.origins ::: filteredDocOrigin)
 
       case None ⇒
@@ -492,7 +528,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         // does not need remapping to remote location
         else
           handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
-        (source ,currentOrigins)
+        (source, currentOrigins)
     }
     // source needs to be relative path from doclib.root
     combine(
@@ -515,7 +551,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def getFileAttrs(source: Option[Path]): Bson = {
     source match {
       case Some(path) ⇒
-        val absPath = (doclibRoot/path.toString).path
+        val absPath = (doclibRoot / path.toString).path
         val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
         set("attrs", FileAttrs(
           path = absPath.getParent.toAbsolutePath.toString,
@@ -538,7 +574,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def getMimetype(source: Option[Path]): Bson =
     source match {
       case Some(path) ⇒
-        val absPath = (doclibRoot/path.toString).path
+        val absPath = (doclibRoot / path.toString).path
         val metadata = new Metadata()
         metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, absPath.getFileName.toString)
         set("mimetype", tika.getDetector.detect(
@@ -609,15 +645,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
             )
           )
         )
-      } yield FoundDoc(doc, archivable, origins = origins, download = Option(downloaded))
-    ).value
+            } yield FoundDoc(doc, archivable, origins = origins, download = Option(downloaded))
+      ).value
 
 
   /**
    * retrieves document from mongo if no document found will create and persist new document
    *
    * @param source String
-   * @param hash String
+   * @param hash   String
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
@@ -679,6 +715,24 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       }
       case Failure(_) ⇒ PrefetchUri(source, None)
     }
+  }
+
+  /**
+   * function to perform validation of document before processing
+   *
+   * Checks if just verifying document and if true tests to ensure is not a new doc by checking it is more than 10
+   * seconds old (prefetch.verificationTimeout).
+   * If it is an old doc, and verifying, then throw SilentValidationException.
+   *
+   * @param msg      PrefetchMsg
+   * @param foundDoc FoundDoc
+   * @return
+   */
+  def valid(msg: PrefetchMsg, foundDoc: FoundDoc): Boolean = {
+    val timeSinceCreated = Math.abs(java.time.Duration.between(foundDoc.doc.created, LocalDateTime.now()).getSeconds)
+    if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
+      throw new SilentValidationException(foundDoc.doc)
+    true
   }
 
 }

@@ -29,7 +29,8 @@ import scala.concurrent.duration._
 /**
  * PrefetchHandler Spec with Actor test system and config
  */
-class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", ConfigFactory.parseString("""
+class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", ConfigFactory.parseString(
+  """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
   with WordSpecLike
@@ -54,6 +55,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |  derivative {
       |    target-dir: "derivatives"
       |  }
+      |}
+      |prefetch {
+      | verificationTimeout = 10
       |}
     """.stripMargin)
 
@@ -94,6 +98,19 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       attrs = Some(fileAttrs)
     )
     newDoc
+  }
+
+  def createOldDoc(docAge: Long): DoclibDoc = {
+    val oldDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = "",
+      hash = "12345",
+      derivative = false,
+      created = LocalDateTime.now().plusSeconds(docAge),
+      updated = LocalDateTime.now().plusSeconds(docAge),
+      mimetype = ""
+    )
+    oldDoc
   }
 
 
@@ -276,6 +293,59 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(derivMetadata.head.getKey == "derivative.type")
       assert(derivMetadata.head.getValue == "unarchive")
     }
+  }
+
+  "A document older than the verificationTimeout shouldn't be verified" in {
+
+    val oldDoc = createOldDoc(15)
+
+    val oldFoundDoc = handler.FoundDoc(
+      doc = oldDoc,
+      Nil,
+      Nil,
+      None
+    )
+    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")),
+      Some(metadataMap), None, Some(true))
+
+    assertThrows[handler.SilentValidationException] {
+      handler.valid(prefetchMsg, oldFoundDoc)
+    }
+  }
+
+  "A new document should be verified if the verified flag is set" in {
+
+    val newDoc = createNewDoc("/a/file/somewhere.pdf")
+
+    val foundDoc = handler.FoundDoc(
+      doc = newDoc,
+      Nil,
+      Nil,
+      None
+    )
+    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")),
+      Some(metadataMap), None, Some(true))
+
+    assert(handler.valid(prefetchMsg, foundDoc))
+  }
+
+  "A new document should not be verified if the verified flag is missing" in {
+
+    val newDoc = createNewDoc("/a/file/somewhere.pdf")
+
+    val foundDoc = handler.FoundDoc(
+      doc = newDoc,
+      Nil,
+      Nil,
+      None
+    )
+    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")),
+      Some(metadataMap), None)
+
+    assert(handler.valid(prefetchMsg, foundDoc))
   }
 
   "An invalid URI should fail to convert" in {
