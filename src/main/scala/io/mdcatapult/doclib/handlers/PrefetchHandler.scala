@@ -129,12 +129,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       _ <- OptionT(flag {
         _.end(found.doc, noCheck = started.getModifiedCount > 0)
       })
-    } yield (newDoc, found.doc)).value.andThen({
-      case Success(r) ⇒ r match {
-        case Some(v) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
+    } yield Left((newDoc, found.doc))).value
+    .recoverWith({
+      case e: SilentValidationException => Future.successful(Some(Right(e)))
+    })
+    .andThen({
+      case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) ⇒ r match {
+        case Some(Left(v)) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
+        case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
         case None ⇒ throw new RuntimeException("Unknown Error Occurred")
       }
-      case Failure(e: SilentValidationException) => // do nothing, silently ignored
       case Failure(e: DoclibDocException) ⇒ flag {
         _.error(e.getDoc, noCheck = true)
       }
