@@ -104,6 +104,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   class SilentValidationException(doc: DoclibDoc) extends DoclibDocException(doc, "Suppressed exception for Validation")
 
+  class InvalidOriginSchemeException(msg: PrefetchMsg) extends Exception(s"$msg contains invalid origin scheme")
+
   /**
    * handle msg from rabbitmq
    *
@@ -116,6 +118,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       writeLimiter(flags) {
         f
       }
+
 
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
@@ -130,31 +133,31 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         _.end(found.doc, noCheck = started.getModifiedCount > 0)
       })
     } yield Left((newDoc, found.doc))).value
-    .recoverWith({
-      case e: SilentValidationException => Future.successful(Some(Right(e)))
-    })
-    .andThen({
-      case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) ⇒ r match {
-        case Some(Left(v)) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
-        case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
-        case None ⇒ throw new RuntimeException("Unknown Error Occurred")
-      }
-      case Failure(e: DoclibDocException) ⇒ flag {
-        _.error(e.getDoc, noCheck = true)
-      }
-      case Failure(_) ⇒
-        // enforce error flag
-        Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
-          case Success(value: Option[FoundDoc]) ⇒ value match {
-            case Some(found) ⇒ flag {
-              _.error(found.doc, noCheck = true)
-            }
-            case _ ⇒ () // do nothing as error handling will capture
-          }
-          // There is no mongo doc - error happened before one was created
-          case Failure(_) ⇒ () // do nothing as error handling will capture
+      .recoverWith({
+        case e: SilentValidationException => Future.successful(Some(Right(e)))
+      })
+      .andThen({
+        case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) ⇒ r match {
+          case Some(Left(v)) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
+          case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
+          case None ⇒ throw new RuntimeException("Unknown Error Occurred")
         }
-    })
+        case Failure(e: DoclibDocException) ⇒ flag {
+          _.error(e.getDoc, noCheck = true)
+        }
+        case Failure(_) ⇒
+          // enforce error flag
+          Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
+            case Success(value: Option[FoundDoc]) ⇒ value match {
+              case Some(found) ⇒ flag {
+                _.error(found.doc, noCheck = true)
+              }
+              case _ ⇒ () // do nothing as error handling will capture
+            }
+            // There is no mongo doc - error happened before one was created
+            case Failure(_) ⇒ () // do nothing as error handling will capture
+          }
+      })
   }
 
   def zeroLength(filePath: String): Boolean = {
@@ -736,6 +739,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val timeSinceCreated = Math.abs(java.time.Duration.between(foundDoc.doc.created, LocalDateTime.now()).getSeconds)
     if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
       throw new SilentValidationException(foundDoc.doc)
+
+    msg.origin.getOrElse(List()).foreach(origin => {
+      if (origin.uri.get.schemeOption.isEmpty) {
+        throw new InvalidOriginSchemeException(msg)
+      }
+    })
     true
   }
 

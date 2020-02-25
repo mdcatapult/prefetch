@@ -355,4 +355,22 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     assert(result.uri.isEmpty)
   }
 
+  "A message without an origin schema defined should throw an exception" in {
+    val origin: Origin = Origin(
+      scheme = "",
+      hostname = None,
+      uri = Some(Uri.parse("a.site/a/path/to/aFile.txt")),
+      metadata = None,
+      headers = None
+    )
+    val foundDoc = handler.FoundDoc(
+      doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+      Nil,
+      Nil,
+      None
+    )
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
+    assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+  }
+
 }
