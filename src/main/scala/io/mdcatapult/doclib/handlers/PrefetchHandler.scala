@@ -112,23 +112,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
-    def flag[T](f: DoclibFlags => Future[T]): Future[T] =
-      writeLimiter(flags) {
-        f
-      }
-
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       if valid(msg, found)
-      started: UpdateResult ← OptionT(flag {
-        _.start(found.doc)
-      })
+      started: UpdateResult ← OptionT(flags.start(found.doc))
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(flag {
-        _.end(found.doc, noCheck = started.getModifiedCount > 0)
-      })
+      _ <- OptionT(flags.end(found.doc, noCheck = started.getModifiedCount > 0))
     } yield Left((newDoc, found.doc))).value
     .recoverWith({
       case e: SilentValidationException => Future.successful(Some(Right(e)))
@@ -139,16 +130,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
         case None ⇒ throw new RuntimeException("Unknown Error Occurred")
       }
-      case Failure(e: DoclibDocException) ⇒ flag {
-        _.error(e.getDoc, noCheck = true)
-      }
+      case Failure(e: DoclibDocException) ⇒ flags.error(e.getDoc, noCheck = true)
       case Failure(_) ⇒
         // enforce error flag
         Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
           case Success(value: Option[FoundDoc]) ⇒ value match {
-            case Some(found) ⇒ flag {
-              _.error(found.doc, noCheck = true)
-            }
+            case Some(found) ⇒ flags.error(found.doc, noCheck = true)
             case _ ⇒ () // do nothing as error handling will capture
           }
           // There is no mongo doc - error happened before one was created
@@ -177,9 +164,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
         parent => {
           val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
-          writeLimiter(collection) {
-            _.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
-          }
+          collection.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
         }
       ))
     } else {
@@ -212,16 +197,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
-    writeLimiter(collection) {
-      _.updateOne(equal("_id", found.doc._id), update).toFutureOption()
-    }.andThen({
+    collection.updateOne(equal("_id", found.doc._id), update).toFutureOption()
+    .andThen({
       case Success(_) ⇒ downstream.send(DoclibMsg(id = found.doc._id.toString))
       case Failure(e) => throw e
     }).flatMap({
       case Some(_) ⇒
-        readLimiter(collection) {
-          _.find(equal("_id", found.doc._id)).headOption()
-        }
+        collection.find(equal("_id", found.doc._id)).headOption()
       case None ⇒
         Future.successful(None)
     })
@@ -250,9 +232,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def resolveUpstreamOrigins(path: String): List[Origin] = {
     Await.result(
-      readLimiter(collection) {
-        _.find(equal("derivatives.path", path)).toFuture()
-      },
+      collection.find(equal("derivatives.path", path)).toFuture(),
       Duration.Inf
     ).map(d ⇒
       Origin(
@@ -661,16 +641,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    readLimiter(collection) {
-      _.find(
+    collection.find(
         or(
           equal("hash", hash),
           query.getOrElse(combine())
         )
       )
-        .sort(descending("created"))
-        .toFuture()
-    }
+      .sort(descending("created"))
+      .toFuture()
       .flatMap({
         case latest :: archivable if latest.hash == hash ⇒
           Future.successful(latest -> archivable)
@@ -696,9 +674,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     )
 
     val inserted: Future[Option[Completed]] =
-      writeLimiter(collection) {
-        _.insertOne(newDoc).toFutureOption()
-      }
+      collection.insertOne(newDoc).toFutureOption()
 
     inserted.map(_ => newDoc)
   }
