@@ -163,8 +163,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       val opts = UpdateOptions().arrayFilters(List(equal("elem.path", msg.source)).asJava)
       Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
         parent => {
-          val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
-          collection.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
+          val metaId: List[MetaValueUntyped] = parent.metadata.get.filter(m => m.getKey == "_id")
+          if (metaId.nonEmpty) {
+            collection.updateMany(
+              equal("_id", new ObjectId(metaId.head.getValue.toString)),
+              set("derivatives.$[elem].path", path), opts).toFutureOption()
+          } else {
+            Future.successful(None)
+          }
         }
       ))
     } else {
