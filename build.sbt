@@ -9,7 +9,7 @@ lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val tikaVersion = "1.21"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.49"
+lazy val doclibCommonVersion = "0.0.50"
 
 
 val meta = """META.INF/(blueprint|cxf).*""".r
