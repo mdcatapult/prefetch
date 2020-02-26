@@ -1,16 +1,19 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import akka.stream.StreamTcpException
+import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import org.scalatest.FlatSpec
+import io.mdcatapult.doclib.util.DirectoryDelete
+import io.mdcatapult.doclib.util.HashUtils.md5
+import org.scalatest.{BeforeAndAfterAll, FlatSpec}
 
-class HttpSpec extends FlatSpec {
+class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
-    """
+    s"""
       |doclib {
-      |  root: ./test
+      |  root: "$pwd/test"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -46,7 +49,7 @@ class HttpSpec extends FlatSpec {
     val fileName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04).74bdbe0d010151d2d42f6768eca1290c.pdf"
     val actualName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)"
     val hashName = Http.hashOrOriginal(origUri, fileName)
-    val fileNameHash = Http.md5HashString(actualName)
+    val fileNameHash = md5(actualName)
     assert(hashName == s"$fileNameHash.74bdbe0d010151d2d42f6768eca1290c.pdf")
   }
 
@@ -54,7 +57,7 @@ class HttpSpec extends FlatSpec {
     val origUri = Uri.parse("http://orbit.dtu.dk/en/publications/dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be.pdf")
     val fileName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be.pdf"
     val hashName = Http.hashOrOriginal(origUri, fileName)
-    val fileNameHash = Http.md5HashString(fileName.replace(".pdf", ""))
+    val fileNameHash = md5(fileName.replace(".pdf", ""))
     assert(hashName == s"$fileNameHash.pdf")
   }
 
@@ -62,7 +65,7 @@ class HttpSpec extends FlatSpec {
     val origUri = Uri.parse("http://orbit.dtu.dk/en/publications/dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be")
     val fileName = "dual-nicotinic-acetylcholine-receptor-42-antagonists7-agonists-synthesis-docking-studies-and-pharmacological-evaluation-of-tetrahydroisoquinolines-and-tetrahydroisoquinolinium-salts(040536e1-22a7-47c7-bee9-51e53543ff04)-this-is-way-longer-than-it-really-should-be"
     val hashName = Http.hashOrOriginal(origUri, fileName)
-    val fileNameHash = Http.md5HashString(fileName)
+    val fileNameHash = md5(fileName)
     assert(hashName == s"$fileNameHash")
   }
 
@@ -101,6 +104,14 @@ class HttpSpec extends FlatSpec {
     val fileName = "news.74bdbe0d010151d2d42f6768eca1290c.pdf"
     val hashName = Http.hashOrOriginal(origUri, fileName)
     assert(hashName == fileName)
+  }
+
+  override def afterAll = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List(
+      pwd/"test"/"remote-ingress",
+      pwd/"test"/"remote")
+    )
   }
 
 }

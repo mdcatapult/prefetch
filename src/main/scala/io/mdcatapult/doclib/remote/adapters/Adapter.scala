@@ -5,6 +5,15 @@ import java.security.MessageDigest
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.remote.DownloadResult
+import org.apache.tika.mime.MimeTypesFactory
+
+object Adapter {
+
+  private val mimeTypes = MimeTypesFactory.create(getClass.getResource("/org/apache/tika/mime/tika-mimetypes.xml"))
+
+  def contentTypeExtension(contentType: String): String =
+    mimeTypes.forName(contentType).getExtension
+}
 
 trait Adapter {
 
@@ -20,9 +29,10 @@ trait Adapter {
     *
     * @param uri io.lemonlabs.uri.Uri
     * @param root root of path to generate
+    * @param fileName optional filename which, if defined, will replace the last part of the uri
     * @return
     */
-  def generateFilePath(uri: Uri, root: Option[String] = None): String = {
+  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
     val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
@@ -33,14 +43,22 @@ trait Adapter {
         .foldLeft(""){_ + _}
     }"
 
-    def generateBasename(path: Path) = {
-      val endsWithSlash = """(.*/)$""".r
+    def insertQueryHash(pathEnd: String): String = {
       val hasExtension = """(.*)\.(.*)$""".r
-      path.toString match {
-        case endsWithSlash(p) ⇒ s"${p}index$queryHash.html"
+      val headerExt = contentType.map(Adapter.contentTypeExtension).getOrElse(".html")
+
+      pathEnd match {
+        case "" ⇒ s"index$queryHash$headerExt"
         case hasExtension(p, ext) ⇒ s"$p$queryHash.$ext"
-        case p ⇒ s"$p$queryHash.html"
+        case p ⇒ s"$p$queryHash$headerExt"
       }
+    }
+
+    def generateBasename(path: Path): String = {
+      val allParts = path.parts ++ fileName.toVector
+      val hashedLastPathPart = insertQueryHash(allParts.last)
+
+      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(hashedLastPathPart)).mkString("/")
     }
 
     s"$targetDir/${

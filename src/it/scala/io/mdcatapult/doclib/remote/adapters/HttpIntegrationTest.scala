@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-import java.nio.file.Paths
 
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
@@ -9,14 +8,13 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.DirectoryDelete
 import org.scalatest.{BeforeAndAfterAll, FlatSpec}
-import better.files.{File ⇒ ScalaFile, _}
 
 class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
       |doclib {
-      |  root: "${pwd/"test"}"
+      |  root: "${pwd/"test"/"http-test"}"
       |  remote {
       |    target-dir: "remote"
       |    temp-dir: "remote-ingress"
@@ -59,5 +57,11 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
     assert(file.exists)
     //assert(file.length == expectedSize)
+  }
+
+  override def afterAll = {
+    // These may or may not exist but are all removed anyway
+    deleteDirectories(List(pwd/"test"/"http-test"))
+    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
   }
 }
