@@ -156,26 +156,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[List[Option[UpdateResult]]] = {
+  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      // origins by this point should have been processed updated and consolidated so use doc origins and not msg ones
-      val opts = UpdateOptions().arrayFilters(List(equal("elem.path", msg.source)).asJava)
-      Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
-        parent => {
-          val metaId: List[MetaValueUntyped] = parent.metadata.get.filter(m => m.getKey == "_id")
-          if (metaId.nonEmpty) {
-            collection.updateMany(
-              equal("_id", new ObjectId(metaId.head.getValue.toString)),
-              set("derivatives.$[elem].path", path), opts).toFutureOption()
-          } else {
-            Future.successful(None)
-          }
-        }
-      ))
+      collection.updateMany(
+        equal("derivatives.path", msg.source) ,
+        set("derivatives.$.path", path)
+      ).toFutureOption()
     } else {
       // No derivative. Just return a success - we don't do anything with the response
-      Future.successful(List())
+      Future.successful(None)
     }
   }
 
