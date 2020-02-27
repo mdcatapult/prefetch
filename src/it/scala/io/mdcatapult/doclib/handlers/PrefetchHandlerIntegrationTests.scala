@@ -151,12 +151,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       assert(childResult.get.toString == "The operation completed successfully")
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
-      val parentUpdate: List[Option[UpdateResult]] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
-;      assert(parentUpdate.length == 2)
-      parentUpdate.foreach(r => {
-        assert(r.get.getMatchedCount == 1)
-        assert(r.get.getModifiedCount == 1)
-      })
+      val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
+      assert(parentUpdate.nonEmpty)
+      assert(parentUpdate.get.getMatchedCount == 2)
+      assert(parentUpdate.get.getModifiedCount == 2)
 
     }
   }
