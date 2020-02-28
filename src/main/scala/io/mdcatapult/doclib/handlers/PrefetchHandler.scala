@@ -515,14 +515,34 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         (source, currentOrigins)
     }
     // source needs to be relative path from doclib.root
-    combine(
-      set("source", source match {
-        case Some(path: Path) ⇒ path.toString.replaceFirst(s"^${config.getString("doclib.root")}", "")
-        case None ⇒ foundDoc.doc.source.replaceFirst(s"^${config.getString("doclib.root")}", "")
-      }),
+    val pathNormalisedSource = {
+      val rawPath =
+        source match {
+          case Some(path: Path) ⇒ path.toString
+          case None ⇒ foundDoc.doc.source
+        }
+      val root = config.getString("doclib.root")
+
+      rawPath.replaceFirst(s"^$root", "")
+    }
+
+    val uuidAssignment =
+      foundDoc.doc.uuid match {
+        case None =>
+          List(set("uuid", UUID.randomUUID()))
+        case _ =>
+          List()
+      }
+
+    val changes = List(
+      set("source", pathNormalisedSource),
       set("origin", origin),
       getFileAttrs(source),
       getMimetype(source)
+    )
+
+    combine(
+      uuidAssignment ::: changes :_*
     )
   }
 
