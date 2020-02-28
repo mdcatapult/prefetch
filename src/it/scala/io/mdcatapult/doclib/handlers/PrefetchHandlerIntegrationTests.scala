@@ -234,9 +234,17 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     "A file with a space in the path" should {
       "be found" in {
         val docLocation = "local/test file.txt"
-        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
-        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
-        assert(origDoc.doc._id == fetchedDoc.doc._id)
+
+        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
+        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
+
+        def docId(d: handler.FoundDoc) = d.doc._id
+        def uuid(d: handler.FoundDoc) = d.doc.uuid
+
+        origDoc.map(docId) should be(fetchedDoc.map(docId))
+        origDoc.flatMap(uuid) should be(fetchedDoc.flatMap(uuid))
+
+        fetchedDoc.flatMap(uuid).nonEmpty should be(true)
       }
     }
 
