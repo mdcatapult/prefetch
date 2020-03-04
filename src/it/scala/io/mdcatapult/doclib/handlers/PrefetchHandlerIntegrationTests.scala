@@ -3,6 +3,7 @@ package io.mdcatapult.doclib.handlers
 import java.io.File
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
+import java.util.UUID
 
 import akka.actor._
 import akka.stream.ActorMaterializer
@@ -25,6 +26,7 @@ import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
+import org.scalatest.OptionValues._
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
@@ -191,8 +193,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
-      assert(docUpdate.get.derivative)
-      assert(Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath))
+
+      docUpdate.value.derivative should be(true)
+      Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath) should be(true)
+
+      docUpdate.value.uuid should not be None
     }
   }
 
@@ -234,9 +239,17 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     "A file with a space in the path" should {
       "be found" in {
         val docLocation = "local/test file.txt"
-        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
-        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
-        assert(origDoc.doc._id == fetchedDoc.doc._id)
+
+        val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
+        val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
+
+        def docId(d: handler.FoundDoc) = d.doc._id
+        def uuid(d: handler.FoundDoc) = d.doc.uuid
+
+        origDoc.map(docId) should be(fetchedDoc.map(docId))
+        origDoc.flatMap(uuid) should be(fetchedDoc.flatMap(uuid))
+
+        fetchedDoc.flatMap(uuid).nonEmpty should be(true)
       }
     }
 
@@ -261,8 +274,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
 
         // create initial document
-        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).get
-        val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
+        val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
+        val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).value
 
         docLibDoc.origin.get match {
           case canonical :: rest =>
@@ -274,8 +287,13 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
         assert(secondDoc.doc._id == firstDoc.doc._id)
 
+        firstDoc.doc.uuid should not be None
+        secondDoc.doc.uuid should be(firstDoc.doc.uuid)
+
         val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
         assert(updatedDocLibDoc.origin.get.size == 3)
+
+        updatedDocLibDoc.uuid should be(firstDoc.doc.uuid)
 
         updatedDocLibDoc.origin.get match {
           case canonical :: rest =>
@@ -347,7 +365,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
         mimetype = "text/plain",
         tags = Some(List[String]("one")),
-        metadata = Some(List(MetaString("key", "value")))
+        metadata = Some(List(MetaString("key", "value"))),
+        uuid = Some(UUID.randomUUID())
       )
       val origin: List[Origin] = List(
         Origin(
@@ -362,12 +381,15 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       val extraTags = List("two", "three")
       val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
 
-      assert(result.get.toString == "The operation completed successfully")
+      result.value.toString should be("The operation completed successfully")
 
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
-      assert(docUpdate.get.metadata.get.toSet == (doclibDoc.metadata.get ::: metadataMap).toSet)
-      assert(docUpdate.get.tags.get.toSet == (doclibDoc.tags.get ::: extraTags).toSet)
+
+      docUpdate.value.metadata.value should contain only(doclibDoc.metadata.getOrElse(Nil) ::: metadataMap :_*)
+      docUpdate.value.tags.value should contain only(doclibDoc.tags.getOrElse(Nil) ::: extraTags :_*)
+
+      docUpdate.value.uuid should be(doclibDoc.uuid)
     }
   }
 
@@ -402,9 +424,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
       val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
       val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
-      assert(docUpdate.get.metadata.get.toSet == metadataMap.toSet)
-      assert(docUpdate.get.tags.get.toSet == extraTags.toSet)
 
+      docUpdate.value.metadata.value should contain only(metadataMap :_*)
+      docUpdate.value.tags.value should contain only(extraTags :_*)
+
+      docUpdate.value should not be None
     }
   }
 

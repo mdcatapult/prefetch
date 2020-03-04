@@ -4,6 +4,7 @@ import java.io.{File, FileInputStream, FileNotFoundException}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time.{LocalDateTime, ZoneOffset}
+import java.util.UUID
 
 import akka.stream.ActorMaterializer
 import better.files._
@@ -29,13 +30,11 @@ import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
-import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 import org.mongodb.scala.{Completed, MongoCollection}
 
 import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
@@ -502,23 +501,48 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
       case None ⇒
         val remoteOrigins = getRemoteOrigins(currentOrigins)
-        val source = if (remoteOrigins.nonEmpty)
-        // has at least one remote origin and needs relocating to remote folder
-          handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(remoteOrigins.head), inRemoteRoot)
-        // does not need remapping to remote location
-        else
-          handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+
+        val source =
+          remoteOrigins match {
+            case origin :: _ =>
+              // has at least one remote origin and needs relocating to remote folder
+              handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+            case _ =>
+              // does not need remapping to remote location
+              handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+          }
+
         (source, currentOrigins)
     }
     // source needs to be relative path from doclib.root
-    combine(
-      set("source", source match {
-        case Some(path: Path) ⇒ path.toString.replaceFirst(s"^${config.getString("doclib.root")}", "")
-        case None ⇒ foundDoc.doc.source.replaceFirst(s"^${config.getString("doclib.root")}", "")
-      }),
+    val pathNormalisedSource = {
+      val rawPath =
+        source match {
+          case Some(path: Path) ⇒ path.toString
+          case None ⇒ foundDoc.doc.source
+        }
+      val root = config.getString("doclib.root")
+
+      rawPath.replaceFirst(s"^$root", "")
+    }
+
+    val uuidAssignment =
+      foundDoc.doc.uuid match {
+        case None =>
+          List(set("uuid", UUID.randomUUID()))
+        case _ =>
+          List()
+      }
+
+    val changes = List(
+      set("source", pathNormalisedSource),
       set("origin", origin),
       getFileAttrs(source),
       getMimetype(source)
+    )
+
+    combine(
+      uuidAssignment ::: changes :_*
     )
   }
 
@@ -666,7 +690,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       created = createdTime,
       updated = createdTime,
       mimetype = "",
-      tags = Some(List[String]())
+      tags = Some(List[String]()),
+      uuid = Some(UUID.randomUUID())
     )
 
     val inserted: Future[Option[Completed]] =
