@@ -103,6 +103,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   class SilentValidationException(doc: DoclibDoc) extends DoclibDocException(doc, "Suppressed exception for Validation")
 
+  class InvalidOriginSchemeException(msg: PrefetchMsg) extends Exception(s"$msg contains invalid origin scheme")
+
   /**
    * handle msg from rabbitmq
    *
@@ -733,6 +735,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val timeSinceCreated = Math.abs(java.time.Duration.between(foundDoc.doc.created, LocalDateTime.now()).getSeconds)
     if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
       throw new SilentValidationException(foundDoc.doc)
+
+    msg.origin.getOrElse(List()).foreach(origin => {
+      if (origin.uri.get.schemeOption.isEmpty) {
+        throw new InvalidOriginSchemeException(msg)
+      }
+    })
     true
   }
 
