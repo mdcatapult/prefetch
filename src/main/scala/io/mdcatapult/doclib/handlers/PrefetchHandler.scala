@@ -4,6 +4,7 @@ import java.io.{File, FileInputStream, FileNotFoundException}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time.{LocalDateTime, ZoneOffset}
+import java.util.UUID
 
 import akka.stream.ActorMaterializer
 import better.files._
@@ -29,13 +30,11 @@ import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
-import org.mongodb.scala.model.UpdateOptions
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.UpdateResult
 import org.mongodb.scala.{Completed, MongoCollection}
 
 import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
@@ -114,50 +113,36 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
-    def flag[T](f: DoclibFlags => Future[T]): Future[T] =
-      writeLimiter(flags) {
-        f
-      }
-
-
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc ← OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       if valid(msg, found)
-      started: UpdateResult ← OptionT(flag {
-        _.start(found.doc)
-      })
+      started: UpdateResult ← OptionT(flags.start(found.doc))
       newDoc ← OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(flag {
-        _.end(found.doc, noCheck = started.getModifiedCount > 0)
-      })
+      _ <- OptionT(flags.end(found.doc, noCheck = started.getModifiedCount > 0))
     } yield Left((newDoc, found.doc))).value
-      .recoverWith({
-        case e: SilentValidationException => Future.successful(Some(Right(e)))
-      })
-      .andThen({
-        case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) ⇒ r match {
-          case Some(Left(v)) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
-          case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
-          case None ⇒ throw new RuntimeException("Unknown Error Occurred")
-        }
-        case Failure(e: DoclibDocException) ⇒ flag {
-          _.error(e.getDoc, noCheck = true)
-        }
-        case Failure(_) ⇒
-          // enforce error flag
-          Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
-            case Success(value: Option[FoundDoc]) ⇒ value match {
-              case Some(found) ⇒ flag {
-                _.error(found.doc, noCheck = true)
-              }
-              case _ ⇒ () // do nothing as error handling will capture
-            }
-            // There is no mongo doc - error happened before one was created
-            case Failure(_) ⇒ () // do nothing as error handling will capture
+    .recoverWith({
+      case e: SilentValidationException => Future.successful(Some(Right(e)))
+    })
+    .andThen({
+      case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) ⇒ r match {
+        case Some(Left(v)) ⇒ logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
+        case Some(Right(e)) ⇒ logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
+        case None ⇒ throw new RuntimeException("Unknown Error Occurred")
+      }
+      case Failure(e: DoclibDocException) ⇒ flags.error(e.getDoc, noCheck = true)
+      case Failure(_) ⇒
+        // enforce error flag
+        Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
+          case Success(value: Option[FoundDoc]) ⇒ value match {
+            case Some(found) ⇒ flags.error(found.doc, noCheck = true)
+            case _ ⇒ () // do nothing as error handling will capture
           }
-      })
+          // There is no mongo doc - error happened before one was created
+          case Failure(_) ⇒ () // do nothing as error handling will capture
+        }
+    })
   }
 
   def zeroLength(filePath: String): Boolean = {
@@ -172,22 +157,16 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[List[Option[UpdateResult]]] = {
+  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      // origins by this point should have been processed updated and consolidated so use doc origins and not msg ones
-      val opts = UpdateOptions().arrayFilters(List(equal("elem.path", msg.source)).asJava)
-      Future.sequence(doc.origin.getOrElse(List[Origin]()).filter(origin => origin.scheme == "mongodb").map(
-        parent => {
-          val id = parent.metadata.get.filter(m => m.getKey == "_id").head.getValue.toString
-          writeLimiter(collection) {
-            _.updateMany(equal("_id", new ObjectId(id)), set("derivatives.$[elem].path", path), opts).toFutureOption()
-          }
-        }
-      ))
+      collection.updateMany(
+        equal("derivatives.path", msg.source) ,
+        set("derivatives.$.path", path)
+      ).toFutureOption()
     } else {
       // No derivative. Just return a success - we don't do anything with the response
-      Future.successful(List())
+      Future.successful(None)
     }
   }
 
@@ -215,16 +194,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
       set("updated", LocalDateTime.now())
     )
-    writeLimiter(collection) {
-      _.updateOne(equal("_id", found.doc._id), update).toFutureOption()
-    }.andThen({
+    collection.updateOne(equal("_id", found.doc._id), update).toFutureOption()
+    .andThen({
       case Success(_) ⇒ downstream.send(DoclibMsg(id = found.doc._id.toString))
       case Failure(e) => throw e
     }).flatMap({
       case Some(_) ⇒
-        readLimiter(collection) {
-          _.find(equal("_id", found.doc._id)).headOption()
-        }
+        collection.find(equal("_id", found.doc._id)).headOption()
       case None ⇒
         Future.successful(None)
     })
@@ -253,9 +229,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def resolveUpstreamOrigins(path: String): List[Origin] = {
     Await.result(
-      readLimiter(collection) {
-        _.find(equal("derivatives.path", path)).toFuture()
-      },
+      collection.find(equal("derivatives.path", path)).toFuture(),
       Duration.Inf
     ).map(d ⇒
       Origin(
@@ -529,23 +503,48 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
       case None ⇒
         val remoteOrigins = getRemoteOrigins(currentOrigins)
-        val source = if (remoteOrigins.nonEmpty)
-        // has at least one remote origin and needs relocating to remote folder
-          handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(remoteOrigins.head), inRemoteRoot)
-        // does not need remapping to remote location
-        else
-          handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+
+        val source =
+          remoteOrigins match {
+            case origin :: _ =>
+              // has at least one remote origin and needs relocating to remote folder
+              handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+            case _ =>
+              // does not need remapping to remote location
+              handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+          }
+
         (source, currentOrigins)
     }
     // source needs to be relative path from doclib.root
-    combine(
-      set("source", source match {
-        case Some(path: Path) ⇒ path.toString.replaceFirst(s"^${config.getString("doclib.root")}", "")
-        case None ⇒ foundDoc.doc.source.replaceFirst(s"^${config.getString("doclib.root")}", "")
-      }),
+    val pathNormalisedSource = {
+      val rawPath =
+        source match {
+          case Some(path: Path) ⇒ path.toString
+          case None ⇒ foundDoc.doc.source
+        }
+      val root = config.getString("doclib.root")
+
+      rawPath.replaceFirst(s"^$root", "")
+    }
+
+    val uuidAssignment =
+      foundDoc.doc.uuid match {
+        case None =>
+          List(set("uuid", UUID.randomUUID()))
+        case _ =>
+          List()
+      }
+
+    val changes = List(
+      set("source", pathNormalisedSource),
       set("origin", origin),
       getFileAttrs(source),
       getMimetype(source)
+    )
+
+    combine(
+      uuidAssignment ::: changes :_*
     )
   }
 
@@ -664,16 +663,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    readLimiter(collection) {
-      _.find(
+    collection.find(
         or(
           equal("hash", hash),
           query.getOrElse(combine())
         )
       )
-        .sort(descending("created"))
-        .toFuture()
-    }
+      .sort(descending("created"))
+      .toFuture()
       .flatMap({
         case latest :: archivable if latest.hash == hash ⇒
           Future.successful(latest -> archivable)
@@ -695,13 +692,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       created = createdTime,
       updated = createdTime,
       mimetype = "",
-      tags = Some(List[String]())
+      tags = Some(List[String]()),
+      uuid = Some(UUID.randomUUID())
     )
 
     val inserted: Future[Option[Completed]] =
-      writeLimiter(collection) {
-        _.insertOne(newDoc).toFutureOption()
-      }
+      collection.insertOne(newDoc).toFutureOption()
 
     inserted.map(_ => newDoc)
   }
