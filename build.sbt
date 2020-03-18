@@ -6,7 +6,7 @@ lazy val akkaVersion = "2.5.26"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.1"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.51"
+lazy val doclibCommonVersion = "0.0.53"
 
 
 val meta = """META.INF/(blueprint|cxf).*""".r
