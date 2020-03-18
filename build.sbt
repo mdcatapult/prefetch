@@ -4,12 +4,9 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 lazy val configVersion = "1.3.2"
 lazy val akkaVersion = "2.5.26"
 lazy val catsVersion = "2.1.0"
-lazy val opRabbitVersion = "2.1.0"
-lazy val mongoVersion = "2.5.0"
 lazy val awsScalaVersion = "0.8.1"
-lazy val tikaVersion = "1.21"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.50"
+lazy val doclibCommonVersion = "0.0.53"
 
 
 val meta = """META.INF/(blueprint|cxf).*""".r
@@ -35,6 +32,7 @@ lazy val root = (project in file("."))
       "-Xlint",
       "-Ypartial-unification",
     ),
+    useCoursier := false,
     resolvers ++= Seq(
       "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
       "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
