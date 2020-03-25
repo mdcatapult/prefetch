@@ -5,8 +5,8 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File => ScalaFile}
-import com.mongodb.async.client.{MongoCollection => JMongoCollection}
+import better.files.{File ⇒ ScalaFile}
+import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
@@ -14,6 +14,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.DownloadResult
+import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
@@ -354,41 +355,43 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     assert(result.raw == path)
     assert(result.uri.isEmpty)
   }
-
-  "A message without an origin schema defined should throw an exception" in {
-    val origin: Origin = Origin(
-      scheme = "",
-      hostname = None,
-      uri = Some(Uri.parse("a.site/a/path/to/aFile.txt")),
-      metadata = None,
-      headers = None
-    )
-    val foundDoc = handler.FoundDoc(
-      doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
-      Nil,
-      Nil,
-      None
-    )
-    val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-    assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
-  }
-
-  "A message without an origin uri defined should throw an exception" in {
-    val origin: Origin = Origin(
-      scheme = "",
-      hostname = None,
-      uri = None,
-      metadata = None,
-      headers = None
-    )
-    val foundDoc = handler.FoundDoc(
-      doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
-      Nil,
-      Nil,
-      None
-    )
-    val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-    assertThrows[handler.MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
-  }
+  (Http.protocols ::: Ftp.protocols).foreach(protocol ⇒ {
+    s"A message without a url scheme defined for a $protocol scheme should throw an exception" in {
+      val origin: Origin = Origin(
+        scheme = protocol,
+        hostname = None,
+        uri = Some(Uri.parse("a.site/a/path/to/aFile.txt")),
+        metadata = None,
+        headers = None
+      )
+      val foundDoc = handler.FoundDoc(
+        doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+        Nil,
+        Nil,
+        None
+      )
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
+      assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+    }
+  })
+  (Http.protocols ::: Ftp.protocols).foreach(protocol ⇒ {
+    s"A message without an origin uri defined for a $protocol scheme should throw an exception" in {
+      val origin: Origin = Origin(
+        scheme = protocol,
+        hostname = None,
+        uri = None,
+        metadata = None,
+        headers = None
+      )
+      val foundDoc = handler.FoundDoc(
+        doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
+        Nil,
+        Nil,
+        None
+      )
+      val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
+      assertThrows[handler.MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+    }
+  })
 
 }
