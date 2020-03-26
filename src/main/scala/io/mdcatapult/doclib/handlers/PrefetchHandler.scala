@@ -742,13 +742,18 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val origins = msg.origin.getOrElse(List())
 
     origins.forall(origin =>
-      origin.uri match {
-        case None =>
-          throw new MissingOriginSchemeException(msg, origin)
-        case Some(x) if x.schemeOption.isEmpty =>
-          throw new InvalidOriginSchemeException(msg)
-        case Some(_) =>
-          true
+      if (Ftp.protocols.contains(origin.scheme) || Http.protocols.contains(origin.scheme)) {
+        origin.uri match {
+          case None =>
+            throw new MissingOriginSchemeException(msg, origin)
+          case Some(x) if x.schemeOption.isEmpty =>
+            throw new InvalidOriginSchemeException(msg)
+          case Some(_) =>
+            true
+        }
+      } else {
+        // mongodb or something else that we probably don't care too much about
+        true
       }
     )
   }
