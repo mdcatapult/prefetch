@@ -14,7 +14,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
+import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.util.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
@@ -355,7 +355,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     assert(result.raw == path)
     assert(result.uri.isEmpty)
   }
-  (Http.protocols ::: Ftp.protocols).foreach(protocol ⇒ {
+  allProtocols.foreach(protocol ⇒ {
     s"A message without a url scheme defined for a $protocol scheme should throw an exception" in {
       val origin: Origin = Origin(
         scheme = protocol,
@@ -374,7 +374,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
-  (Http.protocols ::: Ftp.protocols).foreach(protocol ⇒ {
+  allProtocols.foreach(protocol ⇒ {
     s"A message without an origin uri defined for a $protocol scheme should throw an exception" in {
       val origin: Origin = Origin(
         scheme = protocol,
