@@ -63,6 +63,7 @@ lazy val root = (project in file("."))
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
+      "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
