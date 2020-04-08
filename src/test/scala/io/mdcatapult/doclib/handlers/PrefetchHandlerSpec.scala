@@ -44,6 +44,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     """
       |doclib {
       |  root: "/test"
+      |  flag: "prefetch"
       |  local {
       |    target-dir: "local"
       |    temp-dir: "ingress"
