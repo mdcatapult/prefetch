@@ -1,14 +1,16 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import akka.stream.StreamTcpException
+import akka.actor.ActorSystem
+import akka.stream.{Materializer, StreamTcpException}
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.util.DirectoryDelete
 import io.mdcatapult.doclib.util.HashUtils.md5
-import org.scalatest.{BeforeAndAfterAll, FlatSpec}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.flatspec.AnyFlatSpec
 
-class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
+class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
@@ -20,6 +22,9 @@ class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
       |  }
       |}
     """.stripMargin)
+
+  private val system = ActorSystem("http-spec")
+  private implicit val m: Materializer = Materializer(system)
 
   "An URL to nowhere" should "throw an Exception" in {
     val uri = Uri.parse("http://www.a.b.c/something")
@@ -106,7 +111,7 @@ class HttpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
     assert(hashName == fileName)
   }
 
-  override def afterAll = {
+  override def afterAll: Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(
       pwd/"test"/"remote-ingress",

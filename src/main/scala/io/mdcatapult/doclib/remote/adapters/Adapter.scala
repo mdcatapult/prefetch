@@ -1,10 +1,10 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.security.MessageDigest
-
+import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.remote.DownloadResult
+import io.mdcatapult.doclib.util.HashUtils.md5
 import org.apache.tika.mime.MimeTypesFactory
 
 object Adapter {
@@ -17,8 +17,8 @@ object Adapter {
 
 trait Adapter {
 
-  def unapply(uri: Uri)(implicit config: Config): Option[DownloadResult]
-  def download(uri: Uri)(implicit config: Config): Option[DownloadResult]
+  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
 
   /**
     * generate path on filesystem from uri
@@ -35,22 +35,22 @@ trait Adapter {
   def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
 
-    val queryHash = if (uri.toUrl.query.isEmpty) "" else s".${
-      MessageDigest.getInstance("MD5")
-        .digest(uri.toUrl.query.toString.getBytes)
-        .map(0xFF & _)
-        .map { "%02x".format(_) }
-        .foldLeft(""){_ + _}
-    }"
+    val query = uri.toUrl.query
+
+    val queryHash =
+      if (query.nonEmpty)
+        md5(query.toString)
+      else
+        ""
 
     def insertQueryHash(pathEnd: String): String = {
       val hasExtension = """(.*)\.(.*)$""".r
       val headerExt = contentType.map(Adapter.contentTypeExtension).getOrElse(".html")
 
       pathEnd match {
-        case "" ⇒ s"index$queryHash$headerExt"
-        case hasExtension(p, ext) ⇒ s"$p$queryHash.$ext"
-        case p ⇒ s"$p$queryHash$headerExt"
+        case "" => s"index$queryHash$headerExt"
+        case hasExtension(p, ext) => s"$p$queryHash.$ext"
+        case p => s"$p$queryHash$headerExt"
       }
     }
 
@@ -63,20 +63,17 @@ trait Adapter {
 
     s"$targetDir/${
       uri.schemeOption match {
-        case Some(scheme) ⇒ s"$scheme/"
-        case None ⇒ ""
+        case Some(scheme) => s"$scheme/"
+        case None => ""
       }
     }${
-      uri.toUrl.hostOption match {
-        case Some(host) ⇒ s"$host"
-        case None ⇒ ""
-      }
+      uri.toUrl.hostOption.getOrElse("")
     }${
       uri.path match {
-        case EmptyPath ⇒ s"/index$queryHash.html"
-        case path: RootlessPath ⇒ s"${generateBasename(path)}"
-        case path: AbsolutePath ⇒ generateBasename(path)
-        case _ ⇒ ""
+        case EmptyPath => s"/index$queryHash.html"
+        case path: RootlessPath => s"${generateBasename(path)}"
+        case path: AbsolutePath => generateBasename(path)
+        case _ => ""
       }
     }"
   }

@@ -12,7 +12,9 @@ import io.mdcatapult.doclib.messages.DoclibMsg
 import io.mdcatapult.klein.queue.Queue
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpecLike
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -22,7 +24,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
-  with WordSpecLike
+  with AnyWordSpecLike
   with Matchers
   with BeforeAndAfterAll with MockFactory with ScalaFutures {
 

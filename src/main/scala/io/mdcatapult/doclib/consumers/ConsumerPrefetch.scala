@@ -1,7 +1,7 @@
 package io.mdcatapult.doclib.consumers
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import com.spingo.op_rabbit.SubscriptionRef
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.consumer.AbstractConsumer
@@ -15,10 +15,11 @@ import play.api.libs.json.Format
 
 object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
-  def start()(implicit as: ActorSystem, materializer: ActorMaterializer, mongo: Mongo): SubscriptionRef = {
+  def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
     import as.dispatcher
 
-    implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
+    implicit val collection: MongoCollection[DoclibDoc] =
+      mongo.database.getCollection(config.getString("mongo.collection"))
 
     val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))

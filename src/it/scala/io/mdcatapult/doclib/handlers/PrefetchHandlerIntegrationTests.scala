@@ -6,7 +6,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
 
 import akka.actor._
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
 import better.files.{File => ScalaFile}
@@ -26,13 +26,15 @@ import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.OptionValues._
 import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpecLike
 
+import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.language.postfixOps
 import scala.util.Try
 
@@ -40,7 +42,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
-  with WordSpecLike
+  with AnyWordSpecLike
   with Matchers
   with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
 
@@ -75,8 +77,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   val mongo: Mongo = new Mongo()
   implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
 
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
-  implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
+  implicit val m: Materializer = Materializer(system)
+  import system.dispatcher
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]

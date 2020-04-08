@@ -3,15 +3,15 @@ package io.mdcatapult.doclib.remote
 import java.nio.file.{Files, Paths}
 
 import akka.actor.ActorSystem
-import akka.stream.{ActorMaterializer, StreamTcpException}
+import akka.stream.{Materializer, StreamTcpException}
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalatest.{AsyncWordSpecLike, BeforeAndAfterAll, Matchers, OptionValues}
-
-import scala.concurrent.ExecutionContextExecutor
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpecLike
+import org.scalatest.{BeforeAndAfterAll, OptionValues}
 
 class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest", ConfigFactory.parseString(
   """
@@ -47,8 +47,8 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
       |  }
       |}
     """.stripMargin)
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
-  implicit val executor: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
+
+  implicit val m: Materializer = Materializer(system)
   val client = new Client()
 
   "A valid https URI " should {

@@ -2,10 +2,11 @@ package io.mdcatapult.doclib.remote.adapters
 
 import akka.http.javadsl.model.HttpHeader
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.OptionValues._
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-class HeadersSpec extends FlatSpec with Matchers with MockFactory {
+class HeadersSpec extends AnyFlatSpec with Matchers with MockFactory {
 
   "Headers.filename" should "find filename from Content-Disposition with filename*" in {
     val header = stub[HttpHeader]

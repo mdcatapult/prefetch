@@ -3,10 +3,10 @@ package io.mdcatapult.doclib.handlers
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File ⇒ ScalaFile}
-import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
+import better.files.{File => ScalaFile}
+import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
@@ -21,7 +21,9 @@ import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import org.scalatest.wordspec.AnyWordSpecLike
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.matchers.should.Matchers
 
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -34,7 +36,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
-  with WordSpecLike
+  with AnyWordSpecLike
   with Matchers
   with BeforeAndAfterAll with MockFactory {
 
@@ -62,7 +64,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |}
     """.stripMargin)
 
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
+  implicit val materializer: Materializer = Materializer(system)
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
@@ -289,7 +291,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     "A prefetch message can have derivative type in the metadata" in {
       val metadataMap: List[MetaString] = List(MetaString("derivative.type", "unarchive"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
-      val derivMetadata = prefetchMsg.metadata.get.filter(p ⇒ p.getKey == "derivative.type")
+      val derivMetadata = prefetchMsg.metadata.get.filter(p => p.getKey == "derivative.type")
       assert(derivMetadata.length == 1)
       assert(derivMetadata.head.getKey == "derivative.type")
       assert(derivMetadata.head.getValue == "unarchive")
@@ -355,7 +357,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     assert(result.raw == path)
     assert(result.uri.isEmpty)
   }
-  allProtocols.foreach(protocol ⇒ {
+  allProtocols.foreach(protocol => {
     s"A message without a url scheme defined for a $protocol scheme should throw an exception" in {
       val origin: Origin = Origin(
         scheme = protocol,
@@ -374,7 +376,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
-  allProtocols.foreach(protocol ⇒ {
+  allProtocols.foreach(protocol => {
     s"A message without an origin uri defined for a $protocol scheme should throw an exception" in {
       val origin: Origin = Origin(
         scheme = protocol,

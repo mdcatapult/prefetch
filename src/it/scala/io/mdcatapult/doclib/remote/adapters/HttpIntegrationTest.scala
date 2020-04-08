@@ -2,14 +2,17 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 
+import akka.actor.ActorSystem
+import akka.stream.Materializer
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalatest.{BeforeAndAfterAll, FlatSpec}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.flatspec.AnyFlatSpec
 
-class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAfterAll {
+class HttpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
@@ -21,6 +24,9 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
       |  }
       |}
     """.stripMargin)
+
+  private val system = ActorSystem("http-integration-spec")
+  implicit val m: Materializer = Materializer(system)
 
   // TODO URL has moved. Need another long URL.
 //  "A uri with calculated filename that is longer than 255 chars with query params" should "be hashed" in {
@@ -61,7 +67,15 @@ class HttpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAf
 
   override def afterAll {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"http-test"))
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
+    deleteDirectories(
+      List(
+        pwd/"test"/"http-test",
+        pwd/"test"/"remote-ingress",
+        pwd/"test"/"local",
+        pwd/"test"/"archive",
+        pwd/"test"/"ingress",
+        pwd/"test"/"local",
+        pwd/"test"/"remote"
+      ))
   }
 }

@@ -1,13 +1,16 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import akka.actor.ActorSystem
+import akka.stream.Materializer
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalatest.{BeforeAndAfterAll, FlatSpec}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.flatspec.AnyFlatSpec
 
-class FtpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
+class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -19,6 +22,9 @@ class FtpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
       |  }
       |}
     """.stripMargin)
+
+  private val system = ActorSystem("ftp-spec")
+  private implicit val m: Materializer = Materializer(system)
 
   "A broken FTP URL" should "fail" in {
     val uri = Uri.parse("ftp://a.b.c/something")
@@ -61,7 +67,7 @@ class FtpSpec extends FlatSpec with BeforeAndAfterAll with DirectoryDelete {
       Ftp.download(uri)
     }
   }
-  override def afterAll = {
+  override def afterAll: Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(
       pwd / "test" / "remote-ingress",
