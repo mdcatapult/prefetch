@@ -41,6 +41,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
     s"""
        |doclib {
        |  root: "${pwd/"test"}"
+       |  flag: "prefetch"
        |  local {
        |    target-dir: "local"
        |    temp-dir: "ingress"

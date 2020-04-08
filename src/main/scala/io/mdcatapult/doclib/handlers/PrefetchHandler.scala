@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.concurrency.LimitedExecution
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
-import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, FileAttrs, Origin}
+import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.HashUtils.md5
@@ -68,10 +68,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   /** set props for target path generation */
   override val doclibConfig: Config = config
 
+  private val docExtractor = DoclibDocExtractor()
+
   /** Initialise Apache Tika && Remote Client **/
   lazy val tika = new Tika()
   lazy val remoteClient = new RemoteClient()
-  lazy val flags = new DoclibFlags(config.getString("doclib.flag"))
+  lazy val flags = new DoclibFlags(docExtractor.defaultFlagKey)
 
   val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
@@ -118,7 +120,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     logger.info(f"RECEIVED: ${msg.source}")
     (for {
       found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-      if valid(msg, found)
+      if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
       started: UpdateResult <- OptionT(flags.start(found.doc))
       newDoc <- OptionT(process(found, msg))
       _ <- OptionT.liftF(processParent(newDoc, msg))
