@@ -39,7 +39,7 @@ trait Adapter {
 
     val queryHash =
       if (query.nonEmpty)
-        md5(query.toString)
+        "." + md5(s"?$query")
       else
         ""
 
