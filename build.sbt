@@ -64,6 +64,8 @@ lazy val root = (project in file("."))
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
+    ).map(
+      _.exclude(org = "com.google.protobuf", name = "protobuf-java")
     ),
   )
   .settings(
