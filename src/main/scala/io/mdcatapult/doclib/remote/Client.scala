@@ -1,6 +1,6 @@
 package io.mdcatapult.doclib.remote
 
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin
@@ -15,7 +15,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
-class Client()(implicit config: Config, ec: ExecutionContext, materializer: ActorMaterializer) extends FileHash {
+class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) extends FileHash {
 
   /** initialise web client **/
   lazy val ahcwsCconfig: AhcWSClientConfig = AhcWSClientConfigFactory.forConfig(config)
@@ -32,7 +32,7 @@ class Client()(implicit config: Config, ec: ExecutionContext, materializer: Acto
     */
   def resolve(source: Uri): Future[List[Origin]] = source.schemeOption match {
       //TODO What should the metatdata be ("status": 200) ?
-    case Some("http" | "https") ⇒ httpClient.url(source.toString).head().flatMap(response => {
+    case Some("http" | "https") => httpClient.url(source.toString).head().flatMap(response => {
         if (!List(301,302).contains(response.status)) {
           Future.successful(List(makeOrigin(response)))
         } else {
@@ -41,9 +41,9 @@ class Client()(implicit config: Config, ec: ExecutionContext, materializer: Acto
           )
         }
       })
-    case Some("ftp" | "ftps" | "sftp") ⇒ Future.successful(List(makeOrigin(source)))
-    case Some(unsupported) ⇒ throw new UnsupportedSchemeException(unsupported)
-    case None ⇒ throw new UndefinedSchemeException(source)
+    case Some("ftp" | "ftps" | "sftp") => Future.successful(List(makeOrigin(source)))
+    case Some(unsupported) => throw new UnsupportedSchemeException(unsupported)
+    case None => throw new UndefinedSchemeException(source)
   }
 
   protected def makeOrigin(response: StandaloneWSRequest#Response): Origin = Origin(
@@ -61,9 +61,9 @@ class Client()(implicit config: Config, ec: ExecutionContext, materializer: Acto
     metadata = None)
 
   def download(source: Uri): Option[DownloadResult] = source match {
-    case Http(result: DownloadResult) ⇒ Some(result)
-    case Ftp(result: DownloadResult) ⇒ Some(result)
-    case _ ⇒ throw new UnsupportedSchemeException(source.schemeOption.getOrElse("unknown"))
+    case Http(result: DownloadResult) => Some(result)
+    case Ftp(result: DownloadResult) => Some(result)
+    case _ => throw new UnsupportedSchemeException(source.schemeOption.getOrElse("unknown"))
   }
 
 }

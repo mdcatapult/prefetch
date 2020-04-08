@@ -2,14 +2,17 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 
+import akka.actor.ActorSystem
+import akka.stream.Materializer
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalatest.{BeforeAndAfterAll, FlatSpec}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.flatspec.AnyFlatSpec
 
-class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAfterAll {
+class FtpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
@@ -21,6 +24,9 @@ class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAft
        |  }
        |}
     """.stripMargin)
+
+  private val system = ActorSystem("ftp-integration-spec")
+  implicit val m: Materializer = Materializer(system)
 
   "A valid anonymous FTP URL" should "download a file successfully" in {
     val uri = Uri.parse("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
@@ -39,11 +45,18 @@ class FtpIntegrationTest extends FlatSpec with DirectoryDelete with BeforeAndAft
     }
   }
 
-
-  override def afterAll = {
+  override def afterAll: Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test"/"ftp-test"))
-    deleteDirectories(List(pwd/"test"/"remote-ingress", pwd/"test"/"local", pwd/"test"/"archive", pwd/"test"/"ingress", pwd/"test"/"local", pwd/"test"/"remote"))
+    deleteDirectories(
+      List(
+        pwd/"test"/"ftp-test",
+        pwd/"test"/"remote-ingress",
+        pwd/"test"/"local",
+        pwd/"test"/"archive",
+        pwd/"test"/"ingress",
+        pwd/"test"/"local",
+        pwd/"test"/"remote"
+      ))
   }
 
 }

@@ -2,12 +2,11 @@ import Release._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.5.26"
+lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
-lazy val awsScalaVersion = "0.8.1"
+lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.53"
-
+lazy val doclibCommonVersion = "0.0.61"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -36,26 +35,26 @@ lazy val root = (project in file("."))
     resolvers ++= Seq(
       "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
       "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
-    updateOptions := updateOptions.value.withLatestSnapshots(false),
+    updateOptions := updateOptions.value.withLatestSnapshots(latestSnapshots = false),
     credentials += {
-      val nexusPassword = sys.env.get("NEXUS_PASSWORD")
-      if (nexusPassword.nonEmpty) {
-        Credentials("Sonatype Nexus Repository Manager", "nexus.mdcatapult.io", "gitlab", nexusPassword.get)
-      } else {
-        Credentials(Path.userHome / ".sbt" / ".credentials")
+      sys.env.get("NEXUS_PASSWORD") match {
+        case Some(p) =>
+          Credentials("Sonatype Nexus Repository Manager", "nexus.mdcatapult.io", "gitlab", p)
+        case None =>
+          Credentials(Path.userHome / ".sbt" / ".credentials")
       }
     },
     libraryDependencies ++= Seq(
-      "org.scalactic" %% "scalactic" % "3.0.5",
-      "org.scalatest" %% "scalatest" % "3.0.5" % "it,test",
-      "org.scalamock" %% "scalamock" % "4.3.0" % "it,test",
+      "org.scalactic" %% "scalactic" % "3.1.1",
+      "org.scalatest" %% "scalatest" % "3.1.1" % "it,test",
+      "org.scalamock" %% "scalamock" % "4.4.0" % "it,test",
       "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-actor" % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "com.typesafe.akka" %% "akka-http" % "10.1.11",
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
       "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
-      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
+      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
       "com.typesafe" % "config" % configVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
       "org.typelevel" %% "cats-macros" % catsVersion,
@@ -63,7 +62,11 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
       "com.github.seratch" %% "awscala" % awsScalaVersion,
-      "com.github.pathikrit" %% "better-files" % betterFilesVersion
+      "com.github.pathikrit" %% "better-files" % betterFilesVersion,
+      "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
+      "org.xerial" % "sqlite-jdbc" % "3.30.1",
+    ).map(
+      _.exclude(org = "com.google.protobuf", name = "protobuf-java")
     ),
   )
   .settings(
