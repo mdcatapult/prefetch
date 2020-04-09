@@ -61,6 +61,36 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
     }
   }
 
+  "A valid http URI that redirects " should {
+    "be downloadable" in {
+      val uri: Uri =  Uri.parse("http://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
+      val a = client.download(uri)
+      assert(a.value.origin.value == "http://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
+      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/http/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.f3e24e247796d0e8aadc4607bfdfdbe4.3712")
+      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/http/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.f3e24e247796d0e8aadc4607bfdfdbe4.3712")
+    }
+  }
+
+  "A valid https URI that redirects " should {
+    "be downloadable" in {
+      val uri: Uri =  Uri.parse("https://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
+      val a = client.download(uri)
+      assert(a.value.origin.value == "https://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
+      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.f3e24e247796d0e8aadc4607bfdfdbe4.3712")
+      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.f3e24e247796d0e8aadc4607bfdfdbe4.3712")
+    }
+  }
+
+  "A valid https URI from Wiley that redirects " should {
+    "be downloadable" in {
+      val uri: Uri =  Uri.parse("https://onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
+      val a = client.download(uri)
+      assert(a.value.origin.value == "https://onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
+      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
+      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
+    }
+  }
+
   "An invalid https URI " should {
     "throw an exception" in {
       val uri: Uri =  Uri.parse("https://a.b.c")

@@ -88,9 +88,9 @@ object Ftp extends Adapter with FileHash {
     * @return
     */
   protected def retrieve(url: Url): Source[ByteString, Future[IOResult]] = url.schemeOption match  {
-    case Some("ftp")  => AkkaFtp.fromPath(url.path.toString(), getFtpSettings(url))
-    case Some("ftps") => AkkaFtps.fromPath(url.path.toString(), getFtpsSettings(url))
-    case Some("sftp") => AkkaSftp.fromPath(url.path.toString(), getSftpSettings(url))
+    case Some("ftp")  => AkkaFtp.fromPath(url.path.toString, getFtpSettings(url))
+    case Some("ftps") => AkkaFtps.fromPath(url.path.toString, getFtpsSettings(url))
+    case Some("sftp") => AkkaSftp.fromPath(url.path.toString, getSftpSettings(url))
     case Some(unknown) => throw new UnsupportedSchemeException(unknown)
     case None => throw new UndefinedSchemeException(url)
   }
