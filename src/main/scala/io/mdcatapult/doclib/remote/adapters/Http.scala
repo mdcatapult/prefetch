@@ -11,14 +11,14 @@ import akka.stream.{IOResult, Materializer, StreamTcpException}
 import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
+import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash
 import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull) extends Exception
+case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orNull) extends Exception(message, cause)
 
 case class Http(uri: Uri)
 
@@ -36,10 +36,28 @@ object Http extends Adapter with FileHash {
    * @param uri Resolved location of remote file
    * @return
    */
-  protected def retrieve(uri: Uri)(implicit actor: ActorSystem): Future[HttpResponse] = uri.schemeOption match  {
-    case Some("http") | Some("https") => AkkaHttp().singleRequest(HttpRequest(uri = uri.toString()))
-    case Some(unknown) => throw new UnsupportedSchemeException(unknown)
-    case None => throw new UndefinedSchemeException(uri)
+  protected def retrieve(uri: Uri)(implicit system: ActorSystem): Future[(Option[String], Option[String], ResponseEntity)] = {
+
+    import system.dispatcher
+
+    uri.schemeOption match {
+      case Some(x) if protocols.contains(x) =>
+        AkkaHttp().singleRequest(HttpRequest(uri = uri.toString)).flatMap {
+          case HttpResponse(StatusCodes.OK, headers, entity, _) =>
+            Future.successful(Headers.filename(headers), Headers.contentType(headers), entity)
+          case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
+            val location = resp.headers.find(_.lowercaseName == "location")
+            location match {
+              case Some(x) => retrieve(Uri.parse(x.value))
+              case None => throw new UnableToFollow(x.toString)
+            }
+          case resp @ HttpResponse(status, _, _, _) =>
+            resp.discardEntityBytes()
+            throw new Exception(s"Unable to process $uri with status code $status")
+        }
+      case Some(unknown) => throw new UnsupportedSchemeException(unknown)
+      case None => throw new UndefinedSchemeException(uri)
+    }
   }
 
   /**
@@ -64,13 +82,8 @@ object Http extends Adapter with FileHash {
     Await.result(retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
       case streamException: StreamTcpException => throw streamException
-      case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
-    } map {
-      case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-        (Headers.filename(headers), Headers.contentType(headers), entity)
-      case resp @ HttpResponse(status, _, _, _) =>
-        resp.discardEntityBytes()
-        throw new Exception(s"Unable to process $uri with status code $status")
+      case e: UnableToFollow => throw e
+      case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
     } flatMap { x: (Option[String], Option[String], ResponseEntity) =>
       val (fileName, contentType, entity) = x
 

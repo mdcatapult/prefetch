@@ -21,9 +21,6 @@ class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) e
   lazy val ahcwsCconfig: AhcWSClientConfig = AhcWSClientConfigFactory.forConfig(config)
   lazy val httpClient: StandaloneAhcWSClient = StandaloneAhcWSClient(AhcWSClientConfigFactory.forConfig(config))
 
-  final class UnableToFollow(source: String, cause: Throwable = None.orNull)
-    extends RuntimeException(f"Cannot follow redirect for '$source' as no valid Location header present", cause)
-
   /**
     * does an initial check of a provided remote resource and returns a Resolved response
     *
