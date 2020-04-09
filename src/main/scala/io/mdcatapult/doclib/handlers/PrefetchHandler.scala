@@ -17,9 +17,9 @@ import io.mdcatapult.doclib.concurrency.LimitedExecution
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
-import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin}
+import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
@@ -63,6 +63,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       m: Materializer,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
+                      derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with FileHash with TargetPath {
 
   /** set props for target path generation */
@@ -164,10 +165,29 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      collection.updateMany(
-        equal("derivatives.path", msg.source) ,
-        set("derivatives.$.path", path)
-      ).toFutureOption()
+      val f = derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+
+      val docs = f onComplete {
+        case Success(docs) ⇒ docs
+        case _ ⇒ ???
+      }
+      if (!docs.isEmpty) {
+        derivativesCollection.updateMany(
+          equal("childPath", msg.source),
+          combine(
+            set("childPath", path),
+            set("child", doc._id)
+          )
+        ).toFutureOption()
+      } else {
+
+          val af = collection.find(equal("derivatives.path", msg.source)).toFuture()
+
+        collection.updateMany(
+          equal("derivatives.path", msg.source),
+          set("derivatives.$.path", path)
+        ).toFutureOption()
+      }
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
