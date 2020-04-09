@@ -67,7 +67,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       |  }
       |}
       |mongo {
-      |  database: "prefetch_test"
+      |  database: "prefetch-test"
       |  collection: "documents"
       |  derivatives_collection : "derivatives"
       |}
@@ -525,6 +525,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
+    Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
@@ -540,7 +541,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   }
 
   override def afterAll(): Unit = {
-    Await.result(collection.drop().toFutureOption(), 5.seconds)
+//    Await.result(collection.drop().toFutureOption(), 5.seconds)
+//    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd/"test"/"prefetch-test"))
   }
