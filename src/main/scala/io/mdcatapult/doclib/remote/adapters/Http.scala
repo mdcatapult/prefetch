@@ -53,7 +53,9 @@ object Http extends Adapter with FileHash {
           case HttpResponse(StatusCodes.OK, headers, entity, _) =>
             Future.successful(HttpResult(Headers.filename(headers), Headers.contentType(headers), entity))
           case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
+            resp.discardEntityBytes()
             val location = resp.headers.find(_.lowercaseName == "location")
+
             location match {
               case Some(x) => retrieve(Uri.parse(x.value), uri :: redirections)
               case None => throw new UnableToFollow(x.toString)
