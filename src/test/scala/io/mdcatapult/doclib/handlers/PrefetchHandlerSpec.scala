@@ -5,14 +5,14 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File => ScalaFile}
-import com.mongodb.async.client.{MongoCollection => JMongoCollection}
+import better.files.{File ⇒ ScalaFile}
+import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
+import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.util.MongoCodecs
@@ -68,7 +68,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val materializer: Materializer = Materializer(system)
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
+  val wrappedPCCollection: JMongoCollection[ParentChildMapping] = stub[JMongoCollection[ParentChildMapping]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
+  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
