@@ -166,31 +166,26 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
+  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Any] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
       // Find parent-child mappings in derivatives collection
-      val parentChildFuture = derivativesCollection.find(equal("childPath", doc.source)).toFuture()
-      parentChildFuture.onComplete {
-        case Success(docs) ⇒ {
-          if (!docs.isEmpty) {
-            derivativesCollection.updateMany(
-              equal("childPath", msg.source),
-              combine(
-                set("childPath", path),
-                set("child", doc._id)
-              )
-            ).toFutureOption()
-          } else {
-            // If there are no parent-child mappings find existing parents with this child within doclib collection
-            // and create new parent-child mappings
-            updateExistingDerivatives(doc, msg.source, path)
-          }
-
+      for {
+        docs ← derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+        xs ← if (!docs.isEmpty) {
+          // TODO do as upsert (and move to another method)
+          derivativesCollection.updateMany(
+            equal("childPath", msg.source),
+            combine(
+              set("childPath", path),
+              set("child", doc._id)
+            )
+          ).toFuture()
+        } else {
+          // TODO maybe we should do this anyway
+          updateExistingDerivatives(doc, msg.source, path)
         }
-        case Failure(ex) => ex.printStackTrace
-      }
-      Future.successful(None)
+      } yield xs
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
