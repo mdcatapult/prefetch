@@ -157,7 +157,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   * Update parent "origin" documents with the new source for the derivative
+   * Update parent "origin" documents with the new source for the derivative.
+   * 1) First find any parent-child-mappings.
+   * 2) If they exist then use them.
+   * 3) If none find any old derivatives array.
+   * 4) If derivatives array exists then move them to parent-child-mappings with new child path.
    *
    * @param msg PrefetchMsg
    * @return
@@ -165,33 +169,52 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      val f = derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+      // Find parent-child mappings in derivatives collection
+      val parentChildFuture = derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+      parentChildFuture.onComplete {
+        case Success(docs) ⇒ {
+          if (!docs.isEmpty) {
+            derivativesCollection.updateMany(
+              equal("childPath", msg.source),
+              combine(
+                set("childPath", path),
+                set("child", doc._id)
+              )
+            ).toFutureOption()
+          } else {
+            // If there are no parent-child mappings find existing parents with this child within doclib collection
+            // and create new parent-child mappings
+            updateExistingDerivatives(doc, msg.source, path)
+          }
 
-      val docs = f onComplete {
-        case Success(docs) ⇒ docs
-        case _ ⇒ ???
+        }
+        case Failure(ex) => ex.printStackTrace
       }
-      if (!docs.isEmpty) {
-        derivativesCollection.updateMany(
-          equal("childPath", msg.source),
-          combine(
-            set("childPath", path),
-            set("child", doc._id)
-          )
-        ).toFutureOption()
-      } else {
-
-          val af = collection.find(equal("derivatives.path", msg.source)).toFuture()
-
-        collection.updateMany(
-          equal("derivatives.path", msg.source),
-          set("derivatives.$.path", path)
-        ).toFutureOption()
-      }
+      Future.successful(None)
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
     }
+  }
+
+  /**
+   * Given the path to a child document convert existing parent derivative array to parent-child mappings
+   */
+  def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
+    (for {
+      doclibDocs ← OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture())
+      _ ← OptionT.pure(doclibDocs.map(doclibDoc ⇒ createParentChildDerivative(doclibDoc, child, source, target)))
+    } yield doclibDocs).value
+  }
+
+  /**
+   * Given parent and child details create parent-child mappings
+   */
+  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, source: String, target: String): Future[List[Option[Completed]] ]= {
+    val futures: List[Future[Option[Completed]]] = parentDoc.derivatives.getOrElse(List[Derivative]()).map(derivative ⇒ {
+      derivativesCollection.insertOne(ParentChildMapping(_id = UUID.randomUUID, parent = parentDoc._id, child = Some(childDoc._id), childPath = target, metadata = derivative.metadata)).toFutureOption()
+    })
+    Future.sequence(futures)
   }
 
   def parentId(metadata: List[MetaValueUntyped]): Any = {
