@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.{Http => AkkaHttp}
 import akka.stream.scaladsl.FileIO
-import akka.stream.{ActorMaterializer, IOResult, StreamTcpException}
+import akka.stream.{IOResult, Materializer, StreamTcpException}
 import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
@@ -26,7 +26,7 @@ object Http extends Adapter with FileHash {
 
   val protocols = List("http", "https")
 
-  def unapply(uri: Uri)(implicit config: Config): Option[DownloadResult] =
+  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] =
     if (protocols.contains(uri.schemeOption.getOrElse("")))
       Http.download(uri)
     else None
@@ -53,11 +53,10 @@ object Http extends Adapter with FileHash {
    * @param uri io.lemonlabs.uri.Uri
    * @return
    */
-  def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = {
+  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
     //TODO We should probably turn this all into futures and for-comps but is a bigger refactor
     // and something for another issue.
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
-    implicit val materializer: ActorMaterializer = ActorMaterializer()
     import system.dispatcher
 
     val doclibRoot = config.getString("doclib.root")
@@ -78,8 +77,8 @@ object Http extends Adapter with FileHash {
       val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), fileName, contentType)
       val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), fileName, contentType)
 
-      val finalTarget = new File(Paths.get(s"$doclibRoot/$remotePath").toString)
-      val tempTarget = new File(Paths.get(s"$doclibRoot/$tempPath").toString)
+      val finalTarget = Paths.get(s"$doclibRoot/$remotePath").toFile
+      val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile
 
       val (tempPathFinal: String, tempTargetFinal: String, finalTargetFinal: String) = hashOrOriginal(uri, ScalaFile(tempPath).name) match {
         case orig if orig == tempTarget.getName => (tempPath, tempTarget.toString, finalTarget.toString)
@@ -89,10 +88,10 @@ object Http extends Adapter with FileHash {
       tempTarget.getParentFile.mkdirs()
 
       val r: Future[IOResult] =
-      entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
-        // Something happened before fetching file, might want to do something about it....
-        case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
-      }
+        entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
+          // Something happened before fetching file, might want to do something about it....
+          case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
+        }
 
       r.map(_ =>
         Some(DownloadResult(

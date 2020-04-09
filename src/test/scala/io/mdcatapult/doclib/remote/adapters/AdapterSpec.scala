@@ -1,11 +1,13 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import akka.stream.Materializer
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.DownloadResult
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-class AdapterSpec extends FlatSpec with Matchers {
+class AdapterSpec extends AnyFlatSpec with Matchers {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -23,8 +25,8 @@ class AdapterSpec extends FlatSpec with Matchers {
     """.stripMargin)
 
   private val dummy = new Adapter {
-    def unapply(uri: Uri)(implicit config: Config): Option[DownloadResult] = None
-    def download(uri: Uri)(implicit config: Config): Option[DownloadResult] = None
+    def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] = None
+    def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] = None
   }
   import dummy.generateFilePath
 

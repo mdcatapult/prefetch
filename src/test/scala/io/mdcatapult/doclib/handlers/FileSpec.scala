@@ -2,9 +2,10 @@ package io.mdcatapult.doclib.handlers
 
 import java.io.File
 
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-class FileSpec extends FlatSpec with Matchers {
+class FileSpec extends AnyFlatSpec with Matchers {
 
   "A file" should "list files when not a directory" in {
     val f = File.createTempFile("deletion-test", "txt")

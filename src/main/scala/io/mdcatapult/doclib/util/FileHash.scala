@@ -13,13 +13,13 @@ trait FileHash {
    */
   def hashOrOriginal(origUri: Uri, fileName: String): String = {
     fileName.length match {
-      case length if length >= 256 ⇒
+      case length if length >= 256 =>
         val origFile = ScalaFile(origUri.path.toString())
         val origFileName = origFile.nameWithoutExtension
         val origExtension = origFile.extension.getOrElse("").replaceFirst(".", "")
         val queryHash = fileName.replace(origFileName, "").replace(origExtension, "").replace(".", "")
         s"${newFileName(origFileName, queryHash, origExtension)}"
-      case _ ⇒ fileName
+      case _ => fileName
     }
   }
 
@@ -32,13 +32,13 @@ trait FileHash {
   def newFileName(fileName: String, queryHash: String, fileExtension: String): String =
     s"${md5(fileName)}${
       queryHash match {
-        case "" ⇒ ""
-        case value ⇒ s".$value"
+        case "" => ""
+        case value => s".$value"
       }
     }${
       fileExtension match {
-        case "" ⇒ ""
-        case value ⇒ s".$value"
+        case "" => ""
+        case value => s".$value"
       }
     }"
 }

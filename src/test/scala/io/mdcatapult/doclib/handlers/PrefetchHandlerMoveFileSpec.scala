@@ -3,7 +3,7 @@ package io.mdcatapult.doclib.handlers
 import java.time.{LocalDateTime, ZoneOffset}
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
 import better.files.File.Attributes
@@ -21,7 +21,9 @@ import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpecLike}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpecLike
+import org.scalatest.{BeforeAndAfterAll, OptionValues}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -31,7 +33,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", ConfigFactory.parseString("""
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
-  with WordSpecLike
+  with AnyWordSpecLike
   with Matchers
   with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with DirectoryDelete {
 
@@ -39,6 +41,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
     s"""
        |doclib {
        |  root: "${pwd/"test"}"
+       |  flag: "prefetch"
        |  local {
        |    target-dir: "local"
        |    temp-dir: "ingress"
@@ -56,7 +59,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |}
     """.stripMargin)
 
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
+  implicit val m: Materializer = Materializer(system)
+
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
@@ -69,7 +73,6 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   private val writeLimiter = SemaphoreLimitedExecution.create(1)
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
-
 
   "The handler" should {
 

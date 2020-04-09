@@ -3,15 +3,16 @@ package io.mdcatapult.doclib.remote
 import java.net.URL
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.Materializer
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri._
-import org.scalatest.FlatSpec
+import org.scalatest.flatspec.AnyFlatSpec
 
+import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContextExecutor}
 
-class ClientSpec extends FlatSpec{
+class ClientSpec extends AnyFlatSpec {
+
   val wsConfFile: URL = getClass.getResource("/test/ws.conf")
   val wsConfig: Config = ConfigFactory.parseURL(wsConfFile)
   implicit val config: Config = ConfigFactory.parseString(
@@ -23,10 +24,11 @@ class ClientSpec extends FlatSpec{
       |  }
       |}
     """.stripMargin).withFallback(wsConfig)
-  implicit val system: ActorSystem = ActorSystem("scalatest", config)
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
-  implicit val executor: ExecutionContextExecutor = system.getDispatcher
-  val client = new Client()
+  private val system: ActorSystem = ActorSystem("scalatest", config)
+  private implicit val m: Materializer = Materializer(system)
+
+  import system.dispatcher
+  private val client = new Client()
 
   "A valid http URL that redirects to https" should "resolve to a valid Prefetch Origin" in {
     val result = Await.result(client.resolve(Uri.parse("http://news.bbc.co.uk")), Duration.Inf)
