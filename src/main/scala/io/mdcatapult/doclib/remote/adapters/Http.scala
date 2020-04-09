@@ -22,9 +22,13 @@ case class DoclibHttpRetrievalError(message: String, cause: Throwable = None.orN
 
 case class Http(uri: Uri)
 
+case class HttpResult(fileName: Option[String], contentType: Option[String], entity: HttpEntity)
+
 object Http extends Adapter with FileHash {
 
   val protocols = List("http", "https")
+
+  val maxRedirection = 20
 
   def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] =
     if (protocols.contains(uri.schemeOption.getOrElse("")))
@@ -36,19 +40,22 @@ object Http extends Adapter with FileHash {
    * @param uri Resolved location of remote file
    * @return
    */
-  protected def retrieve(uri: Uri)(implicit system: ActorSystem): Future[(Option[String], Option[String], ResponseEntity)] = {
+  protected def retrieve(uri: Uri, redirections: List[Uri] = Nil)(implicit system: ActorSystem): Future[HttpResult] = {
 
     import system.dispatcher
+
+    if (redirections.size == maxRedirection)
+      throw new TooManyRedirectsException(redirections.reverse)
 
     uri.schemeOption match {
       case Some(x) if protocols.contains(x) =>
         AkkaHttp().singleRequest(HttpRequest(uri = uri.toString)).flatMap {
           case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-            Future.successful(Headers.filename(headers), Headers.contentType(headers), entity)
+            Future.successful(HttpResult(Headers.filename(headers), Headers.contentType(headers), entity))
           case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
             val location = resp.headers.find(_.lowercaseName == "location")
             location match {
-              case Some(x) => retrieve(Uri.parse(x.value))
+              case Some(x) => retrieve(Uri.parse(x.value), uri :: redirections)
               case None => throw new UnableToFollow(x.toString)
             }
           case resp @ HttpResponse(status, _, _, _) =>
@@ -84,11 +91,10 @@ object Http extends Adapter with FileHash {
       case streamException: StreamTcpException => throw streamException
       case e: UnableToFollow => throw e
       case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
-    } flatMap { x: (Option[String], Option[String], ResponseEntity) =>
-      val (fileName, contentType, entity) = x
+    } flatMap { x: HttpResult =>
 
-      val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), fileName, contentType)
-      val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), fileName, contentType)
+      val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), x.fileName, x.contentType)
+      val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), x.fileName, x.contentType)
 
       val finalTarget = Paths.get(s"$doclibRoot/$remotePath").toFile
       val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile
@@ -101,7 +107,7 @@ object Http extends Adapter with FileHash {
       tempTarget.getParentFile.mkdirs()
 
       val r: Future[IOResult] =
-        entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
+        x.entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
           // Something happened before fetching file, might want to do something about it....
           case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
         }
