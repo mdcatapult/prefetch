@@ -5,6 +5,7 @@ import java.nio.file.Paths
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.headers.`Set-Cookie`
 import akka.http.scaladsl.{Http => AkkaHttp}
 import akka.stream.scaladsl.FileIO
 import akka.stream.{IOResult, Materializer, StreamTcpException}
@@ -29,14 +30,18 @@ object Http extends Adapter with FileHash {
   def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] =
     if (protocols.contains(uri.schemeOption.getOrElse("")))
       Http.download(uri)
-    else None
+    else
+      None
 
   /**
    * Create appropriate https download mechanism for file
    * @param uri Resolved location of remote file
    * @return
    */
-  protected def retrieve(uri: Uri, redirections: List[Uri] = Nil)(implicit system: ActorSystem): Future[Result] = {
+  protected def retrieve(uri: Uri)(implicit system: ActorSystem): Future[Result] =
+    retrieve(uri, CookieJar.empty, Nil)
+
+  private def retrieve(uri: Uri, cookieJar: CookieJar, redirections: List[Uri])(implicit system: ActorSystem): Future[Result] = {
 
     import system.dispatcher
 
@@ -45,7 +50,12 @@ object Http extends Adapter with FileHash {
 
     uri.schemeOption match {
       case Some(x) if protocols.contains(x) =>
-        AkkaHttp().singleRequest(HttpRequest(uri = uri.toString)).flatMap {
+        AkkaHttp().singleRequest(
+          HttpRequest(
+            uri = uri.toString,
+            headers = cookieJar.getCookies(uri)
+          )
+        ).flatMap {
           case HttpResponse(StatusCodes.OK, headers, entity, _) =>
             Future.successful(Result(Headers.filename(headers), Headers.contentType(headers), entity))
           case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
@@ -53,7 +63,11 @@ object Http extends Adapter with FileHash {
             val location = resp.headers.find(_.lowercaseName == "location")
 
             location match {
-              case Some(x) => retrieve(Uri.parse(x.value), uri :: redirections)
+              case Some(x) =>
+                retrieve(
+                  Uri.parse(x.value),
+                  cookieJar.addCookies(uri, resp.headers[`Set-Cookie`]),
+                  uri :: redirections)
               case None => throw new UnableToFollow(x)
             }
           case resp @ HttpResponse(status, _, _, _) =>
