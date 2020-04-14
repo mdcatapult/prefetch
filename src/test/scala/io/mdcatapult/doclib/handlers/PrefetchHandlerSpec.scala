@@ -5,8 +5,8 @@ import java.time.{LocalDateTime, ZoneOffset}
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.{File ⇒ ScalaFile}
-import com.mongodb.async.client.{MongoCollection ⇒ JMongoCollection}
+import better.files.{File => ScalaFile}
+import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution

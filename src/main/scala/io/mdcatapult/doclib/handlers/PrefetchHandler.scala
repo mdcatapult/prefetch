@@ -172,7 +172,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       // Find parent-child mappings in derivatives collection
       for {
         docs ← derivativesCollection.find(equal("childPath", doc.source)).toFuture()
-        xs ← if (!docs.isEmpty) {
+        xs ← if (docs.nonEmpty) {
           updateParentChildMappings(msg.source, path, doc._id)
         } else {
           updateExistingDerivatives(doc, msg.source, path)
