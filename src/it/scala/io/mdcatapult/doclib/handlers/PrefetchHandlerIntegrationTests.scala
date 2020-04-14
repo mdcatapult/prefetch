@@ -25,6 +25,7 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
+import com.mongodb.client.result.UpdateResult
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.OptionValues._
@@ -94,77 +95,84 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
-  "Parent docs" should "be updated wth new child info" in {
-    //TODO Fix this for new parent-child mappings
-    //    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
-    //    val childMetadata: List[MetaValueUntyped] = List[MetaValueUntyped](MetaString("metadata-key", "metadata-value"))
-    //    val derivative: Derivative = new Derivative(`type` = "unarchived", path = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
-    //    val derivatives: List[Derivative] = List[Derivative](derivative)
-    //    val parentIdOne = new ObjectId()
-    //    val parentIdTwo = new ObjectId()
-    //    val childId = new ObjectId()
-    //    val parentDocOne = DoclibDoc(
-    //      _id = parentIdOne,
-    //      source = "remote/http/path/to/parent.zip",
-    //      hash = "12345",
-    //      derivative = false,
-    //      derivatives = Some(derivatives),
-    //      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      mimetype = "text/plain",
-    //      tags = Some(List[String]())
-    //    )
-    //    val parentDocTwo = DoclibDoc(
-    //      _id = parentIdTwo,
-    //      source = "remote/http/path/to/another/parent.zip",
-    //      hash = "67890",
-    //      derivative = false,
-    //      derivatives = Some(derivatives),
-    //      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      mimetype = "text/plain",
-    //      tags = Some(List[String]())
-    //    )
-    //    val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
-    //    val parentResultTwo = Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
-    //
-    //    assert(parentResultOne.get.toString == "The operation completed successfully")
-    //    assert(parentResultTwo.get.toString == "The operation completed successfully")
-    //
-    //    val origin: List[Origin] = List(Origin(
-    //      scheme = "mongodb",
-    //      hostname = None,
-    //      uri = None,
-    //      metadata = Some(List(MetaString("_id", parentIdOne.toString))),
-    //      headers = None
-    //    ),
-    //      Origin(
-    //        scheme = "mongodb",
-    //        hostname = None,
-    //        uri = None,
-    //        metadata = Some(List(MetaString("_id", parentIdTwo.toString))),
-    //        headers = None)
-    //    )
-    //    val childDoc = DoclibDoc(
-    //      _id = childId,
-    //      source = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
-    //      hash = "12345",
-    //      derivative = true,
-    //      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-    //      mimetype = "text/plain",
-    //      tags = Some(List[String]()),
-    //      origin = Some(origin)
-    //    )
-    //    val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
-    //    assert(childResult.get.toString == "The operation completed successfully")
-    //    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
-    //    val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
-    //    val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
-    //    assert(parentUpdate.nonEmpty)
-    //    assert(parentUpdate.get.getMatchedCount == 2)
-    //    assert(parentUpdate.get.getModifiedCount == 2)
+  "Derivative mappings" should "be updated wth new child info" in {
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val childMetadata: List[MetaValueUntyped] = List[MetaValueUntyped](MetaString("metadata-key", "metadata-value"))
+    val parentIdOne = new ObjectId()
+    val parentIdTwo = new ObjectId()
+    val childId = new ObjectId()
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "remote/http/path/to/parent.zip",
+      hash = "12345",
+      derivative = false,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    val parentDocTwo = DoclibDoc(
+      _id = parentIdTwo,
+      source = "remote/http/path/to/another/parent.zip",
+      hash = "67890",
+      derivative = false,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val parentResultTwo = Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
 
+    assert(parentResultOne.get.toString == "The operation completed successfully")
+    assert(parentResultTwo.get.toString == "The operation completed successfully")
+
+    val origin: List[Origin] = List(Origin(
+      scheme = "mongodb",
+      hostname = None,
+      uri = None,
+      metadata = Some(List(MetaString("_id", parentIdOne.toString))),
+      headers = None
+    ),
+      Origin(
+        scheme = "mongodb",
+        hostname = None,
+        uri = None,
+        metadata = Some(List(MetaString("_id", parentIdTwo.toString))),
+        headers = None)
+    )
+    val childDoc = DoclibDoc(
+      _id = childId,
+      source = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
+      hash = "12345",
+      derivative = true,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]()),
+      origin = Some(origin)
+    )
+    val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
+    assert(childResult.get.toString == "The operation completed successfully")
+    val firstMappingId = UUID.randomUUID
+    val secondMappingId = UUID.randomUUID
+    val parentChildMappingOne = ParentChildMapping(_id = firstMappingId, parent = parentIdOne, child = Some(childId), childPath = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
+    val parentChildMappingTwo = ParentChildMapping(_id = secondMappingId, parent = parentIdTwo, child = Some(childId), childPath = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
+    Await.result(derivativesCollection.insertMany(parentChildMappingOne :: parentChildMappingTwo :: Nil).toFuture(), 5.seconds)
+
+    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
+    val parentUpdate = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds).asInstanceOf[UpdateResult]
+    assert(parentUpdate.getMatchedCount == 2)
+    assert(parentUpdate.getModifiedCount == 2)
+    val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+    assert(firstMapping.head._id == firstMappingId)
+    assert(firstMapping.head.metadata == Some(childMetadata))
+    val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+    assert(secondMapping.head._id == secondMappingId)
+    assert(secondMapping.head.metadata == Some(childMetadata))
   }
 
   "A derivative message" should "cause doc to be updated with derivative true" in {
