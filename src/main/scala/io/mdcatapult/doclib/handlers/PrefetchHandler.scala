@@ -202,14 +202,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
     (for {
       doclibDocs ← OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture())
-      _ ← OptionT.pure[Future](doclibDocs.map(doclibDoc ⇒ createParentChildDerivative(doclibDoc, child, source, target)))
+      _ ← OptionT.pure[Future](doclibDocs.map(doclibDoc ⇒ createParentChildDerivative(doclibDoc, child, target)))
     } yield doclibDocs).value
   }
 
   /**
-   * Given parent and child details create parent-child mappings
+   * Given existing parent and child details create parent-child mappings
    */
-  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, source: String, target: String): Future[List[Option[Completed]] ]= {
+  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, target: String): Future[List[Option[Completed]] ]= {
     val futures: List[Future[Option[Completed]]] = parentDoc.derivatives.getOrElse(List[Derivative]()).map(derivative ⇒ {
       derivativesCollection.insertOne(ParentChildMapping(_id = UUID.randomUUID, parent = parentDoc._id, child = Some(childDoc._id), childPath = target, metadata = derivative.metadata)).toFutureOption()
     })
