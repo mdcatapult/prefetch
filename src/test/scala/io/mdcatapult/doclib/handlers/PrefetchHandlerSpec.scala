@@ -281,14 +281,14 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
       val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
-      assert(result.isEmpty)
+      assert(result == None)
     }
 
     "A parent prefetch message with no derivative field should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
-      assert(result.isEmpty)
+      assert(result == None)
     }
 
     "A prefetch message can have derivative type in the metadata" in {

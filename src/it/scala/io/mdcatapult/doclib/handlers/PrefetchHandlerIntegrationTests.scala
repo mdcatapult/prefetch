@@ -32,7 +32,7 @@ import org.scalatest.TryValues._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
-import org.scalatest.wordspec.AnyWordSpecLike
+import org.mongodb.scala.model.Filters.{equal => Mequal, and}
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -517,10 +517,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
         assert(childResult.get.toString == "The operation completed successfully")
         val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
         val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
-        val parentUpdate: Option[UpdateResult] = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds)
-//        assert(parentUpdate.nonEmpty)
-//        assert(parentUpdate.get.getMatchedCount == 2)
-//        assert(parentUpdate.get.getModifiedCount == 2)
+        val parentUpdate = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds).asInstanceOf[Option[List[DoclibDoc]]]
+        assert(parentUpdate.nonEmpty)
+        assert(parentUpdate.get.length == 2)
+    assert(parentUpdate.get.exists(p ⇒ p._id == parentIdOne))
+    assert(parentUpdate.get.exists(p ⇒ p._id == parentIdTwo))
+val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+    val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+    //        assert(parentUpdate.get.head == 2)
   }
 
   override def beforeAll(): Unit = {
