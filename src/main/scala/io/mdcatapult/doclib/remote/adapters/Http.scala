@@ -107,7 +107,7 @@ object Http extends Adapter with FileHash {
       val r: Future[IOResult] =
         x.entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
           // Something happened before fetching file, might want to do something about it....
-          case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e.getCause)
+          case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
         }
 
       r.map(_ =>
