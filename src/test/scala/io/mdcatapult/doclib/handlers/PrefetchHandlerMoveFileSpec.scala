@@ -12,7 +12,7 @@ import com.mongodb.async.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs}
+import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DirectoryDelete, FileHash, MongoCodecs}
@@ -63,7 +63,9 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
 
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
+  val wrappedPCCollection: JMongoCollection[ParentChildMapping] = stub[JMongoCollection[ParentChildMapping]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
+  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]

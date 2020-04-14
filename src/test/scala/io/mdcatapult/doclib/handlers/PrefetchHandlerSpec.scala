@@ -12,7 +12,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin}
+import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.util.MongoCodecs
@@ -68,7 +68,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val materializer: Materializer = Materializer(system)
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
   val wrappedCollection: JMongoCollection[DoclibDoc] = stub[JMongoCollection[DoclibDoc]]
+  val wrappedPCCollection: JMongoCollection[ParentChildMapping] = stub[JMongoCollection[ParentChildMapping]]
   implicit val collection: MongoCollection[DoclibDoc] = MongoCollection[DoclibDoc](wrappedCollection)
+  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
@@ -279,14 +281,14 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), Some(false))
       val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
-      assert(result.isEmpty)
+      assert(result == None)
     }
 
     "A parent prefetch message with no derivative field should not be processed" in {
       val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
       val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")), Some(metadataMap), None)
       val result = Await.result(handler.processParent(createNewDoc("/a/file/somewhere.pdf"), prefetchMsg), 2.seconds)
-      assert(result.isEmpty)
+      assert(result == None)
     }
 
     "A prefetch message can have derivative type in the metadata" in {

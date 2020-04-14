@@ -17,9 +17,9 @@ import io.mdcatapult.doclib.concurrency.LimitedExecution
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
-import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin}
+import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
 import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
@@ -63,6 +63,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       m: Materializer,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
+                      derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with FileHash with TargetPath {
 
   /** set props for target path generation */
@@ -156,22 +157,63 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   * Update parent "origin" documents with the new source for the derivative
+   * Update parent "origin" documents with the new source for the derivative.
+   * 1) First find any parent-child-mappings.
+   * 2) If they exist then use them.
+   * 3) If none find any old derivatives array.
+   * 4) If derivatives array exists then move them to parent-child-mappings with new child path.
    *
    * @param msg PrefetchMsg
    * @return
    */
-  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Option[UpdateResult]] = {
+  def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Any] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
-      collection.updateMany(
-        equal("derivatives.path", msg.source) ,
-        set("derivatives.$.path", path)
-      ).toFutureOption()
+      // Find parent-child mappings in derivatives collection
+      for {
+        docs ← derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+        xs ← if (docs.nonEmpty) {
+          updateParentChildMappings(msg.source, path, doc._id)
+        } else {
+          updateExistingDerivatives(doc, msg.source, path)
+        }
+      } yield xs
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
     }
+  }
+
+  /**
+   * Update any existing parent child mappings
+   */
+  def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] =
+    derivativesCollection.updateMany(
+      equal("childPath", source),
+      combine(
+        set("childPath", path),
+        set("child", id)
+      )
+    ).toFuture()
+
+  /**
+   * Given the path to a child document convert existing parent derivative array in a doclib doc to parent-child mappings
+   */
+  def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
+    (for {
+      doclibDocs ← OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture())
+      _ ← OptionT.pure[Future](doclibDocs.map(doclibDoc ⇒ createParentChildDerivative(doclibDoc, child, target)))
+    } yield doclibDocs).value
+  }
+
+  /**
+   * Given existing parent and child details create parent-child mappings
+   */
+  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, target: String): Future[List[Option[Completed]] ]= {
+    val futures: List[Future[Option[Completed]]] = parentDoc.derivatives.getOrElse(List[Derivative]()).map(derivative ⇒ {
+      derivativesCollection.insertOne(ParentChildMapping(_id = UUID.randomUUID, parent = parentDoc._id, child = Some(childDoc._id), childPath = target, metadata = derivative.metadata)).toFutureOption()
+    })
+    Future.sequence(futures)
   }
 
   def parentId(metadata: List[MetaValueUntyped]): Any = {
