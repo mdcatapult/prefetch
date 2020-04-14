@@ -58,7 +58,7 @@ object Http extends Adapter with FileHash {
 
             location match {
               case Some(x) => retrieve(Uri.parse(x.value), uri :: redirections)
-              case None => throw new UnableToFollow(x.toString)
+              case None => throw new UnableToFollow(x)
             }
           case resp @ HttpResponse(status, _, _, _) =>
             resp.discardEntityBytes()
