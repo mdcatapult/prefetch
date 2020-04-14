@@ -166,12 +166,18 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(parentUpdate.getMatchedCount == 2)
     assert(parentUpdate.getModifiedCount == 2)
     val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(firstMapping.length == 1)
     assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(firstMapping.head._id == firstMappingId)
+    assert(firstMapping.head.parent == parentIdOne)
+    assert(firstMapping.head.child == Some(childId))
     assert(firstMapping.head.metadata == Some(childMetadata))
     val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(secondMapping.length == 1)
     assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(secondMapping.head._id == secondMappingId)
+    assert(secondMapping.head.parent == parentIdTwo)
+    assert(secondMapping.head.child == Some(childId))
     assert(secondMapping.head.metadata == Some(childMetadata))
   }
 
@@ -532,10 +538,17 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(parentUpdate.get.exists(p ⇒ p._id == parentIdOne))
     assert(parentUpdate.get.exists(p ⇒ p._id == parentIdTwo))
     val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(firstMapping.length == 1)
     assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+    assert(firstMapping.head.parent == parentIdOne)
+    assert(firstMapping.head.child == Some(childId))
+    assert(firstMapping.head.metadata == Some(childMetadata))
     val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
+    assert(secondMapping.length == 1)
     assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
-    //        assert(parentUpdate.get.head == 2)
+    assert(secondMapping.head.parent == parentIdTwo)
+    assert(secondMapping.head.child == Some(childId))
+    assert(secondMapping.head.metadata == Some(childMetadata))
   }
 
   override def beforeAll(): Unit = {

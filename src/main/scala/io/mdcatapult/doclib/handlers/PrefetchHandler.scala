@@ -173,16 +173,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       for {
         docs ← derivativesCollection.find(equal("childPath", doc.source)).toFuture()
         xs ← if (!docs.isEmpty) {
-          // TODO do as upsert (and move to another method)
-          derivativesCollection.updateMany(
-            equal("childPath", msg.source),
-            combine(
-              set("childPath", path),
-              set("child", doc._id)
-            )
-          ).toFuture()
+          updateParentChildMappings(msg.source, path, doc._id)
         } else {
-          // TODO maybe we should do this anyway
           updateExistingDerivatives(doc, msg.source, path)
         }
       } yield xs
@@ -193,7 +185,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   * Given the path to a child document convert existing parent derivative array to parent-child mappings
+   * Update any existing parent child mappings
+   */
+  def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] =
+    derivativesCollection.updateMany(
+      equal("childPath", source),
+      combine(
+        set("childPath", path),
+        set("child", id)
+      )
+    ).toFuture()
+
+  /**
+   * Given the path to a child document convert existing parent derivative array in a doclib doc to parent-child mappings
    */
   def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
     (for {
