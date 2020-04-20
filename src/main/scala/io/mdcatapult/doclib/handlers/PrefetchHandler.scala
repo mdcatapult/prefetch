@@ -171,7 +171,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
       // Find parent-child mappings in derivatives collection
       for {
-        docs ← derivativesCollection.find(equal("childPath", doc.source)).toFuture()
+        docs ← derivativesCollection.find(equal("childPath", msg.source)).toFuture()
         xs ← if (docs.nonEmpty) {
           updateParentChildMappings(msg.source, path, doc._id)
         } else {
