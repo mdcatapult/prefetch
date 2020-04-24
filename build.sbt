@@ -64,6 +64,7 @@ lazy val root = (project in file("."))
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
+        .exclude(org = "com.typesafe.play", name = "shaded-asynchttpclient")
     ),
   )
   .settings(
