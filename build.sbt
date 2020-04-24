@@ -26,6 +26,7 @@ lazy val root = (project in file("."))
       "-explaintypes",
       "-feature",
       "-Xlint",
+      "-Xfatal-warnings",
       "-Ypartial-unification",
     ),
     useCoursier := false,
