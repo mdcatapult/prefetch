@@ -6,12 +6,12 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.62"
+lazy val doclibCommonVersion = "0.0.68"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend Test
-concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
+concurrentRestrictions in Global += Tags.limit(Tags.Test, max = 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)

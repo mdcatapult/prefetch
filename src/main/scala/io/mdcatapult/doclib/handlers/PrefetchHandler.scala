@@ -17,22 +17,22 @@ import io.mdcatapult.doclib.concurrency.LimitedExecution
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata._
-import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, DoclibDocExtractor, FileAttrs, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client ⇒ RemoteClient}
+import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
-import org.mongodb.scala.result.UpdateResult
-import org.mongodb.scala.{Completed, MongoCollection}
+import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
@@ -209,11 +209,25 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   /**
    * Given existing parent and child details create parent-child mappings
    */
-  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, target: String): Future[List[Option[Completed]] ]= {
-    val futures: List[Future[Option[Completed]]] = parentDoc.derivatives.getOrElse(List[Derivative]()).map(derivative ⇒ {
-      derivativesCollection.insertOne(ParentChildMapping(_id = UUID.randomUUID, parent = parentDoc._id, child = Some(childDoc._id), childPath = target, metadata = derivative.metadata)).toFutureOption()
-    })
-    Future.sequence(futures)
+  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, target: String): Future[List[Option[InsertOneResult]]] = {
+
+    val derivatives: List[Derivative] = parentDoc.derivatives.getOrElse(List())
+
+    val mappings: List[Future[Option[InsertOneResult]]] =
+      for {
+        derivative <- derivatives
+        parentChild = derivativesCollection.insertOne(
+          ParentChildMapping(
+            _id = UUID.randomUUID,
+            parent = parentDoc._id,
+            child = Some(childDoc._id),
+            childPath = target,
+            metadata = derivative.metadata
+          )
+        ).toFutureOption()
+      } yield parentChild
+
+    Future.sequence(mappings)
   }
 
   def parentId(metadata: List[MetaValueUntyped]): Any = {
@@ -742,7 +756,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       uuid = Some(UUID.randomUUID())
     )
 
-    val inserted: Future[Option[Completed]] =
+    val inserted: Future[Option[InsertOneResult]] =
       collection.insertOne(newDoc).toFutureOption()
 
     inserted.map(_ => newDoc)

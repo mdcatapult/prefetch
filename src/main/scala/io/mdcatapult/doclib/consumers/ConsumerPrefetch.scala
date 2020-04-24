@@ -29,7 +29,7 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
     // initialise queues
     def queue[T <: Envelope](property: String)(implicit f: Format[T]): Queue[T] =
-      new Queue[T](config.getString(property), consumerName = Some("prefetch"))
+      Queue[T](config.getString(property), consumerName = Some("prefetch"))
 
     val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
     val upstream: Queue[PrefetchMsg] = queue("upstream.queue")

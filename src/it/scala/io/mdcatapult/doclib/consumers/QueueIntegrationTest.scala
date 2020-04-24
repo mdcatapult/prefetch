@@ -40,7 +40,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
       val consumerName = Option(config.getString("op-rabbit.topic-exchange-name"))
       val queueName = "a-test-queue"
 
-      val queue: Queue[DoclibMsg] = new Queue[DoclibMsg](queueName, consumerName)
+      val queue = Queue[DoclibMsg](queueName, consumerName)
 
       val subscription: SubscriptionRef =
         queue.subscribe((msg: DoclibMsg, key: String) => messagesFromQueue ::= key -> msg)
