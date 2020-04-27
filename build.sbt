@@ -65,6 +65,8 @@ lazy val root = (project in file("."))
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
         .exclude(org = "io.netty", name = "netty-all")
+      // IMPORTANT! netty must be excluded to avoid conflict with "sbt assembly", but is needed at runtime for SSL.
+      //            To get around this CI uses wget to download this jar and it gets copied into docker.
     ),
   )
   .settings(
