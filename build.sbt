@@ -6,12 +6,12 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.62"
+lazy val doclibCommonVersion = "0.0.68"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend Test
-concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
+concurrentRestrictions in Global += Tags.limit(Tags.Test, max = 1)
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest)
@@ -26,6 +26,7 @@ lazy val root = (project in file("."))
       "-explaintypes",
       "-feature",
       "-Xlint",
+      "-Xfatal-warnings",
       "-Ypartial-unification",
     ),
     useCoursier := false,
@@ -50,7 +51,6 @@ lazy val root = (project in file("."))
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "com.typesafe.akka" %% "akka-http" % "10.1.11",
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
-      "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
       "com.typesafe" % "config" % configVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
@@ -64,6 +64,9 @@ lazy val root = (project in file("."))
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
+        .exclude(org = "io.netty", name = "netty-all")
+      // IMPORTANT! netty must be excluded to avoid conflict with "sbt assembly", but is needed at runtime for SSL.
+      //            To get around this CI uses wget to download this jar and it gets copied into docker.
     ),
   )
   .settings(

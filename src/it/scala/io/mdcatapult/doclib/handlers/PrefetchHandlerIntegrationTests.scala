@@ -10,7 +10,6 @@ import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
 import better.files.{File ⇒ ScalaFile}
-import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
@@ -124,8 +123,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
     val parentResultTwo = Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
 
-    assert(parentResultOne.get.toString == "The operation completed successfully")
-    assert(parentResultTwo.get.toString == "The operation completed successfully")
+    assert(parentResultOne.exists(_.wasAcknowledged()))
+    assert(parentResultTwo.exists(_.wasAcknowledged()))
 
     val origin: List[Origin] = List(Origin(
       scheme = "mongodb",
@@ -153,7 +152,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       origin = Some(origin)
     )
     val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
-    assert(childResult.get.toString == "The operation completed successfully")
+    assert(childResult.exists(_.wasAcknowledged()))
     val firstMappingId = UUID.randomUUID
     val secondMappingId = UUID.randomUUID
     val parentChildMappingOne = ParentChildMapping(_id = firstMappingId, parent = parentIdOne, child = Some(childId), childPath = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
@@ -170,15 +169,15 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(firstMapping.head._id == firstMappingId)
     assert(firstMapping.head.parent == parentIdOne)
-    assert(firstMapping.head.child == Some(childId))
-    assert(firstMapping.head.metadata == Some(childMetadata))
+    assert(firstMapping.head.child.contains(childId))
+    assert(firstMapping.head.metadata.contains(childMetadata))
     val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
     assert(secondMapping.length == 1)
     assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(secondMapping.head._id == secondMappingId)
     assert(secondMapping.head.parent == parentIdTwo)
-    assert(secondMapping.head.child == Some(childId))
-    assert(secondMapping.head.metadata == Some(childMetadata))
+    assert(secondMapping.head.child.contains(childId))
+    assert(secondMapping.head.metadata.contains(childMetadata))
   }
 
   "A derivative message" should "cause doc to be updated with derivative true" in {
@@ -208,7 +207,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
 
-    assert(parentResultOne.get.toString == "The operation completed successfully")
+    assert(parentResultOne.exists(_.wasAcknowledged()))
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
     val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
@@ -377,7 +376,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val extraTags = List("two", "three")
     val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
 
-    result.value.toString should be("The operation completed successfully")
+    result.value.wasAcknowledged() should be(true)
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
     val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
@@ -414,7 +413,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val extraTags = List("one", "two")
     val result = Await.result(collection.insertOne(doclibDoc).toFutureOption(), 5 seconds)
 
-    assert(result.get.toString == "The operation completed successfully")
+    assert(result.get.wasAcknowledged())
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
     val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
@@ -500,8 +499,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
     val parentResultTwo = Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
 
-    assert(parentResultOne.get.toString == "The operation completed successfully")
-    assert(parentResultTwo.get.toString == "The operation completed successfully")
+    assert(parentResultOne.exists(_.wasAcknowledged()))
+    assert(parentResultTwo.exists(_.wasAcknowledged()))
 
     val origin: List[Origin] = List(Origin(
       scheme = "mongodb",
@@ -529,7 +528,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       origin = Some(origin)
     )
     val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
-    assert(childResult.get.toString == "The operation completed successfully")
+    assert(childResult.exists(_.wasAcknowledged()))
     val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
     val parentUpdate = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds).asInstanceOf[Option[List[DoclibDoc]]]
@@ -541,14 +540,14 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(firstMapping.length == 1)
     assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(firstMapping.head.parent == parentIdOne)
-    assert(firstMapping.head.child == Some(childId))
-    assert(firstMapping.head.metadata == Some(childMetadata))
+    assert(firstMapping.head.child.contains(childId))
+    assert(firstMapping.head.metadata.contains(childMetadata))
     val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
     assert(secondMapping.length == 1)
     assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
     assert(secondMapping.head.parent == parentIdTwo)
-    assert(secondMapping.head.child == Some(childId))
-    assert(secondMapping.head.metadata == Some(childMetadata))
+    assert(secondMapping.head.child.contains(childId))
+    assert(secondMapping.head.metadata.contains(childMetadata))
   }
 
   override def beforeAll(): Unit = {

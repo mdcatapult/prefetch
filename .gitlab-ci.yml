@@ -29,7 +29,7 @@ cache:
 
 before_script:
   - apt-get update -yqq
-  - apt-get install -yqq apt-transport-https ca-certificates gnupg curl
+  - apt-get install -yqq apt-transport-https ca-certificates gnupg curl wget
   - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
   - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
   - apt-get update -yqq
@@ -77,12 +77,13 @@ assemble:
 
 publish:
   stage: publish
-  image: docker:latest
+  image: docker:dind
   dependencies:
     - assemble
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
+    - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
     - >
       docker build --pull
       --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
@@ -143,7 +144,7 @@ release:
 
 publish-master:
   stage: publish
-  image: docker:latest
+  image: docker:dind
   dependencies:
     - release
   before_script:
