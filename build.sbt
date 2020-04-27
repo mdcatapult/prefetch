@@ -51,7 +51,6 @@ lazy val root = (project in file("."))
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "com.typesafe.akka" %% "akka-http" % "10.1.11",
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
-      "com.typesafe.play" %% "play-ahc-ws-standalone" % "2.0.3",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
       "com.typesafe" % "config" % configVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
@@ -65,7 +64,7 @@ lazy val root = (project in file("."))
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
-        .exclude(org = "com.typesafe.play", name = "shaded-asynchttpclient")
+        .exclude(org = "io.netty", name = "netty-all")
     ),
   )
   .settings(
