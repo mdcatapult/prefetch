@@ -47,7 +47,7 @@ class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) e
     scheme = response.uri.getScheme,
     hostname = Some(response.uri.getHost),
     uri = Some(Uri.parse(response.uri.toString)),
-    headers = Some(response.headers),
+    headers = Some(response.headers.view.mapValues(_.toSeq).toMap),
     metadata = Some(List(MetaInt("status", response.status))))
 
   protected def makeOrigin(source: Uri): Origin = Origin(

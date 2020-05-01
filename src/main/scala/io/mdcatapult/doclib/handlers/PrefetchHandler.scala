@@ -21,7 +21,7 @@ import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.HashUtils.md5
-import io.mdcatapult.doclib.util.{DoclibFlags, FileHash, TargetPath}
+import io.mdcatapult.doclib.util.{DoclibFlags, TargetPath}
 import io.mdcatapult.klein.queue.Sendable
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
@@ -64,7 +64,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping]
-                     ) extends LazyLogging with FileHash with TargetPath {
+                     ) extends LazyLogging with TargetPath {
 
   /** set props for target path generation */
   override val doclibConfig: Config = config
@@ -79,8 +79,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
-
-  val remotePrefixes = List("https", "http")
 
   /**
    * Case class for handling the various permutations of local and remote documents
@@ -171,8 +169,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
       // Find parent-child mappings in derivatives collection
       for {
-        docs ← derivativesCollection.find(equal("childPath", msg.source)).toFuture()
-        xs ← if (docs.nonEmpty) {
+        docs <- derivativesCollection.find(equal("childPath", msg.source)).toFuture()
+        xs <- if (docs.nonEmpty) {
           updateParentChildMappings(msg.source, path, doc._id)
         } else {
           updateExistingDerivatives(doc, msg.source, path)
@@ -201,8 +199,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
     (for {
-      doclibDocs ← OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture())
-      _ ← OptionT.pure[Future](doclibDocs.map(doclibDoc ⇒ createParentChildDerivative(doclibDoc, child, target)))
+      doclibDocs <- OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture())
+      _ <- OptionT.pure[Future](doclibDocs.map(doclibDoc => createParentChildDerivative(doclibDoc, child, target)))
     } yield doclibDocs).value
   }
 
@@ -381,7 +379,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def removeFile(file: File): Unit = {
 
     @tailrec
-    def remove(o: Option[File]) {
+    def remove(o: Option[File]): Unit = {
       o match {
         case Some(f) if f.isFile || Option(f.listFiles()).exists(_.isEmpty) =>
           file.delete()
