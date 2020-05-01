@@ -55,7 +55,7 @@ test:
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
-      - target/scala-2.12/scoverage-report/
+      - target/scala-2.13/scoverage-report/
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
@@ -68,7 +68,7 @@ assemble:
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
-      - target/scala-2.12/consumer.jar
+      - target/scala-2.13/consumer.jar
   except:
     refs:
       - master
@@ -83,6 +83,8 @@ publish:
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
+    - pwd
+    - ls
     - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
     - >
       docker build --pull
@@ -135,7 +137,7 @@ release:
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
-      - target/scala-2.12/consumer.jar
+      - target/scala-2.13/consumer.jar
   only:
     - master
   except:
