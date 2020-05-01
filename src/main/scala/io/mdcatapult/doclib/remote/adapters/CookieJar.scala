@@ -5,7 +5,7 @@ import java.util.Collections.{emptyMap => emptyJavaMap}
 import java.util.{HashMap => JHashMap, List => JList}
 
 import akka.http.scaladsl.model.HttpHeader
-import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
+import akka.http.scaladsl.model.headers.{Cookie, HttpCookiePair, `Set-Cookie`}
 import io.lemonlabs.uri.Uri
 import org.apache.commons.collections4.multimap.ArrayListValuedHashMap
 
@@ -63,18 +63,18 @@ class StoreBackedCookieJar extends CookieJar {
   }
 
   override def getCookies(uri: Uri): Seq[HttpHeader] = {
-    val cookies = manager.get(uri.toJavaURI, emptyJavaMap()).asScala.mapValues(_.asScala.toSeq)
+    val cookies = manager.get(uri.toJavaURI, emptyJavaMap()).asScala.view.mapValues(_.asScala.toSeq).toMap
 
-    val pairs: Seq[(String, String)] =
+    val pairs =
       for {
         keyValues <- Seq(cookies.toSeq:_*)
         key = keyValues._1
         value <- keyValues._2
-      } yield key -> value
+      } yield HttpCookiePair(key, value)
 
     if (pairs.isEmpty)
       Nil
     else
-      Seq(Cookie(pairs:_*))
+      Seq(Cookie(pairs))
   }
 }

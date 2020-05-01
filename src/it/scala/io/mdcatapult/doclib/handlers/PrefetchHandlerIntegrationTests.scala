@@ -9,7 +9,7 @@ import akka.actor._
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
-import better.files.{File ⇒ ScalaFile}
+import better.files.{File => ScalaFile}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
@@ -534,8 +534,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val parentUpdate = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds).asInstanceOf[Option[List[DoclibDoc]]]
     assert(parentUpdate.nonEmpty)
     assert(parentUpdate.get.length == 2)
-    assert(parentUpdate.get.exists(p ⇒ p._id == parentIdOne))
-    assert(parentUpdate.get.exists(p ⇒ p._id == parentIdTwo))
+    assert(parentUpdate.get.exists(p => p._id == parentIdOne))
+    assert(parentUpdate.get.exists(p => p._id == parentIdTwo))
     val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
     assert(firstMapping.length == 1)
     assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")

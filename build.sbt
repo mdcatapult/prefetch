@@ -18,7 +18,7 @@ lazy val root = (project in file("."))
   .settings(
     Defaults.itSettings,
     name := "consumer-prefetch",
-    scalaVersion := "2.12.10",
+    scalaVersion := "2.13.1",
     scalacOptions ++= Seq(
       "-encoding", "utf-8",
       "-unchecked",
@@ -27,7 +27,6 @@ lazy val root = (project in file("."))
       "-feature",
       "-Xlint",
       "-Xfatal-warnings",
-      "-Ypartial-unification",
     ),
     useCoursier := false,
     resolvers ++= Seq(
@@ -47,10 +46,9 @@ lazy val root = (project in file("."))
       "org.scalatest" %% "scalatest" % "3.1.1" % "it,test",
       "org.scalamock" %% "scalamock" % "4.4.0" % "it,test",
       "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "it,test",
-      "com.typesafe.akka" %% "akka-actor" % akkaVersion,
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "com.typesafe.akka" %% "akka-http" % "10.1.11",
-      "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "1.1.1",
+      "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "2.0.0",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
       "com.typesafe" % "config" % configVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",

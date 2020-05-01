@@ -4,7 +4,7 @@ import better.files.{File => ScalaFile}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.util.HashUtils.md5
 
-trait FileHash {
+object FileHash {
 
   /**
    * Check the original file name against the new (possibly query hashed) one and if too long
@@ -29,7 +29,7 @@ trait FileHash {
    *
    * @return
    */
-  def newFileName(fileName: String, queryHash: String, fileExtension: String): String =
+  private def newFileName(fileName: String, queryHash: String, fileExtension: String): String =
     s"${md5(fileName)}${
       queryHash match {
         case "" => ""

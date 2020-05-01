@@ -6,7 +6,6 @@ import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.models.metadata.MetaInt
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.util.FileHash
 import play.api.libs.ws.StandaloneWSRequest
 import play.api.libs.ws.ahc._
 
@@ -15,7 +14,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class UnsupportedSchemeException(scheme: String) extends Exception(s"Scheme '$scheme' not currently supported")
 class UndefinedSchemeException(uri: Uri) extends Exception(s"No scheme detected for ${uri.toString}")
 
-class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) extends FileHash {
+class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) {
 
   /** initialise web client **/
   lazy val ahcwsCconfig: AhcWSClientConfig = AhcWSClientConfigFactory.forConfig(config)
@@ -47,7 +46,7 @@ class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) e
     scheme = response.uri.getScheme,
     hostname = Some(response.uri.getHost),
     uri = Some(Uri.parse(response.uri.toString)),
-    headers = Some(response.headers),
+    headers = Some(response.headers.view.mapValues(_.toSeq).toMap),
     metadata = Some(List(MetaInt("status", response.status))))
 
   protected def makeOrigin(source: Uri): Origin = Origin(

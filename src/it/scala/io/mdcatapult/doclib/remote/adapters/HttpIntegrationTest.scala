@@ -65,7 +65,7 @@ class HttpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAn
     //assert(file.length == expectedSize)
   }
 
-  override def afterAll {
+  override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(
       List(
