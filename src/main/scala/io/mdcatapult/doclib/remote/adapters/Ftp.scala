@@ -13,13 +13,12 @@ import akka.util.ByteString
 import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.util.FileHash
 import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
-object Ftp extends Adapter with FileHash {
+object Ftp extends Adapter {
 
   val protocols = List("ftp", "ftps", "sftp")
 

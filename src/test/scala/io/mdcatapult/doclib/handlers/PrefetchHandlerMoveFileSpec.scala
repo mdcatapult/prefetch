@@ -15,7 +15,7 @@ import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.HashUtils.md5
-import io.mdcatapult.doclib.util.{DirectoryDelete, FileHash, MongoCodecs}
+import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -35,7 +35,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   """))) with ImplicitSender
   with AnyWordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with FileHash with OptionValues with DirectoryDelete {
+  with BeforeAndAfterAll with MockFactory with OptionValues with DirectoryDelete {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""

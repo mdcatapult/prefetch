@@ -13,13 +13,13 @@ import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.util.FileHash
+import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
 import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-object Http extends Adapter with FileHash {
+object Http extends Adapter {
 
   val protocols = List("http", "https")
 
