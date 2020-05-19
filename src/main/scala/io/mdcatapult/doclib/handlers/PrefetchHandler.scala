@@ -472,11 +472,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param archiveTarget string location to archive the document to
    * @return
    */
-  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] =
+  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
+    logger.info(s"archive archivable=${foundDoc.archiveable} source=$archiveSource target=$archiveTarget")
     (for {
       archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
     } yield archivePath).value
+  }
 
   /**
    * sends documents to archiver for processing.
