@@ -67,7 +67,7 @@ class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
       Ftp.download(uri)
     }
   }
-  override def afterAll: Unit = {
+  override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(
       pwd / "test" / "remote-ingress",

@@ -41,7 +41,7 @@ class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
     assert(caught.getMessage == s"Unable to process $source with status code 404 Not Found")
   }
 
-  override def afterAll: Unit = {
+  override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(
       pwd/"test"/"remote-ingress",
