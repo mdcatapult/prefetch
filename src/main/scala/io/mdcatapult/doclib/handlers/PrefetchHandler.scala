@@ -117,35 +117,46 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     logger.info(f"RECEIVED: ${msg.source}")
-    (for {
-      found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-      if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
-      started: UpdateResult <- OptionT(flags.start(found.doc))
-      newDoc <- OptionT(process(found, msg))
-      _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT(flags.end(found.doc, noCheck = started.getModifiedCount > 0))
-    } yield Left((newDoc, found.doc))).value
-    .recoverWith({
-      case e: SilentValidationException => Future.successful(Some(Right(e)))
-    })
-    .andThen({
-      case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) => r match {
-        case Some(Left(v)) => logger.info(f"COMPLETED: ${msg.source} - ${v._2._id.toString}")
-        case Some(Right(e)) => logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id.toString}")
-        case None => throw new RuntimeException("Unknown Error Occurred")
-      }
-      case Failure(e: DoclibDocException) => flags.error(e.getDoc, noCheck = true)
-      case Failure(_) =>
-        // enforce error flag
-        Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
-          case Success(value: Option[FoundDoc]) => value match {
-            case Some(found) => flags.error(found.doc, noCheck = true)
-            case _ => () // do nothing as error handling will capture
-          }
-          // There is no mongo doc - error happened before one was created
-          case Failure(_) => () // do nothing as error handling will capture
-        }
-    })
+
+    try {
+      (for {
+        found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
+        if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
+        started: UpdateResult <- OptionT(flags.start(found.doc))
+        newDoc <- OptionT(process(found, msg))
+        _ <- OptionT.liftF(processParent(newDoc, msg))
+        _ <- OptionT(flags.end(found.doc, noCheck = started.getModifiedCount > 0))
+      } yield Left((newDoc, found.doc))).value
+        .recoverWith({
+          case e: SilentValidationException => Future.successful(Some(Right(e)))
+        })
+        .andThen({
+          case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
+            r match {
+              case Some(Left(v)) => logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
+              case Some(Right(e)) => logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
+              case None => throw new RuntimeException("Unknown Error Occurred")
+            }
+          case Failure(e: DoclibDocException) =>
+            logger.error("failure", e)
+            flags.error(e.getDoc, noCheck = true)
+          case Failure(e) =>
+            logger.error("failure", e)
+            // enforce error flag
+            Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
+              case Success(value: Option[FoundDoc]) => value match {
+                case Some(found) => flags.error(found.doc, noCheck = true)
+                case _ => () // do nothing as error handling will capture
+              }
+              // There is no mongo doc - error happened before one was created
+              case Failure(_) => () // do nothing as error handling will capture
+            }
+        })
+    } catch {
+      case e: Throwable =>
+        logger.error("tragic error", e)
+        throw e
+    }
   }
 
   def zeroLength(filePath: String): Boolean = {
@@ -368,7 +379,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    *
    * @param source String
    */
-  def removeFile(source: String): Unit = removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
+  def removeFile(source: String): Unit =
+    removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
 
 
   /**
@@ -460,11 +472,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param archiveTarget string location to archive the document to
    * @return
    */
-  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] =
+  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
+    logger.info(s"archive archivable=${foundDoc.archiveable} source=$archiveSource target=$archiveTarget")
     (for {
       archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
     } yield archivePath).value
+  }
 
   /**
    * sends documents to archiver for processing.
@@ -472,12 +486,20 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @todo send errors to queue without killing the rest of the process
    */
   def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
-    Try(docs.foreach(doc => archiver.send(DoclibMsg(doc._id.toHexString)))) match {
-      case Success(_) => Future.successful(())
-      case Failure(_) =>
-        // send to error handling?
-        Future.successful(())
-    }
+    val messages =
+      for {
+        doc <- docs
+        id = doc._id.toHexString
+      } yield DoclibMsg(id)
+
+    Try(messages.foreach(msg => archiver.send(msg))) match {
+        case Success(_) =>
+          logger.info(s"Sent documents to archiver: $messages")
+          Future.successful(())
+        case Failure(e) =>
+          logger.error("failed to send doc to archive", e)
+          Future.successful(())
+      }
   }
 
   //  /**
@@ -656,12 +678,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def findDocument(URI: PrefetchUri): Future[Option[FoundDoc]] =
     URI.uri match {
-      case Some(uri) => uri.schemeOption match {
-        case None => throw new UndefinedSchemeException(uri)
-        case Some("file") => findLocalDocument(URI.raw)
-        case _ => findRemoteDocument(uri)
-      }
-      case None => findLocalDocument(URI.raw)
+      case Some(uri) =>
+        uri.schemeOption match {
+          case None => throw new UndefinedSchemeException(uri)
+          case Some("file") => findLocalDocument(URI.raw)
+          case _ => findRemoteDocument(uri)
+        }
+      case None =>
+        findLocalDocument(URI.raw)
     }
 
 
