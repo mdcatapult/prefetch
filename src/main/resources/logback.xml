@@ -20,12 +20,13 @@
 
     <logger name="org.mongodb.driver" level="${log-level:-ERROR}" />
     <logger name="play.api.libs.ws" level="${log-level:-ERROR}" />
-    <logger name="io.mdcatapult" level="${log-level:-ERROR}" />
+    <logger name="io.mdcatapult" level="${log-level:-INFO}" />
+    <logger name="io.mdcatapult.concurrency" level="${log-level:-ERROR}" />
     <logger name="com.spingo.op_rabbit" level="${log-level:-ERROR}" >
         <appender-ref ref="CONSOLE"/>
     </logger>
 
-    <root level="${log-level:-ERROR}">
+    <root level="${log-level:-INFO}">
         <appender-ref ref="CONSOLE"/>
 <!--        <appender-ref ref="FILE"/>-->
     </root>

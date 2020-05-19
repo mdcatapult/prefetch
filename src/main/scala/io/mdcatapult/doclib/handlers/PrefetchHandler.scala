@@ -379,7 +379,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    *
    * @param source String
    */
-  def removeFile(source: String): Unit = removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
+  def removeFile(source: String): Unit =
+    removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
 
 
   /**
@@ -483,12 +484,20 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @todo send errors to queue without killing the rest of the process
    */
   def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
-    Try(docs.foreach(doc => archiver.send(DoclibMsg(doc._id.toHexString)))) match {
-      case Success(_) => Future.successful(())
-      case Failure(_) =>
-        // send to error handling?
-        Future.successful(())
-    }
+    val messages =
+      for {
+        doc <- docs
+        id = doc._id.toHexString
+      } yield DoclibMsg(id)
+
+    Try(messages.foreach(msg => archiver.send(msg))) match {
+        case Success(_) =>
+          logger.info(s"Sent documents to archiver: $messages")
+          Future.successful(())
+        case Failure(e) =>
+          logger.error("failed to send doc to archive", e)
+          Future.successful(())
+      }
   }
 
   //  /**
