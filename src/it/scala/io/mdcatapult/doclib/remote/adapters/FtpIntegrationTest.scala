@@ -45,7 +45,7 @@ class FtpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAnd
     }
   }
 
-  override def afterAll: Unit = {
+  override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
     deleteDirectories(
       List(

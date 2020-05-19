@@ -7,7 +7,7 @@ import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.consumer.AbstractConsumer
 import io.mdcatapult.doclib.handlers.PrefetchHandler
 import io.mdcatapult.doclib.messages._
-import io.mdcatapult.doclib.models.DoclibDoc
+import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.{Envelope, Queue}
 import org.mongodb.scala.MongoCollection
@@ -21,12 +21,15 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))
 
+    implicit val derivativesCollection: MongoCollection[ParentChildMapping] =
+      mongo.database.getCollection(config.getString("mongo.derivative_collection"))
+
     val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
 
     // initialise queues
     def queue[T <: Envelope](property: String)(implicit f: Format[T]): Queue[T] =
-      new Queue[T](config.getString(property), consumerName = Some("prefetch"))
+      Queue[T](config.getString(property), consumerName = Some("prefetch"))
 
     val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
     val upstream: Queue[PrefetchMsg] = queue("upstream.queue")

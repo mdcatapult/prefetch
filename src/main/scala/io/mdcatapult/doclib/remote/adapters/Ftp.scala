@@ -13,13 +13,12 @@ import akka.util.ByteString
 import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.util.FileHash
 import io.mdcatapult.doclib.util.HashUtils.md5
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
-object Ftp extends Adapter with FileHash {
+object Ftp extends Adapter {
 
   val protocols = List("ftp", "ftps", "sftp")
 
@@ -88,9 +87,9 @@ object Ftp extends Adapter with FileHash {
     * @return
     */
   protected def retrieve(url: Url): Source[ByteString, Future[IOResult]] = url.schemeOption match  {
-    case Some("ftp")  => AkkaFtp.fromPath(url.path.toString(), getFtpSettings(url))
-    case Some("ftps") => AkkaFtps.fromPath(url.path.toString(), getFtpsSettings(url))
-    case Some("sftp") => AkkaSftp.fromPath(url.path.toString(), getSftpSettings(url))
+    case Some("ftp")  => AkkaFtp.fromPath(url.path.toString, getFtpSettings(url))
+    case Some("ftps") => AkkaFtps.fromPath(url.path.toString, getFtpsSettings(url))
+    case Some("sftp") => AkkaSftp.fromPath(url.path.toString, getSftpSettings(url))
     case Some(unknown) => throw new UnsupportedSchemeException(unknown)
     case None => throw new UndefinedSchemeException(url)
   }
