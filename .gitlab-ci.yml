@@ -157,6 +157,7 @@ publish-master:
     - git pull origin master
     - export RELEASE_TAG=$(git describe --abbrev=0)
   script:
+    - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
     - >
       docker build --pull
       --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
