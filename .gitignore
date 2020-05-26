@@ -11,6 +11,7 @@ project/target
 /test/ingress
 /test/local
 /test/remote
+/test/remote-ingress
 *.local.conf
 
 /sbt-cache*
