@@ -174,6 +174,26 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       val result = handler.getArchivePath("remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
       assert(result == "archive/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
     }
+    ("local" :: "remote" :: Nil).foreach ( dir =>
+      s"return a relative  archive path for $dir derivative file from a relative path with no file extension" in {
+        val result = handler.getArchivePath(s"$dir/derivatives/remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
+        assert(result == s"archive/$dir/derivatives/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
+      }
+    )
+
+    ("local" :: "remote" :: Nil).foreach ( dir =>
+      s"return a relative  archive path for $dir derivative file from a relative path with file extension" in {
+        val result = handler.getArchivePath(s"$dir/derivatives/remote/dir/file.txt", "fd6eba7e747b846abbdfbfed0e10de12")
+        assert(result == s"archive/$dir/derivatives/remote/dir/file.txt/fd6eba7e747b846abbdfbfed0e10de12.txt")
+      }
+    )
+
+    ("local" :: "remote" :: Nil).foreach ( dir =>
+      s"return a relative  archive path for $dir file with nested derivatives path from a relative path" in {
+        val result = handler.getArchivePath(s"$dir/derivatives/derivatives/remote/dir/file.txt", "fd6eba7e747b846abbdfbfed0e10de12")
+        assert(result == s"archive/$dir/derivatives/remote/dir/file.txt/fd6eba7e747b846abbdfbfed0e10de12.txt")
+      }
+    )
 
     "return an relative doclib path for remote files from a relative remote-ingress path" in {
       val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(

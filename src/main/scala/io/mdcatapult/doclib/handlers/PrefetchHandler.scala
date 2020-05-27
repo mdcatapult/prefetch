@@ -72,11 +72,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   private val docExtractor = DoclibDocExtractor()
 
   /** Initialise Apache Tika && Remote Client **/
-  lazy val tika = new Tika()
-  lazy val remoteClient = new RemoteClient()
-  lazy val flags = new DoclibFlags(docExtractor.defaultFlagKey)
+  private val tika = new Tika()
+  val remoteClient = new RemoteClient()
+  private val flags = new DoclibFlags(docExtractor.defaultFlagKey)
 
-  val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
+  private val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
+
+  private val archiveDirName = config.getString("doclib.archive.target-dir")
+  private val localDirName = config.getString("doclib.local.target-dir")
+  private val remoteDirName = config.getString("doclib.remote.target-dir")
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
@@ -177,7 +181,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Any] = {
     if (doc.derivative) {
-      val path = getTargetPath(msg.source, config.getString("doclib.local.target-dir"))
+      val path = getTargetPath(msg.source, localDirName)
       // Find parent-child mappings in derivatives collection
       for {
         docs <- derivativesCollection.find(equal("childPath", msg.source)).toFuture()
@@ -409,8 +413,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param source String
    * @return
    */
-  def inRemoteRoot(source: String): Boolean =
-    source.startsWith(s"${config.getString("doclib.remote.target-dir")}/")
+  def inRemoteRoot(source: String): Boolean = source.startsWith(s"$remoteDirName/")
 
   /**
    * tests if source string starts with the configured local target-dir
@@ -418,8 +421,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param source String
    * @return
    */
-  def inLocalRoot(source: String): Boolean =
-    source.startsWith(s"${config.getString("doclib.local.target-dir")}/")
+  def inLocalRoot(source: String): Boolean = source.startsWith(s"$localDirName/")
 
   /**
    * Tests if found Document currently in the remote root and is not returns the appropriate download target
@@ -427,12 +429,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param foundDoc Found Document and remote data
    * @return
    */
-  def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] = {
+  def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inRemoteRoot(foundDoc.doc.source))
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else
       Some(Paths.get(s"${foundDoc.download.get.target.get}").toString.replaceFirst(s"^$doclibRoot/*", ""))
-  }
 
   /**
    * determines appropriate local target path if required
@@ -446,7 +447,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     else {
       // strips temp dir if present plus any prefixed slashes
       val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "")
-      Some(Paths.get(getTargetPath(relPath, config.getString("doclib.local.target-dir"))).toString)
+      Some(Paths.get(getTargetPath(relPath, localDirName)).toString)
     }
 
   def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
@@ -458,7 +459,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       if (inRemoteRoot(foundDoc.doc.source))
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
-        val remotePath = Http.generateFilePath(origin.uri.get, Option(config.getString("doclib.remote.target-dir")), None, None)
+        val remotePath = Http.generateFilePath(origin.uri.get, Option(remoteDirName), None, None)
         Some(Paths.get(s"$remotePath").toString)
       }
 
@@ -527,9 +528,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def getArchivePath(targetPath: String, hash: String): String = {
     val withExt = """(.*)/(.*)\.(.+)$""".r
     val withoutExt = """(.*)/(.*)$""".r
+
     targetPath match {
-      case withExt(path, file, ext) => s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}/$file.$ext/$hash.$ext"
-      case withoutExt(path, file) => s"${getTargetPath(path, config.getString("doclib.archive.target-dir"))}/$file/$hash"
+      case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
+      case withoutExt(path, file) => s"${getTargetPath(path, archiveDirName)}/$file/$hash"
       case _ => throw new RuntimeException("Unable to identify path and filename")
     }
   }
@@ -550,10 +552,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         case Some(targetPath) =>
           val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
           val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
-          if (docHash != currentHash)
-          // file already exists at target location but is not the same file, archive the old one then add the new one
-            Await.result(updateFile(foundDoc, tempPath, getArchivePath(targetPath, currentHash), Some(targetPath)), Duration.Inf)
-          else if (!inRightLocation(foundDoc.doc.source))
+          if (docHash != currentHash) {
+            // file already exists at target location but is not the same file, archive the old one then add the new one
+            val archivePath = getArchivePath(targetPath, currentHash)
+            Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+          } else if (!inRightLocation(foundDoc.doc.source))
             moveFile(tempPath, targetPath)
           else { // not a new file or a file that requires updating so we will just cleanup the temp file
             removeFile(tempPath)
@@ -699,7 +702,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     (for {
       target: String <- OptionT.some[Future](source.replaceFirst(
         s"^${config.getString("doclib.local.temp-dir")}",
-        config.getString("doclib.local.target-dir")
+        localDirName
       ))
       md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$source").toFile))
       (doc, archivable) <- OptionT(findOrCreateDoc(source, md5, Some(or(
