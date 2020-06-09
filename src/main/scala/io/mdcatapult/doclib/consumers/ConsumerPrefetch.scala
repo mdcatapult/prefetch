@@ -22,7 +22,7 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
       mongo.database.getCollection(config.getString("mongo.collection"))
 
     implicit val derivativesCollection: MongoCollection[ParentChildMapping] =
-      mongo.database.getCollection(config.getString("mongo.derivative_collection"))
+      mongo.database.getCollection(config.getString("mongo.derivative-collection"))
 
     val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
