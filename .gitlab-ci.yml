@@ -77,7 +77,7 @@ publish:
     - /kaniko/executor --context $CI_PROJECT_DIR --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   except:
     refs:
-      - master
+      - task/1233/ci-rewrite
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
@@ -89,7 +89,7 @@ release:
   script:
     - /scripts/release.sh
   only:
-    - master
+    - task/1233/ci-rewrite
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
