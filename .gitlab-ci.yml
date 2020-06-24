@@ -61,7 +61,8 @@ assemble:
     - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
   artifacts:
     paths:
-      - target/*
+      - target/scala-2.13/consumer.jar
+      - target/netty.jar
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
