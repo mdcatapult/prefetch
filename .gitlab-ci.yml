@@ -63,6 +63,9 @@ assemble:
     paths:
       - target/scala-2.13/consumer.jar
       - target/netty.jar
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 publish:
   stage: publish
@@ -91,6 +94,24 @@ release:
   only:
     - task/1233/ci-rewrite
   except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
+
+assemble-master:
+  stage: build
+  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  tags:
+    - wopr
+  script:
+    - sbt assembly
+    - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
+  artifacts:
+    paths:
+      - target/scala-2.13/consumer.jar
+      - target/netty.jar
+  only:
+    refs:
+      - tags
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
