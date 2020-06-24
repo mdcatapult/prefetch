@@ -53,28 +53,13 @@ test:
 
 assemble:
   stage: build
-  image: openjdk:14-slim
+  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
   tags:
     - wopr
   script:
     - sbt assembly
+    - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
   artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
-    paths:
-      - target/*
-  except:
-    variables:
-      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
-
-get-netty:
-  stage: build
-  image: alpine
-  tags:
-    - wopr
-  script:
-    - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
-  artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
       - target/*
   except:
