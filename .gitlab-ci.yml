@@ -28,7 +28,7 @@ cache:
 
 test:
   stage: test
-  image: openjdk:14-slim
+  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
   tags:
     - wopr
   variables:
@@ -41,6 +41,7 @@ test:
     RABBITMQ_USERNAME: guest
     RABBITMQ_PASSWORD: guest
   script:
+    - curl http://guest:guest@rabbitmq:15672/api/overview
     - sbt clean coverage test it:test coverageReport
   artifacts:
     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
