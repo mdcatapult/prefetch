@@ -63,9 +63,6 @@ assemble:
     paths:
       - target/scala-2.13/consumer.jar
       - target/netty.jar
-  except:
-    variables:
-      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 publish:
   stage: publish
