@@ -95,16 +95,6 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
     }
   }
 
-  "A valid https URI from Wiley that redirects " should {
-    "be downloadable" in {
-      val uri: Uri =  Uri.parse("https://onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
-      val a = client.download(uri)
-      assert(a.value.origin.value == "https://onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
-      assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
-      assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/onlinelibrary.wiley.com/doi/pdf/10.1002/9780470998137.indauth")
-    }
-  }
-
   "An invalid https URI " should {
     "throw an exception" in {
       val uri: Uri =  Uri.parse("https://a.b.c")
