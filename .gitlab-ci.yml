@@ -5,7 +5,7 @@ services:
     alias: rabbitmq
 
 stages:
-#  - test
+  - test
   - build
   - publish
 
@@ -26,30 +26,30 @@ cache:
     - "sbt-cache/.sbtboot"
     - "sbt-cache/target"
 
-#test:
-#  stage: test
-#  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
-#  tags:
-#    - wopr
-#  variables:
-#    MONGO_HOST: mongo
-#    MONGO_DATABASE: prefetch-test
-#    MONGO_COLLECTION: documents
-#    MONGO_USERNAME: admin
-#    MONGO_PASSWORD: admin
-#    RABBITMQ_HOST: rabbitmq
-#    RABBITMQ_USERNAME: guest
-#    RABBITMQ_PASSWORD: guest
-#  script:
-#    - curl http://guest:guest@rabbitmq:15672/api/overview
-#    - sbt clean coverage test it:test coverageReport
-#  artifacts:
-#    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
-#    paths:
-#      - target/scala-2.13/scoverage-report/
-#  except:
-#    variables:
-#      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
+test:
+  stage: test
+  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  tags:
+    - wopr
+  variables:
+    MONGO_HOST: mongo
+    MONGO_DATABASE: prefetch-test
+    MONGO_COLLECTION: documents
+    MONGO_USERNAME: admin
+    MONGO_PASSWORD: admin
+    RABBITMQ_HOST: rabbitmq
+    RABBITMQ_USERNAME: guest
+    RABBITMQ_PASSWORD: guest
+  script:
+    - curl http://guest:guest@rabbitmq:15672/api/overview
+    - sbt clean coverage test it:test coverageReport
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    paths:
+      - target/scala-2.13/scoverage-report/
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 assemble:
   stage: build
@@ -80,7 +80,7 @@ publish:
     - /kaniko/executor --context $CI_PROJECT_DIR --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   except:
     refs:
-      - task/1233/ci-rewrite
+      - master
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
@@ -92,7 +92,7 @@ release:
   script:
     - /scripts/release.sh
   only:
-    - task/1233/ci-rewrite
+    - master
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
