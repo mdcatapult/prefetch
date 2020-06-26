@@ -28,7 +28,7 @@ cache:
 
 test:
   stage: test
-  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   variables:
@@ -53,7 +53,7 @@ test:
 
 assemble:
   stage: build
-  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   script:
@@ -88,7 +88,7 @@ release:
   stage: build
   tags:
     - wopr
-  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   script:
     - /scripts/release.sh
   only:
@@ -99,7 +99,7 @@ release:
 
 assemble-master:
   stage: build
-  image: registry.mdcatapult.io/informatics/software-engineering/ci:scala
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   script:
