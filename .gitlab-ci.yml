@@ -91,9 +91,9 @@ release:
   tags:
     - wopr
   script:
-    - /scripts/release.sh
+    - /scripts/release.sh -b -r develop
   only:
-    - master -b -r develop
+    - master
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
