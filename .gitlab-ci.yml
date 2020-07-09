@@ -26,9 +26,11 @@ cache:
     - "sbt-cache/.sbtboot"
     - "sbt-cache/target"
 
+default:
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala-v1.1.1
+
 test:
   stage: test
-  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   variables:
@@ -41,6 +43,7 @@ test:
     RABBITMQ_USERNAME: guest
     RABBITMQ_PASSWORD: guest
   script:
+    - sleep 5
     - curl http://guest:guest@rabbitmq:15672/api/overview
     - sbt clean coverage test it:test coverageReport
   artifacts:
@@ -53,7 +56,6 @@ test:
 
 assemble:
   stage: build
-  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   script:
@@ -88,22 +90,21 @@ release:
   stage: build
   tags:
     - wopr
-  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   script:
     - /scripts/release.sh
   only:
-    - master
+    - master -b -r develop
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 assemble-master:
   stage: build
-  image: registry.mdcatapult.io/informatics/docker-images/ci:scala
   tags:
     - wopr
   script:
     - sbt assembly
+    - /scripts/upload-files.sh 'target/scala-2.13/consumer.jar' $CI_COMMIT_REF_NAME
     - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
   artifacts:
     paths:
