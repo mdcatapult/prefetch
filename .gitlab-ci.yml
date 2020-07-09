@@ -8,6 +8,7 @@ stages:
   - test
   - build
   - publish
+  - release
 
 variables:
   SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy"
@@ -87,7 +88,7 @@ publish:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 release:
-  stage: build
+  stage: release
   tags:
     - wopr
   script:
