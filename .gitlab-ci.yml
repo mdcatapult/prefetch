@@ -1,5 +1,4 @@
 services:
-  - docker:dind
   - name: mongo:latest
     alias: mongo
   - name: rabbitmq:management
@@ -9,6 +8,7 @@ stages:
   - test
   - build
   - publish
+  - release
 
 variables:
   SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy"
@@ -27,19 +27,13 @@ cache:
     - "sbt-cache/.sbtboot"
     - "sbt-cache/target"
 
-before_script:
-  - apt-get update -yqq
-  - apt-get install -yqq apt-transport-https ca-certificates gnupg curl wget
-  - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
-  - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
-  - apt-get update -yqq
-  - apt-get install -yqq sbt
-  - sbt sbtVersion
-
+default:
+  image: registry.mdcatapult.io/informatics/docker-images/ci:scala-v1.1.1
 
 test:
   stage: test
-  image: openjdk:14-slim
+  tags:
+    - wopr
   variables:
     MONGO_HOST: mongo
     MONGO_DATABASE: prefetch-test
@@ -50,6 +44,7 @@ test:
     RABBITMQ_USERNAME: guest
     RABBITMQ_PASSWORD: guest
   script:
+    - sleep 5
     - curl http://guest:guest@rabbitmq:15672/api/overview
     - sbt clean coverage test it:test coverageReport
   artifacts:
@@ -62,37 +57,30 @@ test:
 
 assemble:
   stage: build
-  image: openjdk:14-slim
+  tags:
+    - wopr
   script:
     - sbt assembly
+    - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
   artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
       - target/scala-2.13/consumer.jar
+      - target/netty.jar
   except:
-    refs:
-      - master
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 publish:
   stage: publish
-  image: docker:dind
-  dependencies:
-    - assemble
+  tags:
+    - wopr
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
-    - pwd
-    - ls
-    - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
-    - >
-      docker build --pull
-      --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
-      --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
-      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
-      .
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+    - /kaniko/executor --context $CI_PROJECT_DIR --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   except:
     refs:
       - master
@@ -100,74 +88,49 @@ publish:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 release:
-  stage: build
-  image: openjdk:14-slim
-  before_script:
-    - apt-get update -yqq
-    - apt-get install -yqq apt-transport-https ca-certificates curl gnupg
-    - echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
-    - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
-    - apt-get update -yqq
-    - apt-get install -yqq sbt
-    - sbt sbtVersion
-    - 'which ssh-agent || ( apt-get install -qq openssh-client )'
-    - eval $(ssh-agent -s)
-    - ssh-add <(echo "$SSH_PRIVATE_KEY")
-    - mkdir -p ~/.ssh
-    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-    - git remote set-url origin git@gitlab.mdcatapult.io:$CI_PROJECT_PATH.git
-    - git config --global user.email "${GIT_RELEASE_EMAIL}"
-    - git config --global user.name "${GIT_RELEASE_USER}"
+  stage: release
+  tags:
+    - wopr
   script:
-    - git checkout master
-    - git pull origin master
-    - export PREVIOUS_TAG=$(git describe --tags --abbrev=0)
-    - export GIT_LOG=$(echo "$(git log $PREVIOUS_TAG..HEAD --oneline --no-merges)" | awk -v ORS='  \\n' '1')
-    - sbt "release with-defaults"
-    - export RELEASE_TAG=$(git describe --abbrev=0)
-    - >
-      curl --header 'Content-Type: application/json'
-      --header "PRIVATE-TOKEN: $GIT_RELEASE_TOKEN"
-      --data "{ \"name\": \"$RELEASE_TAG\", \"tag_name\": \"$RELEASE_TAG\", \"description\": \"Automated CI Release of $RELEASE_TAG\n\n$GIT_LOG\" }"
-      --request POST https://gitlab.mdcatapult.io/api/v4/projects/$CI_PROJECT_ID/releases
-    - git checkout develop
-    - git pull
-    - git rebase master
-    - git push origin develop
-  artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
-    paths:
-      - target/scala-2.13/consumer.jar
+    - /scripts/release.sh -b -r develop
   only:
     - master
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
+assemble-master:
+  stage: build
+  tags:
+    - wopr
+  script:
+    - sbt assembly
+    - /scripts/upload-files.sh 'target/scala-2.13/consumer.jar' $CI_COMMIT_REF_NAME
+    - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
+  artifacts:
+    paths:
+      - target/scala-2.13/consumer.jar
+      - target/netty.jar
+  only:
+    refs:
+      - tags
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
+
 publish-master:
   stage: publish
-  image: docker:dind
-  dependencies:
-    - release
+  tags:
+    - wopr
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
-    - apk add --no-cache bash git openssh-client
-    - git fetch
-    - git checkout master
-    - git pull origin master
-    - export RELEASE_TAG=$(git describe --abbrev=0)
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
-    - wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar --output-document=target/netty.jar
-    - >
-      docker build --pull
-      --build-arg NEXUS_PASSWORD=$NEXUS_PASSWORD
-      --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA
-      -t "$CI_REGISTRY_IMAGE"
-      -t "$CI_REGISTRY_IMAGE:$RELEASE_TAG"
-      .
-    - docker push "$CI_REGISTRY_IMAGE"
+    - /kaniko/executor --context $CI_PROJECT_DIR --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+    - /kaniko/executor --context $CI_PROJECT_DIR --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA --destination $CI_REGISTRY_IMAGE
   only:
-    - master
-  except:
+    refs:
+      - tags
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
