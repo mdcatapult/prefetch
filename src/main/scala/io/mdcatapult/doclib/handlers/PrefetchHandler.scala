@@ -289,32 +289,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
     found.doc.origin.getOrElse(List[Origin]()) :::
       found.origins :::
-      msg.origin.getOrElse(List[Origin]()) :::
-      resolveUpstreamOrigins(msg.source)
+      msg.origin.getOrElse(List[Origin]())
     ).distinct
-
-
-  /**
-   * Function to find origins that have matching derivative paths
-   *
-   * @param path String
-   * @return
-   */
-  def resolveUpstreamOrigins(path: String): List[Origin] = {
-    Await.result(
-      collection.find(equal("derivatives.path", path)).toFuture(),
-      Duration.Inf
-    ).map(d =>
-      Origin(
-        scheme = "mongodb",
-        metadata = Some(List(
-          MetaString("db", config.getString("mongo.database")),
-          MetaString("collection", config.getString("mongo.collection")),
-          MetaString("_id", d._id.toHexString)
-        ))
-      )
-    ).toList
-  }
 
   /**
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
