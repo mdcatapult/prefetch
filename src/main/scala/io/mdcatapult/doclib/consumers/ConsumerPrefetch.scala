@@ -21,7 +21,7 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     import as.dispatcher
 
     DefaultExports.initialize()
-    new HTTPServer("0.0.0.0", 9090)
+    new HTTPServer(9090)
 
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))
