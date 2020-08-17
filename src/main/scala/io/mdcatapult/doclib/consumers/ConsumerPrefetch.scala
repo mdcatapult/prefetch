@@ -10,6 +10,8 @@ import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.{Envelope, Queue}
+import io.prometheus.client.exporter.HTTPServer
+import io.prometheus.client.hotspot.DefaultExports
 import org.mongodb.scala.MongoCollection
 import play.api.libs.json.Format
 
@@ -17,6 +19,9 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
   def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
     import as.dispatcher
+
+    DefaultExports.initialize()
+    new HTTPServer("0.0.0.0", 9090)
 
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))

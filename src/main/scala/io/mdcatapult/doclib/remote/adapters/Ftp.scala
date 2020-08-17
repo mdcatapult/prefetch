@@ -14,6 +14,7 @@ import com.typesafe.config.Config
 import io.lemonlabs.uri.{Uri, Url}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.doclib.util.Metrics._
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
@@ -109,17 +110,21 @@ object Ftp extends Adapter {
     val tempPath = generateFilePath(uri, Option(config.getString("doclib.remote.temp-dir")), None, None)
     val finalTarget = Paths.get(s"$doclibRoot/$remotePath").toFile
     val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile
-
+    val latency = documentFetchLatency.labels("ftp").startTimer()
     tempTarget.getParentFile.mkdirs()
     val r: Future[IOResult] = retrieve(uri.toUrl)
       .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath))
 
-    val a = r.map(_ => Some(DownloadResult(
-          source = tempPath,
-          hash = md5(tempTarget.getAbsoluteFile),
-          origin = Option(uri.toString),
-          target = Option(finalTarget.getAbsolutePath)
-        ))
+    val a = r.map(_ => {
+      latency.observeDuration()
+      documentSizeBytes.labels("ftp").observe(tempTarget.length().toDouble)
+      Some(DownloadResult(
+        source = tempPath,
+        hash = md5(tempTarget.getAbsoluteFile),
+        origin = Option(uri.toString),
+        target = Option(finalTarget.getAbsolutePath)
+      ))
+    }
       )
     Await.result(a, Duration.Inf)
   }
