@@ -99,6 +99,7 @@ object Http extends Adapter {
 
     val doclibRoot = config.getString("doclib.root")
     val latency = documentFetchLatency.labels("http").startTimer()
+
     Await.result(retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
       case streamException: StreamTcpException => throw streamException
@@ -122,18 +123,19 @@ object Http extends Adapter {
       val r: Future[IOResult] =
         x.entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
           // Something happened before fetching file, might want to do something about it....
-          case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
+          case e: Exception =>
+            latency.observeDuration()
+            throw DoclibHttpRetrievalError(e.getMessage, e)
         }
 
-      val finalFile = new File(finalTargetFinal)
       latency.observeDuration()
-      documentSizeBytes.labels("http").observe(finalFile.length().toDouble)
+      documentSizeBytes.labels("http").observe(new File(tempTargetFinal).length().toDouble)
       r.map(_ =>
         Some(DownloadResult(
           source = tempPathFinal,
-          hash = md5(finalFile),
+          hash = md5(new File(tempTargetFinal)),
           origin = Some(uri.toString),
-          target = Some(finalFile.getAbsolutePath)
+          target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))
       )
     }, Duration.Inf)
