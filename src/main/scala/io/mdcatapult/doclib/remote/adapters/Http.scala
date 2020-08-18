@@ -15,6 +15,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
 import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.doclib.util.Metrics._
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -97,6 +98,7 @@ object Http extends Adapter {
     import system.dispatcher
 
     val doclibRoot = config.getString("doclib.root")
+    val latency = documentFetchLatency.labels("http").startTimer()
 
     Await.result(retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
@@ -121,9 +123,13 @@ object Http extends Adapter {
       val r: Future[IOResult] =
         x.entity.dataBytes.runWith(FileIO.toPath(tempTarget.toPath)).recover {
           // Something happened before fetching file, might want to do something about it....
-          case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
+          case e: Exception =>
+            latency.observeDuration()
+            throw DoclibHttpRetrievalError(e.getMessage, e)
         }
 
+      latency.observeDuration()
+      documentSizeBytes.labels("http").observe(new File(tempTargetFinal).length().toDouble)
       r.map(_ =>
         Some(DownloadResult(
           source = tempPathFinal,

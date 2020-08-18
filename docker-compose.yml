@@ -1,0 +1,18 @@
+version: "3.6"
+services:
+  rabbit:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: doclib
+      RABBITMQ_DEFAULT_PASS: doclib
+      RABBITMQ_DEFAULT_VHOST: doclib
+  mongo:
+    image: mongo:4.2
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: doclib
+      MONGO_INITDB_ROOT_PASSWORD: doclib
