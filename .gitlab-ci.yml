@@ -12,10 +12,11 @@ stages:
 
 variables:
   SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy"
-  MONGO_INITDB_ROOT_USERNAME: admin
-  MONGO_INITDB_ROOT_PASSWORD: admin
-  RABBITMQ_DEFAULT_USER: guest
-  RABBITMQ_DEFAULT_PASS: guest
+  MONGO_INITDB_ROOT_USERNAME: doclib
+  MONGO_INITDB_ROOT_PASSWORD: doclib
+  RABBITMQ_DEFAULT_USER: doclib
+  RABBITMQ_DEFAULT_PASS: doclib
+  RABBITMQ_DEFAULT_VHOST: doclib
 
 
 cache:
@@ -36,13 +37,7 @@ test:
     - wopr
   variables:
     MONGO_HOST: mongo
-    MONGO_DATABASE: prefetch-test
-    MONGO_COLLECTION: documents
-    MONGO_USERNAME: admin
-    MONGO_PASSWORD: admin
     RABBITMQ_HOST: rabbitmq
-    RABBITMQ_USERNAME: guest
-    RABBITMQ_PASSWORD: guest
   script:
     - sleep 5
     - curl http://guest:guest@rabbitmq:15672/api/overview

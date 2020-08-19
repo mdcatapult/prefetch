@@ -5,11 +5,12 @@ import akka.stream.Materializer
 import com.spingo.op_rabbit.SubscriptionRef
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.consumer.AbstractConsumer
-import io.mdcatapult.doclib.handlers.PrefetchHandler
+import io.mdcatapult.doclib.handlers.{AdminServer, PrefetchHandler}
 import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.{Envelope, Queue}
+import io.prometheus.client.hotspot.DefaultExports
 import org.mongodb.scala.MongoCollection
 import play.api.libs.json.Format
 
@@ -17,6 +18,9 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
   def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
     import as.dispatcher
+
+    DefaultExports.initialize()
+    val adminServer = AdminServer(config)
 
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))
@@ -34,6 +38,8 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
     val upstream: Queue[PrefetchMsg] = queue("upstream.queue")
     val archiver: Queue[DoclibMsg] = queue("doclib.archive.queue")
+
+    adminServer.start()
 
     upstream.subscribe(
       new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter).handle,
