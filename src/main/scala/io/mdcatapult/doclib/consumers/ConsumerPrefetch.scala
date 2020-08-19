@@ -20,7 +20,7 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     import as.dispatcher
 
     DefaultExports.initialize()
-    val adminServer = new AdminServer(config)
+    val adminServer = AdminServer(config)
 
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))

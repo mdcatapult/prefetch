@@ -7,9 +7,12 @@ import com.typesafe.config.Config
 import io.prometheus.client.CollectorRegistry
 import io.prometheus.client.exporter.HTTPServer
 
-class AdminServer(config: Config, checkHealth: () => Boolean) {
+object AdminServer {
+  def apply(config: Config, checkHealth: () => Boolean) = new AdminServer(config, checkHealth)
+  def apply(config: Config) = new AdminServer(config, () => true)
+}
 
-  def this(config: Config) = this(config, () => true)
+class AdminServer(config: Config, checkHealth: () => Boolean) {
 
   def start(): Unit = {
     val port = config.getInt("admin.port")
