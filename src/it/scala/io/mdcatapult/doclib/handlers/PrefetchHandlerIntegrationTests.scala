@@ -228,7 +228,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   "An ftp URI" should "be downloaded by the FTP adapter" in {
     // Result not actually important just the fact that it triggers the "download" method
-    val origin = Origin("http", uri = Uri.parseOption("http://a/file/somewhere"))
+    val origin = Origin("ftp", uri = Uri.parseOption("ftp://a/file/somewhere"))
     assertThrows[Exception] {
       Ftp.unapply(origin)
     }
