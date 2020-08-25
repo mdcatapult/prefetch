@@ -453,7 +453,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       if (inRemoteRoot(foundDoc.doc.source))
         Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
-        val remotePath = Http.generateFilePath(origin.uri.get, Option(remoteDirName), None, None)
+        val remotePath = Http.generateFilePath(origin, Option(remoteDirName), None, None)
         Some(Paths.get(s"$remotePath").toString)
       }
 
@@ -716,8 +716,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     (
       for { // assumes remote
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
-        originUri = origins.head.uri.get
-        downloaded: DownloadResult <- OptionT.fromOption[Future](remoteClient.download(originUri))
+        origin = origins.head
+        originUri = origin.uri.get
+        downloaded: DownloadResult <- OptionT.fromOption[Future](remoteClient.download(origin))
         (doc, archivable) <- OptionT(
           findOrCreateDoc(
             originUri.toString,

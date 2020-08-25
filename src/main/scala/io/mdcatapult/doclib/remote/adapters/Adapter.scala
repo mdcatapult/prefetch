@@ -3,6 +3,7 @@ package io.mdcatapult.doclib.remote.adapters
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.HashUtils.md5
 import org.apache.tika.mime.MimeTypesFactory
@@ -17,8 +18,8 @@ object Adapter {
 
 trait Adapter {
 
-  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
-  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
 
   /**
     * generate path on filesystem from uri
@@ -27,14 +28,14 @@ trait Adapter {
     * generation of index filename for uris ending in slash.
     * If uri includes query string it will generate an MD5 hash in the filename
     *
-    * @param uri io.lemonlabs.uri.Uri
+    * @param origin io.mdcatapult.doclib.models.Origin
     * @param root root of path to generate
     * @param fileName optional filename which, if defined, will replace the last part of the uri
     * @return
     */
-  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
+  def generateFilePath(origin: Origin, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
-
+    val uri = origin.uri.get
     val query = uri.toUrl.query
 
     val queryHash =
