@@ -44,6 +44,38 @@ trait Adapter {
       else
         ""
 
+    def getDisposition: (Boolean, String) = {
+      val hasFilename = """(filename|FILENAME)[^;=\n]*=((['"]).*?\3|[^;\n]*)""".r
+      val dispositionHeaderValue = {
+        origin.headers.getOrElse(Map()).get("Content-Disposition") match {
+          case Some(x) => x
+          case _ =>
+            origin.headers.getOrElse(Map()).get("content-disposition") match {
+              case Some(x) => x
+              case _ =>
+                return (false, "")
+            }
+        }
+      }
+
+      val f = (for {
+        v <- dispositionHeaderValue
+        regexMatch <- hasFilename.findAllMatchIn(v)
+        file = s"${regexMatch.group(2)}"
+      } yield file).headOption
+
+      f match {
+        case Some(x) =>
+          val file = x.stripPrefix("UTF-8''")
+            .stripPrefix("utf-8''")
+            .stripPrefix("\"")
+            .stripSuffix("\"")
+            .replace(" ", "-")
+          (true, file)
+        case _ => (false, "")
+      }
+    }
+
     def insertQueryHash(pathEnd: String): String = {
       val hasExtension = """(.*)\.(.*)$""".r
       val headerExt = contentType.map(Adapter.contentTypeExtension).getOrElse(".html")
@@ -57,9 +89,10 @@ trait Adapter {
 
     def generateBasename(path: Path): String = {
       val allParts = path.parts ++ fileName.toVector
-      val hashedLastPathPart = insertQueryHash(allParts.last)
-
-      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(hashedLastPathPart)).mkString("/")
+      var lastPathPart = insertQueryHash(allParts.last)
+      val (hasDisposition, disposition) = getDisposition
+      if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
+      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
     }
 
     s"$targetDir/${
@@ -71,7 +104,7 @@ trait Adapter {
       uri.toUrl.hostOption.getOrElse("")
     }${
       uri.path match {
-        case EmptyPath => s"/index$queryHash.html"
+        case EmptyPath => s"${generateBasename(Path.parse("/index.html"))}"
         case path: RootlessPath => s"${generateBasename(path)}"
         case path: AbsolutePath => generateBasename(path)
         case _ => ""

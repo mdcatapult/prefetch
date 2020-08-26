@@ -32,11 +32,9 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
   import dummy.generateFilePath
 
   "A URL with no file extension suffix" should  "generate a file path ending with file extension suffix" in {
-    val headers = Map("content-disposition" -> Seq("inline; filename=\"edinbmedj74939-0070a.pdf\""))
     val origin = Origin(
       scheme = "https",
-      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
-      headers = Option apply headers
+      uri = Uri.parseOption("https://www.bbc.co.uk/news")
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
     assert(result == "remote/https/www.bbc.co.uk/news.html")
@@ -132,4 +130,135 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
     result should be("remote/https/www.bbc.co.uk/news/virus.pdf")
   }
 
+  "A URL with a content disposition header" should  "use the filename given by the header" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "find the filename when the header name is not capitalised" in {
+    val headers = Map("content-disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "find the filename when it is not the first in the sequence of header values" in {
+    val headers = Map("Content-Disposition" -> Seq("", "inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "find the filename when the filename is all caps" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; FILENAME=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "trim leading and trailing quotes from the filename" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=\"edinbmedj74939-0070a.pdf\""))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "trim a leading utf-8 identifier from the filename" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=utf-8''edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "trim a leading UTF-8 identifier from the filename" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=UTF-8''edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "append file name to path when path ends in /" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/news/"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "use the file name instead of index.html when there is no path" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "use the file name and ignore the path end and query parameters" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/world-51235105?page=1"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "be overrriden by a given filename" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/world-51235105"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), Some("coronavirus.pdf"), None)
+    assert(result == "remote/https/www.bbc.co.uk/world-51235105/coronavirus.pdf")
+  }
+
+  it should "be overrriden by a given filename and queryhash" in {
+    val headers = Map("Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/world-51235105?page=1"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), Some("coronavirus.pdf"), None)
+    assert(result == "remote/https/www.bbc.co.uk/world-51235105/coronavirus.1a8c14b8c6351d0699ed8db13dcde382.pdf")
+  }
 }
