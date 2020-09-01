@@ -7,6 +7,7 @@ import akka.stream.Materializer
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.DirectoryDelete
 import org.scalatest.BeforeAndAfterAll
@@ -44,9 +45,9 @@ class HttpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAn
 //  }
 
   "A valid HTTPS URL" should "download a file successfully" in {
-    val uri = Uri.parse("https://www.google.com/humans.txt")
+    val origin = Origin("https", uri = Uri.parseOption("https://www.google.com/humans.txt"))
     //val expectedSize = 286
-    val result: Option[DownloadResult] = Http.download(uri)
+    val result: Option[DownloadResult] = Http.download(origin)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
@@ -55,9 +56,9 @@ class HttpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAn
   }
 
   "A valid HTTP URL" should "download a file successfully" in {
-    val uri = Uri.parse("http://www.google.com/robots.txt")
+    val origin = Origin("http", uri = Uri.parseOption("http://www.google.com/robots.txt"))
     //val expectedSize = 7246
-    val result: Option[DownloadResult] = Http.download(uri)
+    val result: Option[DownloadResult] = Http.download(origin)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")

@@ -3,6 +3,7 @@ package io.mdcatapult.doclib.remote.adapters
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.HashUtils.md5
 import org.apache.tika.mime.MimeTypesFactory
@@ -17,49 +18,20 @@ object Adapter {
 
 trait Adapter {
 
-  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
-  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
 
   /**
-    * generate path on filesystem from uri
+    * Generates a file path based on the file origin using the scheme, host, path, and content disposition header.
     *
-    * generates a url while attempting to maintain file extensions and
-    * generation of index filename for uris ending in slash.
-    * If uri includes query string it will generate an MD5 hash in the filename
-    *
-    * @param uri io.lemonlabs.uri.Uri
+    * @param origin io.mdcatapult.doclib.models.Origin
     * @param root root of path to generate
     * @param fileName optional filename which, if defined, will replace the last part of the uri
     * @return
     */
-  def generateFilePath(uri: Uri, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
+  def generateFilePath(origin: Origin, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
-
-    val query = uri.toUrl.query
-
-    val queryHash =
-      if (query.nonEmpty)
-        "." + md5(s"?$query")
-      else
-        ""
-
-    def insertQueryHash(pathEnd: String): String = {
-      val hasExtension = """(.*)\.(.*)$""".r
-      val headerExt = contentType.map(Adapter.contentTypeExtension).getOrElse(".html")
-
-      pathEnd match {
-        case "" => s"index$queryHash$headerExt"
-        case hasExtension(p, ext) => s"$p$queryHash.$ext"
-        case p => s"$p$queryHash$headerExt"
-      }
-    }
-
-    def generateBasename(path: Path): String = {
-      val allParts = path.parts ++ fileName.toVector
-      val hashedLastPathPart = insertQueryHash(allParts.last)
-
-      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(hashedLastPathPart)).mkString("/")
-    }
+    val uri = origin.uri.get
 
     s"$targetDir/${
       uri.schemeOption match {
@@ -70,11 +42,92 @@ trait Adapter {
       uri.toUrl.hostOption.getOrElse("")
     }${
       uri.path match {
-        case EmptyPath => s"/index$queryHash.html"
-        case path: RootlessPath => s"${generateBasename(path)}"
-        case path: AbsolutePath => generateBasename(path)
+        case EmptyPath => s"${generateBasename(Path.parse("/index.html"), origin, fileName, contentType)}"
+        case path: RootlessPath => s"${generateBasename(path, origin, fileName, contentType)}"
+        case path: AbsolutePath => generateBasename(path, origin, fileName, contentType)
         case _ => ""
       }
     }"
+  }
+
+  /**
+   * Returns the doclib filepath without the scheme, host, or prefix.
+   *
+   * @param path io.lemonlabs.uri.Path
+   * @param origin io.mdcatapult.doclib.models.Origin
+   * @param fileName optional filename which, if defined, will replace the last part of the uri
+   * @param contentType optional filename override
+   * @return
+   */
+  def generateBasename(path: Path, origin: Origin, fileName: Option[String], contentType: Option[String]): String = {
+    val allParts = path.parts ++ fileName.toVector
+    var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
+    val (hasDisposition, disposition) = getDisposition(origin)
+    if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
+    "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+  }
+
+  /**
+   * Given the final part of a path, a query string, and the content type, returns a filename with an extension and an
+   * md5 hash of the query string.
+   *
+   * @param pathEnd String
+   * @param query io.lemonlabs.uri.QueryString
+   * @param contentType optional filename override
+   * @return
+   */
+  def insertQueryHash(pathEnd: String, query: QueryString, contentType: Option[String]): String = {
+    val queryHash =
+      if (query.nonEmpty)
+        "." + md5(s"?$query")
+      else
+        ""
+
+    val hasExtension = """(.*)\.(.*)$""".r
+    val headerExt = contentType.map(Adapter.contentTypeExtension).getOrElse(".html")
+
+    pathEnd match {
+      case "" => s"index$queryHash$headerExt"
+      case hasExtension(p, ext) => s"$p$queryHash.$ext"
+      case p => s"$p$queryHash$headerExt"
+    }
+  }
+
+  /**
+   * Extracts content-disposition information from the origin and sanitizes the filename if present.
+   *
+   * @param origin io.mdcatapult.doclib.models.Origin file origin
+   * @return
+   */
+  def getDisposition(origin: Origin): (Boolean, String) = {
+    val hasFilename = """(filename|FILENAME)[^;=\n]*=((['"]).*?\3|[^;\n]*)""".r
+    val dispositionHeaderValue = {
+      origin.headers.getOrElse(Map()).get("Content-Disposition") match {
+        case Some(x) => x
+        case _ =>
+          origin.headers.getOrElse(Map()).get("content-disposition") match {
+            case Some(x) => x
+            case _ =>
+              return (false, "")
+          }
+      }
+    }
+
+    val f = (for {
+      v <- dispositionHeaderValue
+      regexMatch <- hasFilename.findAllMatchIn(v)
+      file = s"${regexMatch.group(2)}"
+    } yield file).headOption
+
+    f match {
+      case Some(x) =>
+        val file = x.stripPrefix("UTF-8''")
+          .stripPrefix("utf-8''")
+          .stripPrefix("\"")
+          .stripSuffix("\"")
+          .replace(" ", "-")
+        (true, file)
+      case _ => (false, "")
+    }
   }
 }

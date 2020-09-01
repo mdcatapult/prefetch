@@ -218,19 +218,19 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     docUpdate.value.uuid should not be None
   }
 
-  "An http URI" should "be downloaded by the HTTP adapter" in {
+  "An http origin" should "be downloaded by the HTTP adapter" in {
     // Result not actually important just the fact that it triggers the "download" method
-    val uri: Uri = Uri.parse("http://a/file/somewhere")
+    val origin = Origin("http", uri = Uri.parseOption("http://a/file/somewhere"))
     assertThrows[Exception] {
-      Http.unapply(uri)
+      Http.unapply(origin)
     }
   }
 
   "An ftp URI" should "be downloaded by the FTP adapter" in {
     // Result not actually important just the fact that it triggers the "download" method
-    val uri: Uri = Uri.parse("ftp://a/file/somewhere")
+    val origin = Origin("ftp", uri = Uri.parseOption("ftp://a/file/somewhere"))
     assertThrows[Exception] {
-      Ftp.unapply(uri)
+      Ftp.unapply(origin)
     }
   }
 

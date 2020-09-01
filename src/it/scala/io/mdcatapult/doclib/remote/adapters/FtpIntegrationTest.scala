@@ -7,6 +7,7 @@ import akka.stream.Materializer
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.util.DirectoryDelete
 import org.scalatest.BeforeAndAfterAll
@@ -29,8 +30,8 @@ class FtpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAnd
   implicit val m: Materializer = Materializer(system)
 
   "A valid anonymous FTP URL" should "download a file successfully" in {
-    val uri = Uri.parse("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
-    val result: Option[DownloadResult] = Ftp.download(uri)
+    val origin: Origin = Origin("ftp", uri = Uri.parseOption("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
+    val result: Option[DownloadResult] = Ftp.download(origin)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
@@ -39,9 +40,9 @@ class FtpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAnd
 
   "A valid FTP URL with credentials" should "parse ok" in {
     // Test username/password. Doesn't matter if it downloads
-    val uri = Uri.parse("ftp://user:password@ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
+    val origin = Origin("ftp", uri = Uri.parseOption("ftp://user:password@ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
     intercept[Exception] {
-      Ftp.download(uri)
+      Ftp.download(origin)
     }
   }
 
