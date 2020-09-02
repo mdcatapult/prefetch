@@ -525,6 +525,35 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   }
 
+  "Processing a derivative with no parent-child mapping" should "not update or create any parent-child mappings" in {
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val childId = new ObjectId()
+
+    val childDoc = DoclibDoc(
+      _id = childId,
+      source = "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
+      hash = "12345",
+      derivative = true,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]()),
+    )
+    val childResult = collection.insertOne(childDoc).toFutureOption()
+    whenReady(childResult, Timeout(Span(20, Seconds))) { result =>
+      assert(result.exists(_.wasAcknowledged()))
+    }
+    val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
+    val parentUpdate = handler.processParent(childDoc, prefetchMsg)
+    whenReady(parentUpdate, Timeout(Span(20, Seconds))) { result =>
+      val updateResult = result.asInstanceOf[UpdateResult]
+      assert(updateResult.wasAcknowledged())
+      assert(updateResult.getMatchedCount == 0)
+      assert(updateResult.getModifiedCount == 0)
+    }
+  }
+
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
