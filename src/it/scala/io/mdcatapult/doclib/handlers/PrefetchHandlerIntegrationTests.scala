@@ -10,12 +10,13 @@ import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl.pwd
 import better.files.{File => ScalaFile}
+import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
-import io.mdcatapult.doclib.models.{Derivative, DoclibDoc, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.util.HashUtils.md5
 import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
@@ -24,18 +25,19 @@ import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
-import com.mongodb.client.result.UpdateResult
+import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.OptionValues._
 import org.scalatest.TryValues._
+import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
-import org.mongodb.scala.model.Filters.{equal => Mequal, and}
+import org.scalatest.time.{Seconds, Span}
 
-import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
 import scala.util.Try
 
@@ -466,56 +468,28 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(origDoc.doc._id != fetchedDoc.doc._id)
   }
 
-  "Processing a parent with existing derivatives array" should "create new parent-child mappings" in {
+  "Processing a parent with existing child" should "update parent-child mapping" in {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val childMetadata: List[MetaValueUntyped] = List[MetaValueUntyped](MetaString("metadata-key", "metadata-value"))
-    val derivative: Derivative = new Derivative(`type` = "unarchived", path = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata))
-    val derivatives: List[Derivative] = List[Derivative](derivative)
     val parentIdOne = new ObjectId()
-    val parentIdTwo = new ObjectId()
     val childId = new ObjectId()
     val parentDocOne = DoclibDoc(
-      _id = parentIdOne,
-      source = "remote/http/path/to/parent.zip",
-      hash = "12345",
-      derivative = false,
-      derivatives = Some(derivatives),
-      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      mimetype = "text/plain",
-      tags = Some(List[String]())
+        _id = parentIdOne,
+        source = "remote/http/path/to/parent.zip",
+        hash = "12345",
+        derivative = false,
+        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+        mimetype = "text/plain",
+        tags = Some(List[String]())
     )
-    val parentDocTwo = DoclibDoc(
-      _id = parentIdTwo,
-      source = "remote/http/path/to/another/parent.zip",
-      hash = "67890",
-      derivative = false,
-      derivatives = Some(derivatives),
-      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-      mimetype = "text/plain",
-      tags = Some(List[String]())
-    )
+    val parentChildMapping = ParentChildMapping(_id = UUID.randomUUID(), parent = parentIdOne, childPath = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata), consumer = Some("unarchived"))
+    val parentChildInsert = Await.result(derivativesCollection.insertOne(parentChildMapping).toFutureOption(), 5.seconds)
+    assert(parentChildInsert.exists(_.wasAcknowledged()))
     val parentResultOne = Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
-    val parentResultTwo = Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
 
     assert(parentResultOne.exists(_.wasAcknowledged()))
-    assert(parentResultTwo.exists(_.wasAcknowledged()))
 
-    val origin: List[Origin] = List(Origin(
-      scheme = "mongodb",
-      hostname = None,
-      uri = None,
-      metadata = Some(List(MetaString("_id", parentIdOne.toString))),
-      headers = None
-    ),
-      Origin(
-        scheme = "mongodb",
-        hostname = None,
-        uri = None,
-        metadata = Some(List(MetaString("_id", parentIdTwo.toString))),
-        headers = None)
-    )
     val childDoc = DoclibDoc(
       _id = childId,
       source = "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt",
@@ -525,29 +499,30 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
       mimetype = "text/plain",
       tags = Some(List[String]()),
-      origin = Some(origin)
     )
-    val childResult = Await.result(collection.insertOne(childDoc).toFutureOption(), 5 seconds)
-    assert(childResult.exists(_.wasAcknowledged()))
+    val childResult = collection.insertOne(childDoc).toFutureOption()
+    whenReady(childResult, Timeout(Span(20, Seconds))) { result =>
+      assert(result.exists(_.wasAcknowledged()))
+    }
     val metadataMap: List[MetaString] = List(MetaString("doi", "10.1101/327015"))
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", None, Some(List("a-tag")), Some(metadataMap), Some(true))
-    val parentUpdate = Await.result(handler.processParent(childDoc, prefetchMsg), 5 seconds).asInstanceOf[Option[List[DoclibDoc]]]
-    assert(parentUpdate.nonEmpty)
-    assert(parentUpdate.get.length == 2)
-    assert(parentUpdate.get.exists(p => p._id == parentIdOne))
-    assert(parentUpdate.get.exists(p => p._id == parentIdTwo))
-    val firstMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture(), 5.seconds)
-    assert(firstMapping.length == 1)
-    assert(firstMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
-    assert(firstMapping.head.parent == parentIdOne)
-    assert(firstMapping.head.child.contains(childId))
-    assert(firstMapping.head.metadata.contains(childMetadata))
-    val secondMapping = Await.result(derivativesCollection.find(and(Mequal("parent", parentIdTwo), Mequal("child", childId))).toFuture(), 5.seconds)
-    assert(secondMapping.length == 1)
-    assert(secondMapping.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
-    assert(secondMapping.head.parent == parentIdTwo)
-    assert(secondMapping.head.child.contains(childId))
-    assert(secondMapping.head.metadata.contains(childMetadata))
+    val parentUpdate = handler.processParent(childDoc, prefetchMsg)
+    whenReady(parentUpdate, Timeout(Span(20, Seconds))) { result =>
+      val updateResult = result.asInstanceOf[UpdateResult]
+      assert(updateResult.wasAcknowledged())
+      assert(updateResult.getMatchedCount == 1)
+      assert(updateResult.getModifiedCount == 1)
+    }
+    val firstMapping: Future[Seq[ParentChildMapping]] = derivativesCollection.find(and(Mequal("parent", parentIdOne), Mequal("child", childId))).toFuture()
+    whenReady(firstMapping, Timeout(Span(20, Seconds))) { result: Seq[ParentChildMapping] =>
+      assert(result.length == 1)
+      assert(result.head.childPath == "local/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt")
+      assert(result.head.parent == parentIdOne)
+      assert(result.head.child.contains(childId))
+      assert(result.head.metadata.contains(childMetadata))
+      assert(result.head.consumer.contains("unarchived"))
+    }
+
   }
 
   override def beforeAll(): Unit = {

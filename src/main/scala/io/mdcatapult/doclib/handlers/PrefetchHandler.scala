@@ -178,11 +178,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   * Update parent "origin" documents with the new source for the derivative.
-   * 1) First find any parent-child-mappings.
-   * 2) If they exist then use them.
-   * 3) If none find any old derivatives array.
-   * 4) If derivatives array exists then move them to parent-child-mappings with new child path.
+   * Update parent documents with the new source for the derivative.
    *
    * @param msg PrefetchMsg
    * @return
@@ -190,18 +186,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def processParent(doc: DoclibDoc, msg: PrefetchMsg): Future[Any] = {
     if (doc.derivative) {
       val path = getTargetPath(msg.source, localDirName)
-      // Find parent-child mappings in derivatives collection
-      val latency = mongoLatency.labels("find_derivatives_by_path").startTimer()
-      for {
-        docs <- derivativesCollection.find(equal("childPath", msg.source))
-          .toFuture().andThen(_ => latency.observeDuration())
-
-        xs <- if (docs.nonEmpty) {
-          updateParentChildMappings(msg.source, path, doc._id)
-        } else {
-          updateExistingDerivatives(doc, msg.source, path)
-        }
-      } yield xs
+      updateParentChildMappings(msg.source, path, doc._id)
     } else {
       // No derivative. Just return a success - we don't do anything with the response
       Future.successful(None)
@@ -220,18 +205,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         set("child", id)
       )
     ).toFuture().andThen(_ => latency.observeDuration())
-  }
-
-  /**
-   * Given the path to a child document convert existing parent derivative array in a doclib doc to parent-child mappings
-   */
-  def updateExistingDerivatives(child: DoclibDoc, source: String, target: String): Future[Option[Seq[DoclibDoc]]] = {
-    {
-      val latency = mongoLatency.labels("find_documents_by_derivative_path").startTimer()
-      for {
-      doclibDocs <- OptionT.liftF(collection.find(equal("derivatives.path", source)).toFuture().andThen(_ => latency.observeDuration()))
-      _ <- OptionT.pure[Future](doclibDocs.map(doclibDoc => createParentChildDerivative(doclibDoc, child, target)))
-    } yield doclibDocs}.value
   }
 
   /**
