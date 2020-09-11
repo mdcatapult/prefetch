@@ -19,7 +19,7 @@ lazy val root = (project in file("."))
   .settings(
     Defaults.itSettings,
     name := "consumer-prefetch",
-    scalaVersion := "2.13.2",
+    scalaVersion := "2.13.3",
     scalacOptions ++= Seq(
       "-encoding", "utf-8",
       "-unchecked",
