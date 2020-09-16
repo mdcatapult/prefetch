@@ -63,8 +63,10 @@ trait Adapter {
     val allParts = path.parts ++ fileName.toVector
     var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
     val (hasDisposition, disposition) = getDisposition(origin)
-    if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
-    "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    if (hasDisposition && fileName.isEmpty) lastPathPart = Vector(allParts.last.stripSuffix("/"), disposition).mkString("/")
+    if (hasDisposition && (allParts.last.equals("") || allParts.last.equals("index.html"))) lastPathPart = disposition
+    val paths = "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    paths
   }
 
   /**
