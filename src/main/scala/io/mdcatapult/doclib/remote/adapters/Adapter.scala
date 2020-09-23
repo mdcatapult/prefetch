@@ -35,11 +35,15 @@ trait Adapter {
 
     s"$targetDir/${
       uri.schemeOption match {
-        case Some(scheme) => s"$scheme/"
+        case Some(scheme) => s"$scheme"
         case None => ""
       }
     }${
-      uri.toUrl.hostOption.getOrElse("")
+      getLocation(origin) match {
+        case (true, _) => ""
+        case (false, _) => s"/${uri.toUrl.hostOption.getOrElse("")}"
+      }
+//      uri.toUrl.hostOption.getOrElse("")
     }${
       uri.path match {
         case EmptyPath => s"${generateBasename(Path.parse("/index.html"), origin, fileName, contentType)}"
@@ -62,9 +66,21 @@ trait Adapter {
   def generateBasename(path: Path, origin: Origin, fileName: Option[String], contentType: Option[String]): String = {
     val allParts = path.parts ++ fileName.toVector
     var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
+    val (hasLocation, location) = getLocation(origin)
     val (hasDisposition, disposition) = getDisposition(origin)
     if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
-    "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    val p = if (hasLocation) {
+      val pathParts = Path.parse(location.get.head) match {
+        case parsedPath: AbsolutePath => parsedPath.parts
+        case parsedPath: RootlessPath => parsedPath.parts.drop(1)
+        case _ => throw new Exception("Should not happen")
+      }
+      "/" + (pathParts.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    } else {
+      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    }
+//    val p = "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    p
   }
 
   /**
@@ -128,6 +144,18 @@ trait Adapter {
           .replace(" ", "-")
         (true, file)
       case _ => (false, "")
+    }
+  }
+
+  /**
+   * Return the "Location" header from the http response
+   * @param origin
+   * @return
+   */
+  def getLocation(origin: Origin): (Boolean, Option[Seq[String]]) = {
+    origin.headers.getOrElse(Map()).get("Location") match {
+      case Some(x) => (true, Some(x))
+      case _ => (false, None)
     }
   }
 }
