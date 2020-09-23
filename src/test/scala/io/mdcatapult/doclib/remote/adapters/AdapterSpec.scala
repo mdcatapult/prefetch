@@ -284,4 +284,16 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
     assert(result == "remote/https/a.b.c.com/edinbmedj74939-0070a.pdf")
   }
 
+  it should "throw an exception if Location header available but empty" in {
+    val headers = Map("Location" -> Seq(""))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/world-51235105?page=1"),
+      headers = Option apply headers
+    )
+    assertThrows[MissingLocationException](
+      generateFilePath(origin, Some("remote"), None, None)
+    )
+  }
+
 }

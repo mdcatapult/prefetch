@@ -1,5 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
+
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
@@ -69,18 +71,16 @@ trait Adapter {
     val (hasLocation, location) = getLocation(origin)
     val (hasDisposition, disposition) = getDisposition(origin)
     if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
-    val p = if (hasLocation) {
+    if (hasLocation) {
       val pathParts = Path.parse(location.get.head) match {
         case parsedPath: AbsolutePath => parsedPath.parts
         case parsedPath: RootlessPath => parsedPath.parts.drop(1)
-        case _ => throw new Exception("Should not happen")
+        case _ => throw new MissingLocationException(path, origin)
       }
-      "/" + (pathParts.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+      File.separator + (pathParts.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
     } else {
-      "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+      File.separator + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
     }
-//    val p = "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
-    p
   }
 
   /**
