@@ -45,7 +45,6 @@ trait Adapter {
         case (true, _) => ""
         case (false, _) => s"/${uri.toUrl.hostOption.getOrElse("")}"
       }
-//      uri.toUrl.hostOption.getOrElse("")
     }${
       uri.path match {
         case EmptyPath => s"${generateBasename(Path.parse("/index.html"), origin, fileName, contentType)}"
