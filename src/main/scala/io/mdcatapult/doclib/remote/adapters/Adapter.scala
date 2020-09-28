@@ -1,5 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
+
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
@@ -35,11 +37,14 @@ trait Adapter {
 
     s"$targetDir/${
       uri.schemeOption match {
-        case Some(scheme) => s"$scheme/"
+        case Some(scheme) => s"$scheme"
         case None => ""
       }
     }${
-      uri.toUrl.hostOption.getOrElse("")
+      getLocation(origin) match {
+        case (true, _) => ""
+        case (false, _) => s"/${uri.toUrl.hostOption.getOrElse("")}"
+      }
     }${
       uri.path match {
         case EmptyPath => s"${generateBasename(Path.parse("/index.html"), origin, fileName, contentType)}"
@@ -62,9 +67,19 @@ trait Adapter {
   def generateBasename(path: Path, origin: Origin, fileName: Option[String], contentType: Option[String]): String = {
     val allParts = path.parts ++ fileName.toVector
     var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
+    val (hasLocation, location) = getLocation(origin)
     val (hasDisposition, disposition) = getDisposition(origin)
     if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
-    "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
+    if (hasLocation) {
+      val pathParts = Path.parse(location.get.head) match {
+        case parsedPath: AbsolutePath => parsedPath.parts
+        case parsedPath: RootlessPath => parsedPath.parts.drop(1)
+        case _ => throw new MissingLocationException(path, origin)
+      }
+      File.separator + (pathParts.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
+    } else {
+      File.separator + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
+    }
   }
 
   /**
@@ -128,6 +143,18 @@ trait Adapter {
           .replace(" ", "-")
         (true, file)
       case _ => (false, "")
+    }
+  }
+
+  /**
+   * Return the "Location" header from the http response
+   * @param origin
+   * @return
+   */
+  def getLocation(origin: Origin): (Boolean, Option[Seq[String]]) = {
+    origin.headers.getOrElse(Map()).get("Location") match {
+      case Some(x) => (true, Some(x))
+      case _ => (false, None)
     }
   }
 }
