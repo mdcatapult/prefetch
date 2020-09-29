@@ -1,5 +1,8 @@
 package io.mdcatapult.doclib.remote.adapters
 
+import java.io.File
+import java.nio.file.Paths
+
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
@@ -32,14 +35,22 @@ trait Adapter {
   def generateFilePath(origin: Origin, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
     val uri = origin.uri.get
+    val (hasDisposition, _) = getDisposition(origin)
 
-    s"$targetDir/${
+    s"$targetDir${File.separator}${
       uri.schemeOption match {
-        case Some(scheme) => s"$scheme/"
+        case Some(scheme) => s"$scheme"
         case None => ""
       }
     }${
-      uri.toUrl.hostOption.getOrElse("")
+      if (hasDisposition) {
+        s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+      } else {
+        getLocation(origin) match {
+          case (true, locationPath) => s"${File.separator}${Uri.parse(locationPath.getOrElse(List("")).head).toUrl.hostOption.getOrElse("")}"
+          case (false, _) => s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+        }
+      }
     }${
       uri.path match {
         case EmptyPath => s"${generateBasename(Path.parse("/index.html"), origin, fileName, contentType)}"
@@ -61,12 +72,15 @@ trait Adapter {
    */
   def generateBasename(path: Path, origin: Origin, fileName: Option[String], contentType: Option[String]): String = {
     val allParts = path.parts ++ fileName.toVector
-    var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
     val (hasDisposition, disposition) = getDisposition(origin)
-    if (hasDisposition && fileName.isEmpty) lastPathPart = Vector(allParts.last.stripSuffix("/"), disposition).mkString("/")
-    if (hasDisposition && (allParts.last.equals("") || allParts.last.equals("index.html"))) lastPathPart = disposition
-    val paths = "/" + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString("/")
-    paths
+    val lastPathPart = if (hasDisposition && (allParts.last.equals("") || allParts.last.equals("index.html"))) {
+      disposition
+    } else if (hasDisposition && fileName.isEmpty) {
+      Vector(allParts.last.stripSuffix(File.separator), disposition).mkString({File.separator})
+    } else {
+      insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
+    }
+    Paths.get(File.separator, allParts.init.filter(_.nonEmpty).mkString(File.separator), lastPathPart).toString
   }
 
   /**
@@ -130,6 +144,18 @@ trait Adapter {
           .replace(" ", "-")
         (true, file)
       case _ => (false, "")
+    }
+  }
+
+  /**
+   * Return the "Location" header from the http response
+   * @param origin
+   * @return
+   */
+  def getLocation(origin: Origin): (Boolean, Option[Seq[String]]) = {
+    origin.headers.getOrElse(Map()).get("Location") match {
+      case Some(x) => (true, Some(x))
+      case _ => (false, None)
     }
   }
 }
