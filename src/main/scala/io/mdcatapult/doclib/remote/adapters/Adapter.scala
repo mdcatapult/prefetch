@@ -1,6 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
+import java.nio.file.Paths
 
 import akka.stream.Materializer
 import com.typesafe.config.Config
@@ -24,7 +25,8 @@ trait Adapter {
   def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
 
   /**
-    * Generates a file path based on the file origin using the scheme, host, path, and content disposition header.
+    * Generates a file path based on the file origin using the scheme, host, path, location header and content disposition header.
+    * content-disposition overrides the Location header.
     *
     * @param origin io.mdcatapult.doclib.models.Origin
     * @param root root of path to generate
@@ -34,16 +36,34 @@ trait Adapter {
   def generateFilePath(origin: Origin, root: Option[String] = None, fileName: Option[String], contentType: Option[String]): String = {
     val targetDir = root.getOrElse("").replaceAll("/+$", "")
     val uri = origin.uri.get
+    val (hasDisposition, _) = getDisposition(origin)
 
-    s"$targetDir/${
+    s"$targetDir${File.separator}${
       uri.schemeOption match {
         case Some(scheme) => s"$scheme"
         case None => ""
       }
     }${
-      getLocation(origin) match {
-        case (true, _) => ""
-        case (false, _) => s"/${uri.toUrl.hostOption.getOrElse("")}"
+      if (hasDisposition) {
+        s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+      } else {
+        getLocation(origin) match {
+          case (true, locationPath) => {
+            val parsedLocation = Uri.parse(locationPath.getOrElse(List("")).head)
+            parsedLocation match {
+              case path: RelativeUrl => {
+                if (path.toString() == "" || path.toString() == "/") {
+                  s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+                } else {
+                  s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}${File.separator}${path.toString().stripPrefix("/")}"
+                }
+              }
+              case _: AbsoluteUrl => s"${File.separator}${parsedLocation.toUrl.hostOption.getOrElse("")}"
+              case _ => ""
+            }
+          }
+          case (false, _) => s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+        }
       }
     }${
       uri.path match {
@@ -66,20 +86,15 @@ trait Adapter {
    */
   def generateBasename(path: Path, origin: Origin, fileName: Option[String], contentType: Option[String]): String = {
     val allParts = path.parts ++ fileName.toVector
-    var lastPathPart = insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
-    val (hasLocation, location) = getLocation(origin)
     val (hasDisposition, disposition) = getDisposition(origin)
-    if (hasDisposition && fileName.isEmpty) lastPathPart = disposition
-    if (hasLocation) {
-      val pathParts = Path.parse(location.get.head) match {
-        case parsedPath: AbsolutePath => parsedPath.parts
-        case parsedPath: RootlessPath => parsedPath.parts.drop(1)
-        case _ => throw new MissingLocationException(path, origin)
-      }
-      File.separator + (pathParts.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
+    val lastPathPart = if (hasDisposition && (allParts.last.equals("") || allParts.last.equals("index.html"))) {
+      disposition
+    } else if (hasDisposition && fileName.isEmpty) {
+      Vector(allParts.last.stripSuffix(File.separator), disposition).mkString({File.separator})
     } else {
-      File.separator + (allParts.init.filter(_.nonEmpty) ++ Vector(lastPathPart)).mkString(File.separator)
+      insertQueryHash(allParts.last, origin.uri.get.toUrl.query, contentType)
     }
+    Paths.get(File.separator, allParts.init.filter(_.nonEmpty).mkString(File.separator), lastPathPart).toString
   }
 
   /**

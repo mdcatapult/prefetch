@@ -138,7 +138,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "find the filename when the header name is not capitalised" in {
@@ -149,7 +149,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "find the filename when it is not the first in the sequence of header values" in {
@@ -160,7 +160,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "find the filename when the filename is all caps" in {
@@ -171,7 +171,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "trim leading and trailing quotes from the filename" in {
@@ -182,7 +182,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "trim a leading utf-8 identifier from the filename" in {
@@ -193,7 +193,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "trim a leading UTF-8 identifier from the filename" in {
@@ -204,7 +204,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/news/edinbmedj74939-0070a.pdf")
   }
 
   it should "append file name to path when path ends in /" in {
@@ -237,7 +237,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+    assert(result == "remote/https/www.bbc.co.uk/world-51235105/edinbmedj74939-0070a.pdf")
   }
 
   it should "be overrriden by a given filename" in {
@@ -273,7 +273,40 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
     assert(result == "remote/https/a.b.c.com/edinbmedj74939-0070a.pdf")
   }
 
-  it should "use the http location header plus content-disposition if available" in {
+  it should "use a relative http location header if available" in {
+    val headers = Map("Location" -> Seq("/somewhere"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/edinbmedj74939-0070a.pdf"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/somewhere/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "ignore an location header of /" in {
+    val headers = Map("Location" -> Seq("/"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/edinbmedj74939-0070a.pdf"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "ignore an empty location header" in {
+    val headers = Map("Location" -> Seq(""))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/edinbmedj74939-0070a.pdf"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/edinbmedj74939-0070a.pdf")
+  }
+
+  it should "use the content-disposition with original origin path even if location header is available" in {
     val headers = Map("Location" -> Seq("https://a.b.c.com"), "Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
     val origin = Origin(
       scheme = "https",
@@ -281,19 +314,7 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
       headers = Option apply headers
     )
     val result = generateFilePath(origin, Some("remote"), None, None)
-    assert(result == "remote/https/a.b.c.com/edinbmedj74939-0070a.pdf")
-  }
-
-  it should "throw an exception if Location header available but empty" in {
-    val headers = Map("Location" -> Seq(""))
-    val origin = Origin(
-      scheme = "https",
-      uri = Uri.parseOption("https://www.bbc.co.uk/world-51235105?page=1"),
-      headers = Option apply headers
-    )
-    assertThrows[MissingLocationException](
-      generateFilePath(origin, Some("remote"), None, None)
-    )
+    assert(result == "remote/https/www.bbc.co.uk/world-51235105/edinbmedj74939-0070a.pdf")
   }
 
 }
