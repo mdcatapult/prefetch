@@ -273,6 +273,17 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
     assert(result == "remote/https/a.b.c.com/edinbmedj74939-0070a.pdf")
   }
 
+  it should "use a relative http location header if available" in {
+    val headers = Map("Location" -> Seq("/somewhere"))
+    val origin = Origin(
+      scheme = "https",
+      uri = Uri.parseOption("https://www.bbc.co.uk/edinbmedj74939-0070a.pdf"),
+      headers = Option apply headers
+    )
+    val result = generateFilePath(origin, Some("remote"), None, None)
+    assert(result == "remote/https/www.bbc.co.uk/somewhere/edinbmedj74939-0070a.pdf")
+  }
+
   it should "use the content-disposition with original origin path even if location header is available" in {
     val headers = Map("Location" -> Seq("https://a.b.c.com"), "Content-Disposition" -> Seq("inline; filename=edinbmedj74939-0070a.pdf"))
     val origin = Origin(

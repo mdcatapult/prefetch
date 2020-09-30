@@ -25,7 +25,8 @@ trait Adapter {
   def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
 
   /**
-    * Generates a file path based on the file origin using the scheme, host, path, and content disposition header.
+    * Generates a file path based on the file origin using the scheme, host, path, location header and content disposition header.
+    * content-disposition overrides the Location header.
     *
     * @param origin io.mdcatapult.doclib.models.Origin
     * @param root root of path to generate
@@ -47,7 +48,14 @@ trait Adapter {
         s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
       } else {
         getLocation(origin) match {
-          case (true, locationPath) => s"${File.separator}${Uri.parse(locationPath.getOrElse(List("")).head).toUrl.hostOption.getOrElse("")}"
+          case (true, locationPath) => {
+            val parsedLocation = Uri.parse(locationPath.getOrElse(List("")).head)
+            parsedLocation match {
+              case path: RelativeUrl => s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}${File.separator}${path.toString().stripPrefix("/")}"
+              case _: AbsoluteUrl => s"${File.separator}${parsedLocation.toUrl.hostOption.getOrElse("")}"
+              case _ => ""
+            }
+          }
           case (false, _) => s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
         }
       }
