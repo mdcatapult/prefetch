@@ -51,7 +51,13 @@ trait Adapter {
           case (true, locationPath) => {
             val parsedLocation = Uri.parse(locationPath.getOrElse(List("")).head)
             parsedLocation match {
-              case path: RelativeUrl => s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}${File.separator}${path.toString().stripPrefix("/")}"
+              case path: RelativeUrl => {
+                if (path.toString() == "" || path.toString() == "/") {
+                  s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}"
+                } else {
+                  s"${File.separator}${uri.toUrl.hostOption.getOrElse("")}${File.separator}${path.toString().stripPrefix("/")}"
+                }
+              }
               case _: AbsoluteUrl => s"${File.separator}${parsedLocation.toUrl.hostOption.getOrElse("")}"
               case _ => ""
             }
