@@ -7,11 +7,11 @@ import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.util.DirectoryDelete
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 
-class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
+class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     """
@@ -71,7 +71,7 @@ class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll with DirectoryDelete {
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(
+    deleteDirectories(Seq(
       pwd / "test" / "remote-ingress",
       pwd / "test" / "remote")
     )

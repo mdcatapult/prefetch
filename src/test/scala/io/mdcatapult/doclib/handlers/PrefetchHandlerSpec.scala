@@ -9,13 +9,13 @@ import better.files.{File => ScalaFile}
 import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
+import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
-import io.mdcatapult.doclib.util.MongoCodecs
+import io.mdcatapult.doclib.codec.MongoCodecs
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -62,6 +62,13 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |}
       |prefetch {
       | verificationTimeout = 10
+      |}
+      |version {
+      |  number = "1.2.3",
+      |  major = 1,
+      |  minor = 2,
+      |  patch = 3,
+      |  hash =  "12345"
       |}
     """.stripMargin)
 

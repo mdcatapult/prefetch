@@ -13,13 +13,14 @@ import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
+import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.util.HashUtils.md5
-import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
+import io.mdcatapult.util.hash.Md5.md5
+import io.mdcatapult.doclib.codec.MongoCodecs
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
@@ -41,13 +42,14 @@ import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
 import scala.util.Try
 
+
 class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandlerIntegrationTest", ConfigFactory.parseString(
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
   with AnyFlatSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with ScalaFutures with DirectoryDelete {
+  with BeforeAndAfterAll with MockFactory with ScalaFutures {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""

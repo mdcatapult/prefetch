@@ -9,12 +9,12 @@ import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.util.DirectoryDelete
-import org.scalatest.{BeforeAndAfterAll, Ignore}
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.{BeforeAndAfterAll, Ignore}
 
 @Ignore
-class HttpIntegrationTest extends AnyFlatSpec with DirectoryDelete with BeforeAndAfterAll {
+class HttpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""

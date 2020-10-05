@@ -9,7 +9,7 @@ import better.files.Dsl._
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
-import io.mdcatapult.doclib.util.DirectoryDelete
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpecLike
 import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
@@ -22,7 +22,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   """))) with ImplicitSender
   with AsyncWordSpecLike
   with Matchers
-  with BeforeAndAfterAll with OptionValues with DirectoryDelete {
+  with BeforeAndAfterAll with OptionValues {
   implicit val config: Config = ConfigFactory.parseString(
     """
       |doclib {
