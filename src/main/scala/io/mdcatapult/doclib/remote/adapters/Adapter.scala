@@ -7,7 +7,7 @@ import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.util.hash.Md5.md5
 import org.apache.tika.mime.MimeTypesFactory
 
 object Adapter {

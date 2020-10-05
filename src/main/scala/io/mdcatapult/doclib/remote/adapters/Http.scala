@@ -15,7 +15,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
-import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
 
 import scala.concurrent.duration._
