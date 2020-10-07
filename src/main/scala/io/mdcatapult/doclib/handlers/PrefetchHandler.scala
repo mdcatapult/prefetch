@@ -448,7 +448,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
-    logger.info(s"archive archivable=${foundDoc.archiveable} source=$archiveSource target=$archiveTarget")
+    logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
       archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
@@ -469,7 +469,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     Try(messages.foreach(msg => archiver.send(msg))) match {
         case Success(_) =>
-          logger.info(s"Sent documents to archiver: $messages")
+          logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
           Future.successful(())
         case Failure(e) =>
           logger.error("failed to send doc to archive", e)
