@@ -1,29 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <timestamp key="myTimestamp" timeReference="contextBirth" datePattern="yyyy-MM-dd'_'HH-mm-ss.SSS"/>
-
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <target>System.out</target>
         <encoder>
-            <pattern>%d{yyyy-MM-dd_HH:mm:ss.SSS} %-5level[%thread] %logger{0} - %msg%n</pattern>
+            <Pattern>
+                %d{yyyy-MM-dd_HH:mm:ss.SSS} %-5level[%thread] %logger{0} - %msg%n
+            </Pattern>
         </encoder>
     </appender>
 
-    <logger name="org.mongodb.driver" level="${log-level:-ERROR}" />
-    <logger name="play.api.libs.ws" level="${log-level:-ERROR}" />
-    <logger name="io.mdcatapult" level="${log-level:-INFO}" >
+    <logger name="io.mdcatapult" level="${log-level:-INFO}" additivity="false">
         <appender-ref ref="CONSOLE"/>
     </logger>
-    <logger name="io.mdcatapult.concurrency" level="${log-level:-ERROR}" >
+    <logger name="io.mdcatapult.doclib.concurrency" level="${log-level:-ERROR}" >
         <appender-ref ref="CONSOLE"/>
     </logger>
-    <logger name="com.spingo.op_rabbit" level="${log-level:-ERROR}" >
+    <logger name="play.api.libs.ws" level="${log-level:-ERROR}" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    <logger name="org.mongodb.driver" level="${log-level:-ERROR}" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    <logger name="com.spingo.op_rabbit" level="${log-level:-ERROR}" additivity="false">
         <appender-ref ref="CONSOLE"/>
     </logger>
 
     <root level="${log-level:-INFO}">
-        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="CONSOLE" />
     </root>
 
 </configuration>
