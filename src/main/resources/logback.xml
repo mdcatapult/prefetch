@@ -12,7 +12,7 @@
     <logger name="io.mdcatapult" level="${log-level:-INFO}" additivity="false">
         <appender-ref ref="CONSOLE"/>
     </logger>
-    <logger name="io.mdcatapult.doclib.concurrency" level="${log-level:-ERROR}" >
+    <logger name="io.mdcatapult.doclib.concurrency" level="${log-level:-ERROR}" additivity="false">
         <appender-ref ref="CONSOLE"/>
     </logger>
     <logger name="play.api.libs.ws" level="${log-level:-ERROR}" additivity="false">
