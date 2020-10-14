@@ -10,13 +10,14 @@ import better.files.File.Attributes
 import better.files.{File => ScalaFile}
 import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
-import io.mdcatapult.doclib.concurrency.SemaphoreLimitedExecution
+import io.mdcatapult.doclib.codec.MongoCodecs
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
-import io.mdcatapult.doclib.util.HashUtils.md5
-import io.mdcatapult.doclib.util.{DirectoryDelete, MongoCodecs}
 import io.mdcatapult.klein.queue.Sendable
+import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
+import io.mdcatapult.util.hash.Md5.md5
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
@@ -35,7 +36,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   """))) with ImplicitSender
   with AnyWordSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with OptionValues with DirectoryDelete {
+  with BeforeAndAfterAll with MockFactory with OptionValues {
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
@@ -56,6 +57,13 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |  derivative {
        |    target-dir: "derivatives"
        |  }
+       |}
+       |version {
+       |  number = "1.2.3",
+       |  major = 1,
+       |  minor = 2,
+       |  patch = 3,
+       |  hash =  "12345"
        |}
     """.stripMargin)
 
@@ -157,7 +165,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
 
   override def afterAll(): Unit = {
     // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd/"test/local",
+
+    deleteDirectories(Seq(pwd/"test/local",
       pwd/"test"/"efs",
       pwd/"test"/"ftp",
       pwd/"test"/"http",
@@ -166,4 +175,5 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       pwd/"test"/"ingress",
       pwd/"test"/"remote"))
   }
+
 }

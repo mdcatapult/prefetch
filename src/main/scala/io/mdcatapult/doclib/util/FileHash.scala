@@ -2,7 +2,7 @@ package io.mdcatapult.doclib.util
 
 import better.files.{File => ScalaFile}
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.util.hash.Md5.md5
 
 object FileHash {
 

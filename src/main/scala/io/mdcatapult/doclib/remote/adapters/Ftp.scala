@@ -11,9 +11,10 @@ import akka.stream.scaladsl.{FileIO, Source}
 import akka.stream.{IOResult, Materializer}
 import akka.util.ByteString
 import com.typesafe.config.Config
-import io.lemonlabs.uri.{Uri, Url}
+import io.lemonlabs.uri.Url
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
 
 import scala.concurrent.duration.Duration
@@ -25,13 +26,13 @@ object Ftp extends Adapter {
 
   /**
     * test if supported scheme and perform download
-    * @param uri Uri
+    * @param origin io.mdcatapult.doclib.models.Origin
     * @param config config
     * @return
     */
-  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] =
-    if (protocols.contains(uri.schemeOption.getOrElse("")))
-      Ftp.download(uri)
+  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] =
+    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
+      Ftp.download(origin)
     else None
 
   /**
@@ -97,22 +98,22 @@ object Ftp extends Adapter {
 
   /**
     * download a file from the ftp server and store it locally returning a DownloadResult
-    * @param uri Uri
+    * @param origin io.mdcatapult.doclib.models.Origin
     * @param config Config
     * @return
     */
-  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp", config)
     implicit val executor: ExecutionContextExecutor = system.dispatcher
 
     val doclibRoot = config.getString("doclib.root")
-    val remotePath = generateFilePath(uri, Option(config.getString("doclib.remote.target-dir")), None, None)
-    val tempPath = generateFilePath(uri, Option(config.getString("doclib.remote.temp-dir")), None, None)
+    val remotePath = generateFilePath(origin, Option(config.getString("doclib.remote.target-dir")), None, None)
+    val tempPath = generateFilePath(origin, Option(config.getString("doclib.remote.temp-dir")), None, None)
     val finalTarget = Paths.get(s"$doclibRoot/$remotePath").toFile
     val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile
     val latency = documentFetchLatency.labels("ftp").startTimer()
     tempTarget.getParentFile.mkdirs()
-    val r: Future[IOResult] = retrieve(uri.toUrl)
+    val r: Future[IOResult] = retrieve(origin.uri.get.toUrl)
       .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath))
 
     val a = r.map(_ => {
@@ -121,7 +122,7 @@ object Ftp extends Adapter {
       Some(DownloadResult(
         source = tempPath,
         hash = md5(tempTarget.getAbsoluteFile),
-        origin = Option(uri.toString),
+        origin = Option(origin.uri.get.toString),
         target = Option(finalTarget.getAbsolutePath)
       ))
     }

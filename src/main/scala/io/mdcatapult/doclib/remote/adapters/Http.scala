@@ -12,9 +12,10 @@ import akka.stream.{IOResult, Materializer, StreamTcpException}
 import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
-import io.mdcatapult.doclib.util.HashUtils.md5
+import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
 
 import scala.concurrent.duration._
@@ -28,9 +29,9 @@ object Http extends Adapter {
 
   case class Result(fileName: Option[String], contentType: Option[String], entity: HttpEntity)
 
-  def unapply(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] =
-    if (protocols.contains(uri.schemeOption.getOrElse("")))
-      Http.download(uri)
+  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] =
+    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
+      Http.download(origin)
     else
       None
 
@@ -88,16 +89,17 @@ object Http extends Adapter {
    * filesystem and does not attempt to convert or change the target path
    * for non linux filesystem
    *
-   * @param uri io.lemonlabs.uri.Uri
+   * @param origin io.mdcatapult.doclib.models.Origin
    * @return
    */
-  def download(uri: Uri)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
     //TODO We should probably turn this all into futures and for-comps but is a bigger refactor
     // and something for another issue.
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
     import system.dispatcher
 
     val doclibRoot = config.getString("doclib.root")
+    val uri = origin.uri.get
     val latency = documentFetchLatency.labels("http").startTimer()
 
     Await.result(retrieve(uri).recover {
@@ -107,8 +109,8 @@ object Http extends Adapter {
       case e: Exception => throw DoclibHttpRetrievalError(e.getMessage, e)
     } flatMap { x: Result =>
 
-      val remotePath = generateFilePath(uri, Some(config.getString("doclib.remote.target-dir")), x.fileName, x.contentType)
-      val tempPath = generateFilePath(uri, Some(config.getString("doclib.remote.temp-dir")), x.fileName, x.contentType)
+      val remotePath = generateFilePath(origin, Some(config.getString("doclib.remote.target-dir")), x.fileName, x.contentType)
+      val tempPath = generateFilePath(origin, Some(config.getString("doclib.remote.temp-dir")), x.fileName, x.contentType)
 
       val finalTarget = Paths.get(s"$doclibRoot/$remotePath").toFile
       val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile

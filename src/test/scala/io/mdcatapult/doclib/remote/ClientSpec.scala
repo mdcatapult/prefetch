@@ -6,6 +6,7 @@ import akka.actor.ActorSystem
 import akka.stream.Materializer
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri._
+import io.mdcatapult.doclib.models.Origin
 import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.concurrent.Await
@@ -61,9 +62,9 @@ class ClientSpec extends AnyFlatSpec {
     }
   }
   "Downloading an unsupported scheme" should "throw an exception" in {
-    val source = Uri.parse("file://a_file.txt")
+    val origin = Origin("file", uri = Uri.parseOption("file://a_file.txt"))
     assertThrows[UnsupportedSchemeException] {
-      client.download(source)
+      client.download(origin)
     }
   }
 }

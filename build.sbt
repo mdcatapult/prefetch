@@ -6,7 +6,7 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "0.0.71"
+lazy val doclibCommonVersion = "1.0.1"
 lazy val prometheusClientVersion = "0.9.0"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
@@ -19,7 +19,7 @@ lazy val root = (project in file("."))
   .settings(
     Defaults.itSettings,
     name := "consumer-prefetch",
-    scalaVersion := "2.13.2",
+    scalaVersion := "2.13.3",
     scalacOptions ++= Seq(
       "-encoding", "utf-8",
       "-unchecked",
@@ -57,6 +57,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
+      "io.mdcatapult.klein" %% "util" % "1.0.0",
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
