@@ -8,6 +8,7 @@ lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
 lazy val doclibCommonVersion = "1.0.1"
 lazy val prometheusClientVersion = "0.9.0"
+lazy val kleinUtilVersion = "1.1.1"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -57,7 +58,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
-      "io.mdcatapult.klein" %% "util" % "1.0.0",
+      "io.mdcatapult.klein" %% "util" % kleinUtilVersion,
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
