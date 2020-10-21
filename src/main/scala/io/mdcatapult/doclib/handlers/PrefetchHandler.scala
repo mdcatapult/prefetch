@@ -146,20 +146,20 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
             r match {
               case Some(Left(v)) =>
-                handlerCount.labels("queue", "success").inc()
+                handlerCount.labels("consumer-prefetch", config.getString("upstream.queue"), "success").inc()
                 logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
               case Some(Right(e)) =>
-                handlerCount.labels("queue", "dropped").inc()
+                handlerCount.labels("consumer-prefetch", config.getString("upstream.queue"), "dropped").inc()
                 logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
               case None =>
                 throw new RuntimeException("Unknown Error Occurred")
             }
           case Failure(e: DoclibDocException) =>
-            handlerCount.labels("queue", "doclib_doc_exception").inc()
+            handlerCount.labels("consumer-prefetch", config.getString("upstream.queue"), "doclib_doc_exception").inc()
             logger.error("failure", e)
             flagContext.error(e.getDoc, noCheck = true)
           case Failure(e) =>
-            handlerCount.labels("queue", "unknown_error").inc()
+            handlerCount.labels("consumer-prefetch", config.getString("upstream.queue"), "unknown_error").inc()
             logger.error("failure", e)
             // enforce error flag
             Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
@@ -204,7 +204,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * Update any existing parent child mappings
    */
   def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
-    val latency = mongoLatency.labels("update_parent_child_mappings").startTimer()
+    val latency = mongoLatency.labels("consumer-prefetch", "update_parent_child_mappings").startTimer()
     derivativesCollection.updateMany(
       equal("childPath", source),
       combine(
@@ -224,7 +224,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val mappings: List[Future[Option[InsertOneResult]]] =
       for {
         derivative <- derivatives
-        latency = mongoLatency.labels("insert_parent_child_mapping").startTimer()
+        latency = mongoLatency.labels("consumer-prefetch", "insert_parent_child_mapping").startTimer()
         parentChild = derivativesCollection.insertOne(
           ParentChildMapping(
             _id = UUID.randomUUID,
@@ -255,7 +255,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
-    val latency = mongoLatency.labels("update_document").startTimer()
+    val latency = mongoLatency.labels("consumer-prefetch", "update_document").startTimer()
     val update = combine(
       getDocumentUpdate(found, msg),
       set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
@@ -743,7 +743,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def createDoc(source: String, hash: String): Future[DoclibDoc] = {
     val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
-    val latency = mongoLatency.labels("insert_document").startTimer()
+    val latency = mongoLatency.labels("consumer-prefetch", "insert_document").startTimer()
     val newDoc = DoclibDoc(
       _id = new ObjectId(),
       source = source,
