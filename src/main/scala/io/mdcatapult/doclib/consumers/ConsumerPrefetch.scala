@@ -3,8 +3,9 @@ package io.mdcatapult.doclib.consumers
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import com.spingo.op_rabbit.SubscriptionRef
+import io.mdcatapult.doclib.admin.Server
 import io.mdcatapult.doclib.consumer.AbstractConsumer
-import io.mdcatapult.doclib.handlers.{AdminServer, PrefetchHandler}
+import io.mdcatapult.doclib.handlers.PrefetchHandler
 import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
@@ -20,7 +21,7 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     import as.dispatcher
 
     DefaultExports.initialize()
-    val adminServer = AdminServer(config)
+    val adminServer = Server(config)
 
     implicit val collection: MongoCollection[DoclibDoc] =
       mongo.database.getCollection(config.getString("mongo.collection"))

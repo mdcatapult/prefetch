@@ -16,12 +16,12 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.Metrics._
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
