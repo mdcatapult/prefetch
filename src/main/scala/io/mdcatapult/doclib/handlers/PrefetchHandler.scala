@@ -298,6 +298,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def moveFile(source: String, target: String): Option[Path] = moveFile(
+    //TODO telemetry for file move
     Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
     Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
   ) match {
@@ -331,6 +332,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def copyFile(source: String, target: String): Option[Path] = copyFile(
+    //TODO telemetry
     Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
     Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
   ) match {
@@ -358,6 +360,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param source String
    */
   def removeFile(source: String): Unit =
+    //TODO telemetry
     removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
 
 
@@ -530,9 +533,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, currentHash)
             Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
-          } else if (!inRightLocation(foundDoc.doc.source))
+          } else if (!inRightLocation(foundDoc.doc.source)) {
             moveFile(tempPath, targetPath)
-          else { // not a new file or a file that requires updating so we will just cleanup the temp file
+          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
             removeFile(tempPath)
             None
           }
