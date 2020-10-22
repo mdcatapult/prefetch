@@ -89,6 +89,7 @@ lazy val root = (project in file("."))
       case "META-INF/jpms.args" => MergeStrategy.discard
       case n if n.startsWith("application.conf") => MergeStrategy.concat
       case n if n.endsWith(".conf") => MergeStrategy.concat
+      case n if n.startsWith("logback.xml") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value
