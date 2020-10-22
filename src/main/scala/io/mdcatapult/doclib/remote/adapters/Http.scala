@@ -1,6 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.io.File
+import java.io.{File, FileInputStream}
 import java.nio.file.Paths
 
 import akka.actor.ActorSystem
@@ -17,11 +17,16 @@ import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSch
 import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
+import org.apache.tika.Tika
+import org.apache.tika.io.TikaInputStream
+import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
 object Http extends Adapter {
+
+  val tika = new Tika()
 
   val protocols = List("http", "https")
 
@@ -131,7 +136,14 @@ object Http extends Adapter {
         }
 
       latency.observeDuration()
-      documentSizeBytes.labels("http").observe(new File(tempTargetFinal).length().toDouble)
+      val metadata = new Metadata()
+      metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, new File(finalTargetFinal).getName)
+      val mimetype = tika.getDetector.detect(
+        TikaInputStream.get(new FileInputStream(new File(finalTargetFinal).getAbsolutePath)),
+        metadata
+      ).toString
+      println(mimetype)
+      documentSizeBytes.labels("http", mimetype).observe(new File(tempTargetFinal).length().toDouble)
       r.map(_ =>
         Some(DownloadResult(
           source = tempPathFinal,
