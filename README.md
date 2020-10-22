@@ -53,6 +53,7 @@ The app allows runtime configuration via environment variables
 * **DOCLIB_LOCAL_TEMP** - A temp folder, relative to the DOCLIB_ROOT, for local files waiting to be added/updated to the document library
 * **AWS_ACCESS_KEY_ID** - optional: AWS access key for use when not run withing AWS 
 * **AWS_SECRET_ACCESS_KEY** - optional: AWS secret key for use when not run withing AWS
+* **SEND_ERRORS** - send errors to the errors queue after retries exhausted and message failed (default: false)
 
 ## Messages
 
