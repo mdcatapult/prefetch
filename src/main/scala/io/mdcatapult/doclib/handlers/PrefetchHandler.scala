@@ -298,7 +298,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def moveFile(source: String, target: String): Option[Path] = moveFile(
-    //TODO telemetry for file move
     Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
     Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
   ) match {
@@ -319,7 +318,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         target.toPath
       } else {
         target.getParentFile.mkdirs
-        Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+        val latency = fileOperationLatency.labels(source.toString(), target.toString(), source.length().toString(), "move").startTimer()
+        val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+        latency.observeDuration()
+        path
       }
     })
   }
@@ -332,7 +334,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def copyFile(source: String, target: String): Option[Path] = copyFile(
-    //TODO telemetry
     Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
     Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
   ) match {
@@ -351,7 +352,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def copyFile(source: File, target: File): Try[Path] =
     Try({
       target.getParentFile.mkdirs
-      Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      val latency = fileOperationLatency.labels(source.toString(), target.toString(), source.length().toString(), "copy").startTimer()
+      val path = Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      latency.observeDuration()
+      path
     })
 
   /**
@@ -359,9 +363,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    *
    * @param source String
    */
-  def removeFile(source: String): Unit =
-    //TODO telemetry
-    removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
+  def removeFile(source: String): Unit = {
+    val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
+    val latency = fileOperationLatency.labels(source.toString(), "none", file.length().toString(), "remove").startTimer()
+    removeFile(file)
+    latency.observeDuration()
+  }
 
 
   /**

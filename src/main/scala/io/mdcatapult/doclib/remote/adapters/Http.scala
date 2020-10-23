@@ -131,16 +131,16 @@ object Http extends Adapter {
             throw DoclibHttpRetrievalError(e.getMessage, e)
         }
 
-      latency.observeDuration()
-      documentSizeBytes.labels("http", MimeType.getMimetype(finalTargetFinal)).observe(new File(tempTargetFinal).length().toDouble)
-      r.map(_ =>
+      r.map(_ => {
+        latency.observeDuration()
+        documentSizeBytes.labels("http", MimeType.getMimetype(tempTargetFinal)).observe(new File(tempTargetFinal).length().toDouble)
         Some(DownloadResult(
           source = tempPathFinal,
           hash = md5(new File(tempTargetFinal)),
           origin = Some(uri.toString),
           target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))
-      )
+      })
     }, Duration.Inf)
   }
 }

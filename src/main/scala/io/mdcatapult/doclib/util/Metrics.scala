@@ -32,4 +32,13 @@ object Metrics {
     .help("Counts number of requests received by the handler.")
     .labelNames("source", "result")
     .register()
+
+  val fileOperationLatency: Summary = Summary.build()
+    .name("file_operation_latency")
+    .help("Time taken to perform file operation in seconds.")
+    .quantile(0.5, 0.05)
+    .quantile(0.9, 0.01)
+    .labelNames("source", "target", "size", "operation")
+    .register()
+
 }
