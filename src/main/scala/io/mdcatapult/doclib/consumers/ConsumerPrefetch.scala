@@ -11,7 +11,6 @@ import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.{Envelope, Queue}
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.util.admin.Server
-import io.prometheus.client.hotspot.DefaultExports
 import org.mongodb.scala.MongoCollection
 import play.api.libs.json.Format
 
