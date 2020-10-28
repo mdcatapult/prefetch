@@ -20,7 +20,6 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
   def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
     import as.dispatcher
 
-    DefaultExports.initialize()
     val adminServer = Server(config)
 
     implicit val collection: MongoCollection[DoclibDoc] =
