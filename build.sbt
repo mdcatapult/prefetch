@@ -6,9 +6,8 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "1.1.0"
+lazy val doclibCommonVersion = "1.1.2"
 lazy val prometheusClientVersion = "0.9.0"
-lazy val scalaUtilVersion = "1.2.0"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -58,7 +57,6 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
-      "io.mdcatapult.klein" %% "util" % scalaUtilVersion,
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
@@ -89,6 +87,7 @@ lazy val root = (project in file("."))
       case "META-INF/jpms.args" => MergeStrategy.discard
       case n if n.startsWith("application.conf") => MergeStrategy.concat
       case n if n.endsWith(".conf") => MergeStrategy.concat
+      case n if n.startsWith("logback.xml") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value
