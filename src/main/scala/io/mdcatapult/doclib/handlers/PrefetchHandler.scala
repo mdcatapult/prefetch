@@ -148,20 +148,20 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
             r match {
               case Some(Left(v)) =>
-                handlerCount.labels(consumerName, "success").inc()
+                handlerCount.labels(consumerName, config.getString("upstream.queue"), "success").inc()
                 logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
               case Some(Right(e)) =>
-                handlerCount.labels(consumerName, "dropped").inc()
+                handlerCount.labels(consumerName, config.getString("upstream.queue"), "dropped").inc()
                 logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
               case None =>
                 throw new RuntimeException("Unknown Error Occurred")
             }
           case Failure(e: DoclibDocException) =>
-            handlerCount.labels(consumerName, "doclib_doc_exception").inc()
+            handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
             logger.error("failure", e)
             flagContext.error(e.getDoc, noCheck = true)
           case Failure(e) =>
-            handlerCount.labels(consumerName, "unknown_error").inc()
+            handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
             logger.error("failure", e)
             // enforce error flag
             Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
@@ -320,7 +320,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         target.toPath
       } else {
         target.getParentFile.mkdirs
-        val latency = fileOperationLatency.labels(source.toString(), target.toString(), source.length().toString(), "move").startTimer()
+        val latency = fileOperationLatency.labels("move").startTimer()
         val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
         latency.observeDuration()
         path
@@ -354,7 +354,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def copyFile(source: File, target: File): Try[Path] =
     Try({
       target.getParentFile.mkdirs
-      val latency = fileOperationLatency.labels(source.toString(), target.toString(), source.length().toString(), "copy").startTimer()
+      val latency = fileOperationLatency.labels("copy").startTimer()
       val path = Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
       latency.observeDuration()
       path
@@ -367,7 +367,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def removeFile(source: String): Unit = {
     val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
-    val latency = fileOperationLatency.labels(source.toString(), "none", file.length().toString(), "remove").startTimer()
+    val latency = fileOperationLatency.labels("remove").startTimer()
     removeFile(file)
     latency.observeDuration()
   }
