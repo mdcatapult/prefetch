@@ -38,7 +38,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.postfixOps
 import scala.util.Try
 
@@ -80,6 +80,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   /** Initialise Mongo **/
 
   implicit val codecs: CodecRegistry = MongoCodecs.get
+  implicit val ec: ExecutionContext = ExecutionContext.global
   val mongo: Mongo = new Mongo()
 
   implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
