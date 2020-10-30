@@ -6,7 +6,7 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "1.0.0-SNAPSHOT"
+lazy val doclibCommonVersion = "1.1.2"
 lazy val prometheusClientVersion = "0.9.0"
 lazy val kleinUtilVersion = "1.1.1"
 
