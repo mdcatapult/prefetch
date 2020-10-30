@@ -42,6 +42,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
   implicit val config: Config = ConfigFactory.parseString(
     """
+      |app {
+      |  name: "prefetch"
+      |}
       |doclib {
       |  root: "/test"
       |  flag: "prefetch"

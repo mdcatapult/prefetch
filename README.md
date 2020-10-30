@@ -54,6 +54,7 @@ The app allows runtime configuration via environment variables
 * **AWS_ACCESS_KEY_ID** - optional: AWS access key for use when not run withing AWS 
 * **AWS_SECRET_ACCESS_KEY** - optional: AWS secret key for use when not run withing AWS
 * **ADMIN_PORT** - Port that prometheus metrics are exposed on (default: 9090)
+* **APP_NAME** - Name of the consumer (default: prefetch)
 
 ## Messages
 
@@ -90,6 +91,6 @@ The following metrics are exposed via prometheus on port `ADMIN_PORT` (default `
 
 * `document_size_bytes` containing `scheme` (ie http or ftp )and `mimetype`.
 * `document_fetch_latency` containing `scheme`
-* `mongo_latency` containing `operation` (update_document, insert_document, insert_parent_child_mapping & update_parent_child_mapping)
-* `handler_count` containing `source` (queue) and `result` (success, dropped, doclib_doc_exception and unknown_error)
+* `mongo_latency` containing `consumer` and `operation` (update_document, insert_document, insert_parent_child_mapping & update_parent_child_mapping)
+* `handler_count` containing `consumer` and `result` (success, dropped, doclib_doc_exception and unknown_error)
 * `file_operation_latency` containing `source`, `target`, `size` and `operation` (move, remove or copy)
