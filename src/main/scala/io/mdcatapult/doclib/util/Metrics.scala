@@ -1,6 +1,6 @@
 package io.mdcatapult.doclib.util
 
-import io.prometheus.client.{Counter, Summary}
+import io.prometheus.client.{Summary}
 
 object Metrics {
   val documentSizeBytes: Summary = Summary.build()
@@ -8,7 +8,7 @@ object Metrics {
     .help("Summary of document size.")
     .quantile(0.5, 0.05)
     .quantile(0.9, 0.01)
-    .labelNames("scheme")
+    .labelNames("scheme", "mimetype")
     .register()
 
   val documentFetchLatency: Summary = Summary.build()
@@ -19,17 +19,12 @@ object Metrics {
     .labelNames("scheme")
     .register()
 
-  val mongoLatency: Summary = Summary.build()
-    .name("mongo_latency")
-    .help("Time taken for a mongo request to return.")
+  val fileOperationLatency: Summary = Summary.build()
+    .name("file_operation_latency")
+    .help("Time taken to perform file operation in seconds.")
     .quantile(0.5, 0.05)
     .quantile(0.9, 0.01)
     .labelNames("operation")
     .register()
 
-  val handlerCount: Counter = Counter.build()
-    .name("handler_count")
-    .help("Counts number of requests received by the handler.")
-    .labelNames("source", "result")
-    .register()
 }

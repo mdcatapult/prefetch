@@ -15,8 +15,9 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UnableToFollow, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.doclib.util.FileHash.hashOrOriginal
-import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
+import io.mdcatapult.doclib.util.MimeType
+import io.mdcatapult.util.hash.Md5.md5
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -130,16 +131,16 @@ object Http extends Adapter {
             throw DoclibHttpRetrievalError(e.getMessage, e)
         }
 
-      latency.observeDuration()
-      documentSizeBytes.labels("http").observe(new File(tempTargetFinal).length().toDouble)
-      r.map(_ =>
+      r.map(_ => {
+        latency.observeDuration()
+        documentSizeBytes.labels("http", MimeType.getMimetype(tempTargetFinal)).observe(new File(tempTargetFinal).length().toDouble)
         Some(DownloadResult(
           source = tempPathFinal,
           hash = md5(new File(tempTargetFinal)),
           origin = Some(uri.toString),
           target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))
-      )
+      })
     }, Duration.Inf)
   }
 }

@@ -16,6 +16,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.metrics.Metrics.{handlerCount, mongoLatency}
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
@@ -71,6 +72,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with TargetPath {
 
+  val consumerName = config.getString("app.name")
   /** set props for target path generation */
   override val doclibConfig: Config = config
 
@@ -146,20 +148,20 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
             r match {
               case Some(Left(v)) =>
-                handlerCount.labels("queue", "success").inc()
+                handlerCount.labels(consumerName, config.getString("upstream.queue"), "success").inc()
                 logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
               case Some(Right(e)) =>
-                handlerCount.labels("queue", "dropped").inc()
+                handlerCount.labels(consumerName, config.getString("upstream.queue"), "dropped").inc()
                 logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
               case None =>
                 throw new RuntimeException("Unknown Error Occurred")
             }
           case Failure(e: DoclibDocException) =>
-            handlerCount.labels("queue", "doclib_doc_exception").inc()
+            handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
             logger.error("failure", e)
             flagContext.error(e.getDoc, noCheck = true)
           case Failure(e) =>
-            handlerCount.labels("queue", "unknown_error").inc()
+            handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
             logger.error("failure", e)
             // enforce error flag
             Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
@@ -204,7 +206,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * Update any existing parent child mappings
    */
   def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
-    val latency = mongoLatency.labels("update_parent_child_mappings").startTimer()
+    val latency = mongoLatency.labels(consumerName, "update_parent_child_mappings").startTimer()
     derivativesCollection.updateMany(
       equal("childPath", source),
       combine(
@@ -224,7 +226,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val mappings: List[Future[Option[InsertOneResult]]] =
       for {
         derivative <- derivatives
-        latency = mongoLatency.labels("insert_parent_child_mapping").startTimer()
+        latency = mongoLatency.labels(consumerName, "insert_parent_child_mapping").startTimer()
         parentChild = derivativesCollection.insertOne(
           ParentChildMapping(
             _id = UUID.randomUUID,
@@ -255,7 +257,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
-    val latency = mongoLatency.labels("update_document").startTimer()
+    val latency = mongoLatency.labels(consumerName, "update_document").startTimer()
     val update = combine(
       getDocumentUpdate(found, msg),
       set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
@@ -318,7 +320,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         target.toPath
       } else {
         target.getParentFile.mkdirs
-        Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+        val latency = fileOperationLatency.labels("move").startTimer()
+        val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+        latency.observeDuration()
+        path
       }
     })
   }
@@ -349,7 +354,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def copyFile(source: File, target: File): Try[Path] =
     Try({
       target.getParentFile.mkdirs
-      Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      val latency = fileOperationLatency.labels("copy").startTimer()
+      val path = Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+      latency.observeDuration()
+      path
     })
 
   /**
@@ -357,8 +365,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    *
    * @param source String
    */
-  def removeFile(source: String): Unit =
-    removeFile(Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile)
+  def removeFile(source: String): Unit = {
+    val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
+    val latency = fileOperationLatency.labels("remove").startTimer()
+    removeFile(file)
+    latency.observeDuration()
+  }
 
 
   /**
@@ -530,9 +542,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, currentHash)
             Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
-          } else if (!inRightLocation(foundDoc.doc.source))
+          } else if (!inRightLocation(foundDoc.doc.source)) {
             moveFile(tempPath, targetPath)
-          else { // not a new file or a file that requires updating so we will just cleanup the temp file
+          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
             removeFile(tempPath)
             None
           }
@@ -743,7 +755,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def createDoc(source: String, hash: String): Future[DoclibDoc] = {
     val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
-    val latency = mongoLatency.labels("insert_document").startTimer()
+    val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()
     val newDoc = DoclibDoc(
       _id = new ObjectId(),
       source = source,
