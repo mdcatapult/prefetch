@@ -8,7 +8,7 @@ object Metrics {
     .help("Summary of document size.")
     .quantile(0.5, 0.05)
     .quantile(0.9, 0.01)
-    .labelNames("scheme")
+    .labelNames("scheme", "mimetype")
     .register()
 
   val documentFetchLatency: Summary = Summary.build()
@@ -18,4 +18,13 @@ object Metrics {
     .quantile(0.9, 0.01)
     .labelNames("scheme")
     .register()
+
+  val fileOperationLatency: Summary = Summary.build()
+    .name("file_operation_latency")
+    .help("Time taken to perform file operation in seconds.")
+    .quantile(0.5, 0.05)
+    .quantile(0.9, 0.01)
+    .labelNames("operation")
+    .register()
+
 }

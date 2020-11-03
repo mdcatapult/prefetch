@@ -86,6 +86,7 @@ lazy val root = (project in file("."))
       case PathList(xs@_*) if xs.last == ".gitkeep" => MergeStrategy.discard
       case "META-INF/jpms.args" => MergeStrategy.discard
       case n if n.startsWith("application.conf") => MergeStrategy.concat
+      case n if n.startsWith("logback.xml") => MergeStrategy.first
       case n if n.endsWith(".conf") => MergeStrategy.concat
       case n if n.startsWith("logback.xml") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
