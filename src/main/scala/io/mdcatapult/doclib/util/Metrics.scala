@@ -1,6 +1,6 @@
 package io.mdcatapult.doclib.util
 
-import io.prometheus.client.{Summary}
+import io.prometheus.client.Summary
 
 object Metrics {
   val documentSizeBytes: Summary = Summary.build()

@@ -57,7 +57,6 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
-      "io.mdcatapult.klein" %% "util" % "1.0.0",
       "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
@@ -89,6 +88,7 @@ lazy val root = (project in file("."))
       case n if n.startsWith("application.conf") => MergeStrategy.concat
       case n if n.startsWith("logback.xml") => MergeStrategy.first
       case n if n.endsWith(".conf") => MergeStrategy.concat
+      case n if n.startsWith("logback.xml") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value
