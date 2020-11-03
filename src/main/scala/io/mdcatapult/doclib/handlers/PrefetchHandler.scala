@@ -16,7 +16,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.metrics.Metrics.{handlerCount, mongoLatency}
+import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
