@@ -22,6 +22,7 @@ import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -71,7 +72,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with TargetPath {
 
-  val consumerName = config.getString("app.name")
+  val consumerName: String = config.getString("app.name")
   /** set props for target path generation */
   override val doclibConfig: Config = config
 
