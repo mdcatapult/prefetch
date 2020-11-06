@@ -7,6 +7,7 @@ The consumer will handle remote documents and pull them down, store a local copy
 
 Currently supported is 
 * **HTTP/HTTPS**
+* **FTP/SFTP/FTPS**
 
 ### Origins
 When retrieving remote documents the resulting mongo document will contain an `origin`  property that is an array of 
@@ -53,7 +54,9 @@ The app allows runtime configuration via environment variables
 * **DOCLIB_LOCAL_TEMP** - A temp folder, relative to the DOCLIB_ROOT, for local files waiting to be added/updated to the document library
 * **AWS_ACCESS_KEY_ID** - optional: AWS access key for use when not run withing AWS 
 * **AWS_SECRET_ACCESS_KEY** - optional: AWS secret key for use when not run withing AWS
-* **SEND_ERRORS** - send errors to the errors queue after retries exhausted and message failed (default: false)
+* **SEND_ERRORS** - send errors to the errors queue after retries exhausted and message failed (default: true)
+* **ADMIN_PORT** - Port that prometheus metrics are exposed on (default: 9090)
+* **APP_NAME** - Name of the consumer (default: prefetch)
 
 ## Messages
 
@@ -66,7 +69,6 @@ Messages are composed in JSON using the following properties
 * **tags** - optional: a list of arbitrary string values that can be used to tag a document
 * **metadata** - optional: additional information that will can be utilised in processing documents
 * **derivative** - optional: explicit flag to mark this document as a derivative
-
 
 ## Results
 
@@ -83,3 +85,13 @@ Documents on successful completion will contain the following properties
 * **metadata** - additional information that will can be utilised in processing documents
 * **created** - the date the document was added to the document library
 * **updated** - the date the document was last edited 
+
+## Metrics
+
+The following metrics are exposed via prometheus on port `ADMIN_PORT` (default `9090`):  
+
+* `document_size_bytes` containing `scheme` (ie http or ftp )and `mimetype`.
+* `document_fetch_latency` containing `scheme`
+* `mongo_latency` containing `consumer` and `operation` (update_document, insert_document, insert_parent_child_mapping & update_parent_child_mapping)
+* `handler_count` containing `consumer` and `result` (success, dropped, doclib_doc_exception and unknown_error)
+* `file_operation_latency` containing `source`, `target`, `size` and `operation` (move, remove or copy)
