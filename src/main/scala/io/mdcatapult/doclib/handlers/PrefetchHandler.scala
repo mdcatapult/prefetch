@@ -72,7 +72,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with TargetPath {
 
-  val consumerName: String = config.getString("app.name")
+  val consumerName: String = config.getString("appName")
   /** set props for target path generation */
   override val doclibConfig: Config = config
 

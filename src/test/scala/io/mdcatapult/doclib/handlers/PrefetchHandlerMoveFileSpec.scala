@@ -40,9 +40,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
 
   implicit val config: Config = ConfigFactory.parseString(
     s"""
-       |app {
-       |  name: "prefetch"
-       |}
+       |appName = "prefetch"
        |doclib {
        |  root: "${pwd/"test"}"
        |  flag: "prefetch"
