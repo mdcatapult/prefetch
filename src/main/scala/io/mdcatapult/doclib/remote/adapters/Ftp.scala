@@ -16,6 +16,7 @@ import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
+import io.mdcatapult.doclib.util.MimeType
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
@@ -114,11 +115,16 @@ object Ftp extends Adapter {
     val latency = documentFetchLatency.labels("ftp").startTimer()
     tempTarget.getParentFile.mkdirs()
     val r: Future[IOResult] = retrieve(origin.uri.get.toUrl)
-      .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath))
+      .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath)).recover {
+      // Something happened before fetching file, might want to do something about it....
+      case e: Exception =>
+        latency.observeDuration()
+        throw DoclibFtpRetrievalError(e.getMessage, e)
+    }
 
     val a = r.map(_ => {
       latency.observeDuration()
-      documentSizeBytes.labels("ftp").observe(tempTarget.length().toDouble)
+      documentSizeBytes.labels("ftp", MimeType.getMimetype(tempTarget.getAbsolutePath)).observe(tempTarget.length().toDouble)
       Some(DownloadResult(
         source = tempPath,
         hash = md5(tempTarget.getAbsoluteFile),
