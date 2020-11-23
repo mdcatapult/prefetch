@@ -83,7 +83,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   val remoteClient = new RemoteClient()
   private val version = Version.fromConfig(config)
 
-  private val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
+
   private val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
   private val archiveDirName = config.getString("doclib.archive.target-dir")
@@ -130,6 +130,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     logger.info(f"RECEIVED: ${msg.source}")
 
+    // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
+    val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
     val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("upstream.queue")))
 
     try {
