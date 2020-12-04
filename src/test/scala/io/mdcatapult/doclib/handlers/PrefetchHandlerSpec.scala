@@ -178,10 +178,26 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(result == "archive/remote/cheese/stinking-bishop.cz/fd6eba7e747b846abbdfbfed0e10de12.cz")
     }
 
-    "return an relative archive path for file from a relative path with no file extension" in {
+    "return the same path as the archiver when an extension is present" in {
+      val result = handler.getArchivePath("remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612.pdf", "fiaouroiq24oq74fd")
+      assert(result == "archive/remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612.pdf/fiaouroiq24oq74fd.pdf")
+    }
+
+    "return the same path as the archiver when an extension is not present" in {
+      val result = handler.getArchivePath("remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612", "fiaouroiq24oq74fd")
+      assert(result == "archive/remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612/fiaouroiq24oq74fd")
+    }
+
+    "return a relative archive path for file from a relative path with no file extension" in {
       val result = handler.getArchivePath("remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
       assert(result == "archive/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
     }
+
+    "return a relative archive path for file from a relative path with no file extension where there is a '.' in the path" in {
+      val result = handler.getArchivePath("remote/sme.lly/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
+      assert(result == "archive/remote/sme.lly/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
+    }
+
     ("local" :: "remote" :: Nil).foreach ( dir =>
       s"return a relative  archive path for $dir derivative file from a relative path with no file extension" in {
         val result = handler.getArchivePath(s"$dir/derivatives/remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
