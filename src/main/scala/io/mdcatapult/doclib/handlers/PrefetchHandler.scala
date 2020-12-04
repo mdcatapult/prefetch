@@ -514,12 +514,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def getArchivePath(targetPath: String, hash: String): String = {
-    val withExt = """(.*)/(.*)\.(.+)$""".r
-    val withoutExt = """(.*)/(.*)$""".r
+    // withExt will incorrectly match files without extensions if there is a "." in the path.
+    val withExt = """^(.+)/([^/]+)\.(.+)$""".r
+    val withoutExt = """^(.+)/([^/\.]+)$""".r
 
+    // match against withoutExt first and fall through to withExt
     targetPath match {
-      case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
       case withoutExt(path, file) => s"${getTargetPath(path, archiveDirName)}/$file/$hash"
+      case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
       case _ => throw new RuntimeException("Unable to identify path and filename")
     }
   }
