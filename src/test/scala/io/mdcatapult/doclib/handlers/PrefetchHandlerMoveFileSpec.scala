@@ -175,11 +175,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       newFile.appendLine("Also not an empty file")
       for {
         tempDocFile <- docFile.toTemporary
-        tempNewFile <- newFile.toTemporary
       } {
         val docFileHash = md5(tempDocFile.toJava)
-        val newFileHash = md5(tempNewFile.toJava)
-        print(newFileHash)
         val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
         val fileAttrs = FileAttrs(
           path = tempDocFile.path.getParent.toAbsolutePath.toString,
