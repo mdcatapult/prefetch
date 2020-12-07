@@ -162,6 +162,49 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
+
+    "not move an existing derivative" in {
+      implicit val attributes: Attributes = ScalaFile.Attributes.default
+      val sourceFile = "https/path/to/aFile.txt"
+      val doclibRoot = config.getString("doclib.root")
+      val remoteIngressDir = config.getString("doclib.remote.temp-dir")
+      val remoteTargetDir = config.getString("doclib.remote.target-dir")
+      val docFile: ScalaFile = ScalaFile(s"$doclibRoot/$remoteTargetDir/$sourceFile").createFileIfNotExists(createParents = true)
+      val newFile: ScalaFile = ScalaFile(s"$doclibRoot/$remoteIngressDir/$sourceFile").createFileIfNotExists(createParents = true)
+      docFile.appendLine("Not an empty file")
+      newFile.appendLine("Also not an empty file")
+      for {
+        tempDocFile <- docFile.toTemporary
+        tempNewFile <- newFile.toTemporary
+      } {
+        val docFileHash = md5(tempDocFile.toJava)
+        val newFileHash = md5(tempNewFile.toJava)
+        print(newFileHash)
+        val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+        val fileAttrs = FileAttrs(
+          path = tempDocFile.path.getParent.toAbsolutePath.toString,
+          name = tempDocFile.path.getFileName.toString,
+          mtime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+          ctime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+          atime = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+          size = 5
+        )
+        val document = DoclibDoc(
+          _id = new ObjectId(),
+          source = "https://path/to/aFile.txt",
+          hash = docFileHash,
+          derivative = true,
+          created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+          updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+          mimetype = "text/html",
+          attrs = Some(fileAttrs)
+        )
+        val foundDoc = handler.FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, docFileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
+        val actualMovedFilePath = handler.handleFileUpdate(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
+        assert(actualMovedFilePath.get.toString == movedFilePath)
+      }
+    }
   }
 
   override def afterAll(): Unit = {

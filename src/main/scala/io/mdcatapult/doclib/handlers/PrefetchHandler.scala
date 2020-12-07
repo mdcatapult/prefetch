@@ -538,8 +538,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       val docHash: String = foundDoc.doc.hash
       targetPathGenerator(foundDoc) match {
         case Some(targetPath) =>
-          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-          val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
+          val absTempPath = Paths.get(s"$doclibRoot$tempPath").toAbsolutePath
+          val currentHash = if (absTempPath.toFile.exists()) md5(absTempPath.toFile) else docHash
 
           if (docHash != currentHash && foundDoc.doc.derivative) {
             // File already exists at target location but is not the same file.
