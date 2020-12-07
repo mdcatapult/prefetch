@@ -190,7 +190,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val parentDocOne = DoclibDoc(
       _id = parentIdOne,
       source = "ingress/derivatives/raw.txt",
-      hash = "12345",
+      hash = "2d282102fa671256327d4767ec23bc6b",
       derivative = false,
       derivatives = None,
       created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
@@ -357,7 +357,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val doclibDoc = DoclibDoc(
       _id = docId,
       source = "local/metadata-tags-test/file.txt",
-      hash = "12345",
+      hash = "2d282102fa671256327d4767ec23bc6b",
       derivative = false,
       derivatives = None,
       created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
@@ -397,7 +397,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val doclibDoc = DoclibDoc(
       _id = docId,
       source = "local/metadata-tags-test/file2.txt",
-      hash = "12345",
+      hash = "2d282102fa671256327d4767ec23bc6b",
       derivative = false,
       derivatives = None,
       created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
