@@ -163,7 +163,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       }
     }
 
-    "not move an existing derivative" in {
+    "not archive an existing derivative" in {
       implicit val attributes: Attributes = ScalaFile.Attributes.default
       val sourceFile = "https/path/to/aFile.txt"
       val doclibRoot = config.getString("doclib.root")
