@@ -427,13 +427,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inRemoteRoot(foundDoc.doc.source))
-      Some(Paths.get(s"${
-        foundDoc.doc.source
-      }").toString)
+      Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else
-      Some(Paths.get(s"${
-        foundDoc.download.get.target.get
-      }").toString.replaceFirst(s"^$doclibRoot/*", ""))
+      Some(Paths.get(s"${foundDoc.download.get.target.get}").toString.replaceFirst(s"^$doclibRoot/*", ""))
+
 
   /**
    * determines appropriate local target path if required
@@ -443,9 +440,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
     if (inLocalRoot(foundDoc.doc.source))
-      Some(Paths.get(s"${
-        foundDoc.doc.source
-      }").toString)
+      Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else {
       // strips temp dir if present plus any prefixed slashes
       val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "")
@@ -478,9 +473,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @return
    */
   def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
-    logger.info(s"Archive ${
-      foundDoc.archiveable.map(d => d._id).mkString(",")
-    } source=$archiveSource target=$archiveTarget")
+    logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
       archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
@@ -500,10 +493,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       } yield DoclibMsg(id)
 
     Try(messages.foreach(msg => archiver.send(msg))) match {
-      case Success(_) =>
-        logger.info(s"Sent documents to archiver: ${
-          messages.map(d => d.id).mkString(",")
-        }")
+      case Success(_) => logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
         Future.successful(())
       case Failure(e) =>
         logger.error("failed to send doc to archive", e)
@@ -540,12 +530,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     // match against withoutExt first and fall through to withExt
     targetPath match {
-      case withoutExt(path, file) => s"${
-        getTargetPath(path, archiveDirName)
-      }/$file/$hash"
-      case withExt(path, file, ext) => s"${
-        getTargetPath(path, archiveDirName)
-      }/$file.$ext/$hash.$ext"
+      case withoutExt(path, file) => s"${getTargetPath(path, archiveDirName)}/$file/$hash"
+      case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
       case _ => throw new RuntimeException("Unable to identify path and filename")
     }
   }
@@ -715,9 +701,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def findLocalDocument(source: String): Future[Option[FoundDoc]] =
     (for {
       target: String <- OptionT.some[Future](source.replaceFirst(
-        s"^${
-          config.getString("doclib.local.temp-dir")
-        }",
+        s"^${config.getString("doclib.local.temp-dir")}",
         localDirName
       ))
       md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$source").toFile))
