@@ -163,7 +163,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   def attemptErrorFlagWrite(exception: Throwable, flagContext: FlagContext, msg: PrefetchMsg) : Future[Option[UpdatedResult]] = {
 
-    val failedDocument = exception match {
+    val failedDocument: Future[Option[DoclibDoc]] = exception match {
       case exception: DoclibDocException =>
         handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
         logger.error("failure", exception)
@@ -723,7 +723,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       for { // assumes remote
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
         origin = origins.head
-        originUri = origin.uri.get
+        originUri = origin.uri.get //TODO .get
         downloaded: DownloadResult <- OptionT.fromOption[Future](remoteClient.download(origin))
         (doc, archivable) <- OptionT(
           findOrCreateDoc(

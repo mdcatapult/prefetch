@@ -17,6 +17,7 @@ import java.nio.file.{Files, Paths}
 import java.time.LocalDateTime
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.language.postfixOps
 import scala.util.Try
 
 class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHandlerHandleMethodTest", ConfigFactory.parseString(
@@ -72,8 +73,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   }
 
   override def beforeEach(): Unit = {
-    Await.result(collection.drop().toFuture(), 5.seconds)
-    Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
+    Await.result(collection.drop().toFuture(), 5 seconds)
+    Await.result(derivativesCollection.drop().toFuture(), 5 seconds)
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
