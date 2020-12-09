@@ -133,7 +133,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
     val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("upstream.queue")))
 
-
     (for {
       found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
       if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
@@ -158,27 +157,32 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
               throw new RuntimeException("Unknown Error Occurred")
           }
         case Failure(e) =>
-          val failedDocument = e match {
-            case exception: DoclibDocException =>
-              handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
-              logger.error("failure", e)
-              Future.successful(Option(exception.getDoc))
-            case _ =>
-              handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
-              logger.error("failure", e)
-              findDocument(toUri(msg.source)).map(_.map(_.doc))
-          }
+          attemptErrorFlagWrite(e, flagContext, msg)
+      }
+  }
 
-          val attemptErrorFlagWrite = for {
-            failedDoc <- OptionT(failedDocument)
-            writeErrorFlag <- OptionT.liftF(flagContext.error(failedDoc, noCheck = true))
-          } yield writeErrorFlag
+  def attemptErrorFlagWrite(exception: Throwable, flagContext: FlagContext, msg: PrefetchMsg) : Future[Option[UpdatedResult]] = {
 
-          attemptErrorFlagWrite
-            .value
-            .onComplete(result => {
-              if (result.isFailure) throw result.failed.get
-            })
+    val failedDocument = exception match {
+      case exception: DoclibDocException =>
+        handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
+        logger.error("failure", exception)
+        Future.successful(Option(exception.getDoc))
+      case _ =>
+        handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
+        logger.error("failure", exception)
+        findDocument(toUri(msg.source)).map(_.map(_.doc))
+    }
+
+    val updatedResultFromErrorFlagWrite = for {
+      failedDoc <- OptionT(failedDocument)
+      updatedResult <- OptionT.liftF(flagContext.error(failedDoc, noCheck = true))
+    } yield updatedResult
+
+    updatedResultFromErrorFlagWrite
+      .value
+      .andThen {
+        case Failure(exception) => throw exception
       }
   }
 
