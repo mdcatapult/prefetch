@@ -119,105 +119,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   class MissingOriginSchemeException(msg: PrefetchMsg, origin: Origin) extends Exception(s"$origin has no uri: msg=$msg")
 
-  //noinspection Duplicates
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
-    logger.info(f"RECEIVED: ${msg.source}")
-    val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
-    val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("upstream.queue")))
-
-    try {
-      (for {
-        found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-        if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
-        started: UpdatedResult <- OptionT.liftF(flagContext.start(found.doc))
-        newDoc <- OptionT(process(found, msg))
-        _ <- OptionT.liftF(processParent(newDoc, msg))
-        _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-      } yield Left((newDoc, found.doc))).value
-        .recoverWith({
-          case e: SilentValidationException => Future.successful(Some(Right(e)))
-        })
-        .andThen({
-          case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
-            r match {
-              case Some(Left(v)) =>
-                handlerCount.labels(consumerName, config.getString("upstream.queue"), "success").inc()
-                logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
-              case Some(Right(e)) =>
-                handlerCount.labels(consumerName, config.getString("upstream.queue"), "dropped").inc()
-                logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
-              case None =>
-                throw new RuntimeException("Unknown Error Occurred")
-            }
-          case Failure(e: DoclibDocException) =>
-            handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
-            logger.error("failure", e)
-            flagContext.error(e.getDoc, noCheck = true)
-          case Failure(e) =>
-            handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
-            logger.error("failure", e)
-            // enforce error flag
-            Try(Await.result(findDocument(toUri(msg.source)), Duration.Inf)) match {
-              case Success(value: Option[FoundDoc]) => value match {
-                case Some(found) => flagContext.error(found.doc, noCheck = true)
-                case _ => () // do nothing as error handling will capture
-              }
-              // There is no mongo doc - error happened before one was created
-              case Failure(_) => () // do nothing as error handling will capture
-            }
-        })
-    } catch {
-      case e: Throwable =>
-        logger.error("tragic error", e)
-        throw e
-    }
-  }
-
-  /**
-   * handle msg from rabbitmq
-   *
-   * @param msg PrefetchMsg
-   * @param key String
-   * @return
-   */
-  //noinspection Duplicates
-  def handleWithAttemptErrorFlagWriteFn(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
-    logger.info(f"RECEIVED: ${msg.source}")
-
-    // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
-    val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
-    val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("upstream.queue")))
-
-    (for {
-      found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
-      if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
-      started: UpdatedResult <- OptionT.liftF(flagContext.start(found.doc))
-      newDoc <- OptionT(process(found, msg))
-      _ <- OptionT.liftF(processParent(newDoc, msg))
-      _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-    } yield Left((newDoc, found.doc))).value
-      .recoverWith {
-        case e: SilentValidationException => Future.successful(Some(Right(e)))
-      }
-      .andThen {
-        case Success(r: Option[Either[(DoclibDoc, DoclibDoc), SilentValidationException]]) =>
-          r match {
-            case Some(Left(v)) =>
-              handlerCount.labels(consumerName, config.getString("upstream.queue"), "success").inc()
-              logger.info(f"COMPLETED: ${msg.source} - ${v._2._id}")
-            case Some(Right(e)) =>
-              handlerCount.labels(consumerName, config.getString("upstream.queue"), "dropped").inc()
-              logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
-            case None =>
-              throw new RuntimeException("Unknown Error Occurred")
-          }
-        case Failure(e) =>
-          attemptErrorFlagWrite(e, flagContext, msg)
-      }
-  }
-
-  //noinspection Duplicates
-  def handleWithoutEither(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     logger.info(f"RECEIVED: ${msg.source}")
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
@@ -237,43 +139,26 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     initialPrefetchProcess
       .value
       .recoverWith {
-        case e: SilentValidationException =>
-          Future.successful(Option(DocWithSilentValidationException(e)))
+        case e: SilentValidationException => Future.successful(Option(SilentValidationExceptionWrapper(e)))
       }
       .andThen {
         case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg)
         case Success(container: Option[PrefetchResultContainer]) =>
-          updateHandlerCountAndLog(container, msg)
-            .getOrElse {
-              val exception = new RuntimeException("Unknown Error Occurred")
-              handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
-              logger.error("failure", exception)
-              throw exception
-            }
+          updateHandlerCountAndLog(container, msg).recover {
+            case e: Throwable => throw e
+          }
       }
   }
 
-  //noinspection Duplicates
-  def updateHandlerCountAndLog(container: Option[PrefetchResultContainer], msg: PrefetchMsg): Option[Unit] = {
-    container.map {
-      case NewAndFoundDoc(_, foundDoc) =>
-        handlerCount.labels(consumerName, config.getString("upstream.queue"), "success").inc()
-        logger.info(f"COMPLETED: ${msg.source} - ${foundDoc._id}")
-      case DocWithSilentValidationException(e) =>
-        handlerCount.labels(consumerName, config.getString("upstream.queue"), "dropped").inc()
-        logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
-    }
-  }
-
-  def attemptErrorFlagWrite(exception: Throwable, flagContext: FlagContext, msg: PrefetchMsg): Future[Option[UpdatedResult]] = {
+  private def attemptErrorFlagWrite(exception: Throwable, flagContext: FlagContext, msg: PrefetchMsg): Future[Option[UpdatedResult]] = {
 
     val failedDocument: Future[Option[DoclibDoc]] = exception match {
-      case exception: DoclibDocException => // can be thrown by flagContext.end() when started.modifiedCount > 0
-        handlerCount.labels(consumerName, config.getString("upstream.queue"), "doclib_doc_exception").inc()
+      case exception: DoclibDocException => // thrown by flagContext.end() when started.modifiedCount > 0
+        incrementHandlerCount("doclib_doc_exception")
         logger.error("failure", exception)
         Future.successful(Option(exception.getDoc))
       case _ =>
-        handlerCount.labels(consumerName, config.getString("upstream.queue"), "unknown_error").inc()
+        incrementHandlerCount("unknown_error")
         logger.error("failure", exception)
         findDocument(toUri(msg.source)).map(_.map(_.doc))
     }
@@ -286,9 +171,34 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     updatedResultFromErrorFlagWrite
       .value
       .andThen {
-        case Failure(exception) =>
-          throw exception
+        case Failure(exception) => throw exception
       }
+  }
+
+  private def updateHandlerCountAndLog(container: Option[PrefetchResultContainer], msg: PrefetchMsg): Try[Unit] = {
+    container match {
+      case Some(value) =>
+       Success {
+         value match {
+           case NewAndFoundDoc(_, foundDoc) =>
+             incrementHandlerCount("success")
+             logger.info(f"COMPLETED: ${msg.source} - ${foundDoc._id}")
+           case SilentValidationExceptionWrapper(e) =>
+             incrementHandlerCount("dropped")
+             logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
+         }
+       }
+      case None =>
+        val exception = new RuntimeException("Unknown Error Occurred")
+        incrementHandlerCount("unknown_error")
+        logger.error("failure", exception)
+        Failure(exception)
+    }
+  }
+
+  private def incrementHandlerCount(labels: String*): Unit = {
+    val labelsWithDefaults = Seq(consumerName, config.getString("upstream.queue")) ++ labels
+    handlerCount.labels(labelsWithDefaults: _*).inc()
   }
 
 
@@ -947,11 +857,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     )
   }
 
+  // This is needed due to type erasure at runtime, and is preferable to previous Either implementation
   trait PrefetchResultContainer extends Product with Serializable
 
-  case class NewAndFoundDoc(doc: DoclibDoc, foundDoc: DoclibDoc) extends PrefetchResultContainer
+  case class NewAndFoundDoc(doc: DoclibDoc, foundDoc: DoclibDoc)
+    extends PrefetchResultContainer
 
-  case class DocWithSilentValidationException(silentValidationException: SilentValidationException)
+  case class SilentValidationExceptionWrapper(silentValidationException: SilentValidationException)
     extends PrefetchResultContainer
 
 }

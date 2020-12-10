@@ -35,7 +35,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
 
   private val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
-  private val awaitDuration = Duration.Inf
+  private val awaitDuration = 5 seconds
   private val prefetchKey = "prefetch"
 
   describe("The PrefetchHandler handle method") {
@@ -53,8 +53,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val futureResult = for {
         _ <- collection.insertOne(doclibDoc).toFuture()
         inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
-        handlerRes <- handler.handleWithoutEither(inputMessage, prefetchKey)
-      } yield handlerRes.asInstanceOf[Option[handler.DocWithSilentValidationException]]
+        handlerRes <- handler.handle(inputMessage, prefetchKey)
+      } yield handlerRes.asInstanceOf[Option[handler.SilentValidationExceptionWrapper]]
 
       val resultFromOption = Await.result(futureResult, awaitDuration).map(_.silentValidationException).get
 
@@ -66,13 +66,13 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
       assertThrows[FileNotFoundException] {
-        Await.result(handler.handleWithoutEither(inputMessage, prefetchKey), awaitDuration)
+        Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration)
       }
     }
 
     it("should return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path") {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val resultFromOption = Await.result(handler.handleWithoutEither(inputMessage, prefetchKey), Duration.Inf).get
+      val resultFromOption = Await.result(handler.handle(inputMessage, prefetchKey),awaitDuration).get
       assert(resultFromOption.isInstanceOf[handler.NewAndFoundDoc])
     }
   }
