@@ -65,7 +65,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
-      assertThrows[FileNotFoundException] {
+      intercept[FileNotFoundException] {
         Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration)
       }
     }
