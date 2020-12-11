@@ -142,7 +142,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         case e: SilentValidationException => Future.successful(Option(SilentValidationExceptionWrapper(e)))
       }
       .andThen {
-        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg)
+        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).recover {
+          case e: Throwable => throw e
+        }
         case Success(container: Option[PrefetchResultContainer]) =>
           updateHandlerCountAndLog(container, msg).recover {
             case e: Throwable => throw e
@@ -168,26 +170,22 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       updatedResult <- OptionT.liftF(flagContext.error(failedDoc, noCheck = true))
     } yield updatedResult
 
-    updatedResultFromErrorFlagWrite
-      .value
-      .andThen {
-        case Failure(exception) => throw exception
-      }
+    updatedResultFromErrorFlagWrite.value
   }
 
   private def updateHandlerCountAndLog(container: Option[PrefetchResultContainer], msg: PrefetchMsg): Try[Unit] = {
     container match {
       case Some(value) =>
-       Success {
-         value match {
-           case NewAndFoundDoc(_, foundDoc) =>
-             incrementHandlerCount("success")
-             logger.info(f"COMPLETED: ${msg.source} - ${foundDoc._id}")
-           case SilentValidationExceptionWrapper(e) =>
-             incrementHandlerCount("dropped")
-             logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
-         }
-       }
+        Success {
+          value match {
+            case NewAndFoundDoc(_, foundDoc) =>
+              incrementHandlerCount("success")
+              logger.info(f"COMPLETED: ${msg.source} - ${foundDoc._id}")
+            case SilentValidationExceptionWrapper(e) =>
+              incrementHandlerCount("dropped")
+              logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
+          }
+        }
       case None =>
         val exception = new RuntimeException("Unknown Error Occurred")
         incrementHandlerCount("unknown_error")
