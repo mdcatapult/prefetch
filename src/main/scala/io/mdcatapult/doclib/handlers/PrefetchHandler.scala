@@ -557,14 +557,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   def handleFileUpdate(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
     if (!zeroLength(tempPath)) {
-      val docHash: String = foundDoc.doc.hash
+      val newHash: String = foundDoc.doc.hash
       targetPathGenerator(foundDoc) match {
         case Some(targetPath) =>
           val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-          val currentHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else docHash
-          if (docHash != currentHash) {
+          val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+
+          if (newHash != oldHash && foundDoc.doc.derivative) {
+            // File already exists at target location but is not the same file.
+            // Overwrite it and continue because we don't archive derivatives.
+            moveFile(tempPath, targetPath)
+          } else if (newHash != oldHash) {
             // file already exists at target location but is not the same file, archive the old one then add the new one
-            val archivePath = getArchivePath(targetPath, currentHash)
+            val archivePath = getArchivePath(targetPath, oldHash)
             Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
           } else if (!inRightLocation(foundDoc.doc.source)) {
             moveFile(tempPath, targetPath)
