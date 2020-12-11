@@ -136,7 +136,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     try {
       (for {
-        found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))))
+        found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", "")), msg.derivative.getOrElse(false)))
         if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
         started: UpdatedResult <- OptionT.liftF(flagContext.start(found.doc))
         newDoc <- OptionT(process(found, msg))
@@ -674,12 +674,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param URI PrefetchUri
    * @return
    */
-  def findDocument(URI: PrefetchUri): Future[Option[FoundDoc]] =
+  def findDocument(URI: PrefetchUri, derivative: Boolean = false): Future[Option[FoundDoc]] =
     URI.uri match {
       case Some(uri) =>
         uri.schemeOption match {
           case None => throw new UndefinedSchemeException(uri)
-          case Some("file") => findLocalDocument(URI.raw)
+          case Some("file") => findLocalDocument(URI.raw, derivative)
           case _ => findRemoteDocument(uri)
         }
       case None =>
@@ -693,14 +693,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param source String
    * @return
    */
-  def findLocalDocument(source: String): Future[Option[FoundDoc]] =
+  def findLocalDocument(source: String, derivative: Boolean = false): Future[Option[FoundDoc]] =
     (for {
       target: String <- OptionT.some[Future](source.replaceFirst(
         s"^${config.getString("doclib.local.temp-dir")}",
         localDirName
       ))
       md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$source").toFile))
-      (doc, archivable) <- OptionT(findOrCreateDoc(source, md5, Some(or(
+      (doc, archivable) <- OptionT(findOrCreateDoc(source, md5, derivative, Some(or(
         equal("source", source),
         equal("source", target)
       ))))
@@ -724,6 +724,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           findOrCreateDoc(
             originUri.toString,
             downloaded.hash,
+            false,
             Some(
               or(
                 equal("origin.uri", originUri.toString),
@@ -743,7 +744,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param hash   String
    * @return
    */
-  def findOrCreateDoc(source: String, hash: String, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
+  def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
     collection.find(
         or(
           equal("hash", hash),
@@ -756,12 +757,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         case latest :: archivable if latest.hash == hash =>
           Future.successful(latest -> archivable)
         case archivable =>
-          createDoc(source, hash).map(doc => doc -> archivable.toList)
+          createDoc(source, hash, derivative).map(doc => doc -> archivable.toList)
       })
       .map(Option.apply)
   }
 
-  def createDoc(source: String, hash: String): Future[DoclibDoc] = {
+  def createDoc(source: String, hash: String, derivative: Boolean = false): Future[DoclibDoc] = {
     val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
     val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()
@@ -769,7 +770,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       _id = new ObjectId(),
       source = source,
       hash = hash,
-      derivative = false,
+      derivative = derivative,
       created = createdTime,
       updated = createdTime,
       mimetype = "",
