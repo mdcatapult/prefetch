@@ -44,7 +44,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val doclibDoc = DoclibDoc(
         _id = new ObjectId("5fce14191ba6254dea8dcb83"),
         source = ingressFilenameWithPath,
-        hash = "064b019e7d5cfbefd87a0ef2a41951cc",
+        hash = "7fb875d2de06a19591efbd6327be4685",
         mimetype = "",
         created = currentTimeMinusOneDay,
         updated = currentTimeMinusOneDay,
