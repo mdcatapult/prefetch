@@ -77,7 +77,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   private val docExtractor = DoclibDocExtractor()
 
-  /** Initialise Apache Tika && Remote Client * */
+  /** Initialise Apache Tika && Remote Client **/
   private val tika = new Tika()
   val remoteClient = new RemoteClient()
   private val version = Version.fromConfig(config)
@@ -277,7 +277,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
     val latency = mongoLatency.labels(consumerName, "update_document").startTimer()
-    val documentUpdate: Bson = combine(
+    val update = combine(
       getDocumentUpdate(found, msg),
       set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
       set("metadata", (msg.metadata.getOrElse(List[MetaValueUntyped]()) ::: found.doc.metadata.getOrElse(List[MetaValueUntyped]())).distinct),
@@ -288,7 +288,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     val filter: Bson = equal("_id", found.doc._id)
 
-    collection.updateOne(filter, documentUpdate).toFutureOption()
+    collection.updateOne(filter, update).toFutureOption()
       .andThen(_ => latency.observeDuration())
       .andThen({
         case Success(_) => downstream.send(DoclibMsg(id = found.doc._id.toString))
@@ -442,7 +442,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       Some(Paths.get(s"${foundDoc.doc.source}").toString)
     else
       Some(Paths.get(s"${foundDoc.download.get.target.get}").toString.replaceFirst(s"^$doclibRoot/*", ""))
-
 
   /**
    * determines appropriate local target path if required
