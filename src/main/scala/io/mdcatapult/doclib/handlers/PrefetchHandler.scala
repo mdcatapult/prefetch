@@ -199,7 +199,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     handlerCount.labels(labelsWithDefaults: _*).inc()
   }
 
-
   def zeroLength(filePath: String): Boolean = {
     val absPath = (doclibRoot / filePath).path
     val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
@@ -467,9 +466,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def getLocalToRemoteTargetUpdatePath(origin: Origin): FoundDoc => Option[String] = {
     def getTargetPath(foundDoc: FoundDoc): Option[String] =
       if (inRemoteRoot(foundDoc.doc.source))
-        Some(Paths.get(s"${
-          foundDoc.doc.source
-        }").toString)
+        Some(Paths.get(s"${foundDoc.doc.source}").toString)
       else {
         val remotePath = Http.generateFilePath(origin, Option(remoteDirName), None, None)
         Some(Paths.get(s"$remotePath").toString)
@@ -506,7 +503,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       } yield DoclibMsg(id)
 
     Try(messages.foreach(msg => archiver.send(msg))) match {
-      case Success(_) => logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
+      case Success(_) =>
+        logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
         Future.successful(())
       case Failure(e) =>
         logger.error("failed to send doc to archive", e)
@@ -863,7 +861,4 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   case class SilentValidationExceptionWrapper(silentValidationException: SilentValidationException)
     extends PrefetchResultContainer
-
 }
-
-
