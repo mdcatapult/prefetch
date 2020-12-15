@@ -9,6 +9,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.util.hash.Md5.md5
 import org.mongodb.scala.bson.ObjectId
@@ -292,7 +293,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    assertThrows[handler.ZeroLengthFileException] {
+    assertThrows[ZeroLengthFileException] {
       handler.handleFileUpdate(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
     }
   }

@@ -5,11 +5,13 @@ import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.DoclibDoc
+import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
+import io.mdcatapult.doclib.prefetch.model._
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.funspec.AnyFunSpecLike
+import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 
 import java.io.FileNotFoundException
@@ -24,7 +26,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   """
   akka.loggers = ["akka.testkit.TestEventListener"]
   """))) with ImplicitSender
-  with AnyFunSpecLike
+  with AnyFlatSpecLike
   with Matchers
   with BeforeAndAfterEach
   with MockFactory
@@ -38,8 +40,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   private val awaitDuration = 5 seconds
   private val prefetchKey = "prefetch"
 
-  describe("The PrefetchHandler handle method") {
-    it("should return a SilentValidationException given a db record exists from the previous day") {
+  "The PrefetchHandler handle method" should
+    "return a SilentValidationException given a db record exists from the previous day" in {
       val currentTimeMinusOneDay = LocalDateTime.now().minusDays(1L)
       val doclibDoc = DoclibDoc(
         _id = new ObjectId("5fce14191ba6254dea8dcb83"),
@@ -54,14 +56,14 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
         _ <- collection.insertOne(doclibDoc).toFuture()
         inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
         handlerRes <- handler.handle(inputMessage, prefetchKey)
-      } yield handlerRes.asInstanceOf[Option[handler.SilentValidationExceptionWrapper]]
+      } yield handlerRes.asInstanceOf[Option[SilentValidationExceptionWrapper]]
 
       val resultFromOption = Await.result(futureResult, awaitDuration).map(_.silentValidationException).get
 
-      assert(resultFromOption.isInstanceOf[handler.SilentValidationException])
+      assert(resultFromOption.isInstanceOf[SilentValidationException])
     }
 
-    it("should return a FileNotFoundException given an incorrect file path") {
+    it should "return a FileNotFoundException given an incorrect file path" in {
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
@@ -70,12 +72,11 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       }
     }
 
-    it("should return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path") {
+    it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val resultFromOption = Await.result(handler.handle(inputMessage, prefetchKey),awaitDuration).get
-      assert(resultFromOption.isInstanceOf[handler.NewAndFoundDoc])
+      val resultFromOption = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
+      assert(resultFromOption.isInstanceOf[NewAndFoundDoc])
     }
-  }
 
   override def beforeEach(): Unit = {
     Await.result(collection.drop().toFuture(), 5 seconds)

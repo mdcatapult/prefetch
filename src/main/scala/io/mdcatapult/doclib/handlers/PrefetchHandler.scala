@@ -14,6 +14,8 @@ import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
+import io.mdcatapult.doclib.prefetch.model.Exceptions._
+import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
@@ -100,25 +102,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
 
-  /**
-   * If a file has zero length then prefetch will not process it during ingest.
-   *
-   * @param filePath The path to the zero length file
-   * @param doc      The mongodb record which references this file
-   */
-  class ZeroLengthFileException(filePath: String, doc: DoclibDoc) extends Exception(s"$filePath has zero length and will not be processed further. See doclib record ${doc._id} for more details.")
-
-  /**
-   * If a file has zero length then prefetch will not process it during ingest.
-   *
-   * @param doc The mongodb record which references this file
-   */
-  class SilentValidationException(doc: DoclibDoc) extends DoclibDocException(doc, "Suppressed exception for Validation")
-
-  class InvalidOriginSchemeException(msg: PrefetchMsg) extends Exception(s"$msg contains invalid origin scheme")
-
-  class MissingOriginSchemeException(msg: PrefetchMsg, origin: Origin) extends Exception(s"$origin has no uri: msg=$msg")
-
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     logger.info(f"RECEIVED: ${msg.source}")
 
@@ -152,7 +135,18 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       }
   }
 
-  private def attemptErrorFlagWrite(exception: Throwable, flagContext: FlagContext, msg: PrefetchMsg): Future[Option[UpdatedResult]] = {
+  /**
+   * If the initial prefetch handler process fails with anything other than a silent validation exception,
+   * increment the handler count based on the exception type, log the error, then attempt to write an error flag
+   * to the doclib document.
+   *
+   * @param exception   Exception from the initial prefetch process
+   * @param flagContext The flagContext derived from the upstream queue name
+   * @param msg PrefetchMsg
+   * @return
+   */
+  private def attemptErrorFlagWrite(exception: Throwable,flagContext: FlagContext, msg: PrefetchMsg)
+  : Future[Option[UpdatedResult]] = {
 
     val failedDocument: Future[Option[DoclibDoc]] = exception match {
       case exception: DoclibDocException => // thrown by flagContext.end() when started.modifiedCount > 0
@@ -173,6 +167,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     updatedResultFromErrorFlagWrite.value
   }
 
+
+  /**
+   * If the initial prefetch process returns a defined optional value, increment handler count and log appropriately.
+   * When optional value undefined, increment handler count and log, and return runtime exception as failure
+   *
+   * @param container optional PrefetchResultContainer from the initial prefetch process
+   * @param msg PrefetchMsg
+   * @return
+   */
   private def updateHandlerCountAndLog(container: Option[PrefetchResultContainer], msg: PrefetchMsg): Try[Unit] = {
     container match {
       case Some(value) =>
@@ -856,13 +859,4 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       }
     )
   }
-
-  // This is needed due to type erasure at runtime, and is preferable to previous Either implementation
-  trait PrefetchResultContainer extends Product with Serializable
-
-  case class NewAndFoundDoc(doc: DoclibDoc, foundDoc: DoclibDoc)
-    extends PrefetchResultContainer
-
-  case class SilentValidationExceptionWrapper(silentValidationException: SilentValidationException)
-    extends PrefetchResultContainer
 }
