@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
@@ -16,6 +15,7 @@ import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMap
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.codec.MongoCodecs
+import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -359,7 +359,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")),
       Some(metadataMap), None, Some(true))
 
-    assertThrows[handler.SilentValidationException] {
+    assertThrows[SilentValidationException] {
       handler.valid(prefetchMsg, oldFoundDoc)
     }
   }
@@ -420,7 +420,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         None
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-      assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+      assertThrows[InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
   allProtocols.foreach(protocol => {
@@ -439,7 +439,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         None
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-      assertThrows[handler.MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+      assertThrows[MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
 
