@@ -1,30 +1,17 @@
 package io.mdcatapult.doclib.handlers
 
-import java.io.File
-import java.nio.file.{Files, Paths}
-import java.time.{LocalDateTime, ZoneOffset}
-import java.util.UUID
-
 import akka.actor._
-import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
-import better.files.Dsl.pwd
 import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.util.hash.Md5.md5
-import io.mdcatapult.doclib.codec.MongoCodecs
-import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
-import io.mdcatapult.klein.mongo.Mongo
-import io.mdcatapult.klein.queue.Sendable
-import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
@@ -37,11 +24,14 @@ import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
 
+import java.io.File
+import java.nio.file.{Files, Paths}
+import java.time.{LocalDateTime, ZoneOffset}
+import java.util.UUID
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
 import scala.util.Try
-import scala.concurrent.ExecutionContext.Implicits.global
 
 class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandlerIntegrationTest", ConfigFactory.parseString(
   """
@@ -49,52 +39,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   """))) with ImplicitSender
   with AnyFlatSpecLike
   with Matchers
-  with BeforeAndAfterAll with MockFactory with ScalaFutures {
-
-  implicit val config: Config = ConfigFactory.parseString(
-    s"""
-       |doclib {
-       |  root: "$pwd/test/prefetch-test"
-       |  remote {
-       |    target-dir: "remote"
-       |    temp-dir: "remote-ingress"
-       |  }
-       |  local {
-       |    target-dir: "local"
-       |    temp-dir: "ingress"
-       |  }
-       |  archive {
-       |    target-dir: "archive"
-       |  }
-       |  derivative {
-       |    target-dir: "derivatives"
-       |  }
-       |}
-       |mongo {
-       |  database: "prefetch-test"
-       |  collection: "documents"
-       |  derivatives_collection : "derivatives"
-       |}
-    """.stripMargin).withFallback(ConfigFactory.load())
-
-  /** Initialise Mongo **/
-
-  implicit val codecs: CodecRegistry = MongoCodecs.get
-  val mongo: Mongo = new Mongo()
-
-  implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
-  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = mongo.database.getCollection(config.getString("mongo.derivatives_collection"))
-
-  implicit val m: Materializer = Materializer(system)
+  with BeforeAndAfterAll with MockFactory with ScalaFutures with PrefetchHandlerBaseTest {
 
   import system.dispatcher
-
-  implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
-
-  private val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
-  private val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
@@ -346,7 +293,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    assertThrows[handler.ZeroLengthFileException] {
+    assertThrows[ZeroLengthFileException] {
       handler.handleFileUpdate(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
     }
   }
@@ -476,14 +423,14 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val parentIdOne = new ObjectId()
     val childId = new ObjectId()
     val parentDocOne = DoclibDoc(
-        _id = parentIdOne,
-        source = "remote/http/path/to/parent.zip",
-        hash = "12345",
-        derivative = false,
-        created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-        updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
-        mimetype = "text/plain",
-        tags = Some(List[String]())
+      _id = parentIdOne,
+      source = "remote/http/path/to/parent.zip",
+      hash = "12345",
+      derivative = false,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
     )
     val parentChildMapping = ParentChildMapping(_id = UUID.randomUUID(), parent = parentIdOne, childPath = "ingress/derivatives/remote/http/path/to/unarchived_parent.zip/child.txt", metadata = Some(childMetadata), consumer = Some("unarchived"))
     val parentChildInsert = Await.result(derivativesCollection.insertOne(parentChildMapping).toFutureOption(), 5.seconds)
@@ -571,12 +518,5 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
     }
-  }
-
-  override def afterAll(): Unit = {
-    //    Await.result(collection.drop().toFutureOption(), 5.seconds)
-    //    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
-    // These may or may not exist but are all removed anyway
-    deleteDirectories(List(pwd / "test" / "prefetch-test"))
   }
 }
