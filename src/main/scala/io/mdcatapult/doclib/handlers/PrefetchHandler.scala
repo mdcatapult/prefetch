@@ -706,7 +706,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           case _ => findRemoteDocument(uri)
         }
       case None =>
-        findLocalDocument(URI.raw)
+        findLocalDocument(URI.raw, derivative)
     }
 
 

@@ -269,6 +269,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(doc.origins.size == 3)
   }
 
+  "Adding the derivative value" should "result in a derivative document" in {
+    val doc = Await.result(handler.findDocument(handler.PrefetchUri("ingress/derivative-test.txt", None), derivative = true), Duration.Inf).get
+    assert(doc.doc.derivative)
+  }
+
   "Prefetch handler" can "calculate if a file has zero length " in {
     val source = "ingress/zero_length_file.txt"
     assert(handler.zeroLength(source))
@@ -517,6 +522,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/zero_length_file2.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivative-test.txt").toAbsolutePath)
     }
   }
 }
