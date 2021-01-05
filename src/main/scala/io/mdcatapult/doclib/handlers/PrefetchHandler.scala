@@ -121,9 +121,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     initialPrefetchProcess
       .value
-      .recoverWith {
-        case e: SilentValidationException => Future.successful(Option(SilentValidationExceptionWrapper(e)))
-      }
       .andThen {
         case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).recover {
           case e: Throwable => throw e
