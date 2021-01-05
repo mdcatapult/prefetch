@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
@@ -16,6 +15,7 @@ import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMap
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.codec.MongoCodecs
+import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.klein.queue.Sendable
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.MongoCollection
@@ -178,10 +178,26 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       assert(result == "archive/remote/cheese/stinking-bishop.cz/fd6eba7e747b846abbdfbfed0e10de12.cz")
     }
 
-    "return an relative archive path for file from a relative path with no file extension" in {
+    "return the same path as the archiver when an extension is present" in {
+      val result = handler.getArchivePath("remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612.pdf", "fiaouroiq24oq74fd")
+      assert(result == "archive/remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612.pdf/fiaouroiq24oq74fd.pdf")
+    }
+
+    "return the same path as the archiver when an extension is not present" in {
+      val result = handler.getArchivePath("remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612", "fiaouroiq24oq74fd")
+      assert(result == "archive/remote/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/NON-OA/PMC97900-PMC101899/PMC99612/fiaouroiq24oq74fd")
+    }
+
+    "return a relative archive path for file from a relative path with no file extension" in {
       val result = handler.getArchivePath("remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
       assert(result == "archive/remote/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
     }
+
+    "return a relative archive path for file from a relative path with no file extension where there is a '.' in the path" in {
+      val result = handler.getArchivePath("remote/sme.lly/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
+      assert(result == "archive/remote/sme.lly/cheese/stinking-bishop/fd6eba7e747b846abbdfbfed0e10de12")
+    }
+
     ("local" :: "remote" :: Nil).foreach ( dir =>
       s"return a relative  archive path for $dir derivative file from a relative path with no file extension" in {
         val result = handler.getArchivePath(s"$dir/derivatives/remote/cheese/stinking-bishop", "fd6eba7e747b846abbdfbfed0e10de12")
@@ -343,7 +359,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf", None, Some(List("a-tag")),
       Some(metadataMap), None, Some(true))
 
-    assertThrows[handler.SilentValidationException] {
+    assertThrows[SilentValidationException] {
       handler.valid(prefetchMsg, oldFoundDoc)
     }
   }
@@ -404,7 +420,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         None
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-      assertThrows[handler.InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+      assertThrows[InvalidOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
   allProtocols.foreach(protocol => {
@@ -423,7 +439,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         None
       )
       val prefetchMsg: PrefetchMsg = PrefetchMsg("", Some(List(origin)), Some(List("a-tag")), None, None)
-      assertThrows[handler.MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
+      assertThrows[MissingOriginSchemeException](handler.valid(prefetchMsg, foundDoc))
     }
   })
 
