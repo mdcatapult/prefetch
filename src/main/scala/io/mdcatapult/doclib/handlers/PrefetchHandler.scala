@@ -123,11 +123,14 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       .value
       .andThen {
         case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).recover {
-          case e: Throwable => throw e
+          case e: Throwable =>
+            logger.error("error attempting error flag write", e)
+            throw e
         }
         case Success(container: Option[PrefetchResultContainer]) =>
           updateHandlerCountAndLog(container, msg).recover {
-            case e: Throwable => throw e
+            case e: Throwable => logger.error("error updating handler count", e)
+              throw e
           }
       }
   }
