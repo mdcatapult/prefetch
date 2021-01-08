@@ -122,15 +122,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     initialPrefetchProcess
       .value
       .andThen {
-        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).recover {
-          case e: Throwable =>
-            logger.error("error attempting error flag write", e)
-            throw e
+        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).andThen {
+          case e if e.isFailure => logger.error("error attempting error flag write", e)
         }
         case Success(container: Option[PrefetchResultContainer]) =>
-          updateHandlerCountAndLog(container, msg).recover {
-            case e: Throwable => logger.error("error updating handler count", e)
-              throw e
+          val handlerCountAndLogResult = updateHandlerCountAndLog(container, msg)
+          if (handlerCountAndLogResult.isFailure) {
+            logger.error("error updating handler count", handlerCountAndLogResult.failed.get)
           }
       }
   }
