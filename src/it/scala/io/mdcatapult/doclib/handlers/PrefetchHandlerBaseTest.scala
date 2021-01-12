@@ -38,9 +38,9 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
        |  }
        |}
        |mongo {
-       |  database: "prefetch-test"
-       |  collection: "documents"
-       |  derivatives_collection : "derivatives"
+       |  doclib-database: "prefetch-test"
+       |  documents-collection: "documents"
+       |  derivatives-collection : "derivatives"
        |}
     """.stripMargin).withFallback(ConfigFactory.load())
 
@@ -48,15 +48,15 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
   implicit val codecs: CodecRegistry = MongoCodecs.get
   val mongo: Mongo = new Mongo()
 
-  implicit val collection: MongoCollection[DoclibDoc] = mongo.database.getCollection(config.getString("mongo.collection"))
-  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = mongo.database.getCollection(config.getString("mongo.derivatives_collection"))
+  implicit val collection: MongoCollection[DoclibDoc] = mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.documents-collection"))
+  implicit val derivativesCollection: MongoCollection[ParentChildMapping] = mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.derivatives-collection"))
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
   val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
-  val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
-  val writeLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
+  val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
+  val writeLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
   override def afterAll(): Unit = {
     //    Await.result(collection.drop().toFutureOption(), 5.seconds)

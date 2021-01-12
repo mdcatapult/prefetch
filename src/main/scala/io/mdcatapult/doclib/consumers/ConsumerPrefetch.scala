@@ -14,7 +14,7 @@ import io.mdcatapult.util.admin.Server
 import org.mongodb.scala.MongoCollection
 import play.api.libs.json.Format
 
-object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
+object ConsumerPrefetch extends AbstractConsumer() {
 
   def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
     import as.dispatcher
@@ -22,26 +22,28 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     val adminServer = Server(config)
 
     implicit val collection: MongoCollection[DoclibDoc] =
-      mongo.database.getCollection(config.getString("mongo.collection"))
+      mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.documents-collection"))
 
     implicit val derivativesCollection: MongoCollection[ParentChildMapping] =
-      mongo.database.getCollection(config.getString("mongo.derivative-collection"))
+      mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.derivative-collection"))
 
-    val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.read"))
-    val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.limit.write"))
+    val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
+    val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
     // initialise queues
     def queue[T <: Envelope](property: String)(implicit f: Format[T]): Queue[T] =
-      Queue[T](config.getString(property), consumerName = Some("prefetch"))
+      Queue[T](config.getString(property),
+        consumerName = Some(config.getString("consumer.name")),
+        errorQueue = Some(config.getString("doclib.error.queue")))
 
     val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
-    val upstream: Queue[PrefetchMsg] = queue("upstream.queue")
+    val upstream: Queue[PrefetchMsg] = queue("consumer.queue")
     val archiver: Queue[DoclibMsg] = queue("doclib.archive.queue")
 
     adminServer.start()
 
     upstream.subscribe(
       new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter).handle,
-      config.getInt("upstream.concurrent"))
+      config.getInt("consumer.concurrency"))
   }
 }
