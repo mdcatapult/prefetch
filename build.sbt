@@ -6,7 +6,7 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "1.1.5-SNAPSHOT"
+lazy val doclibCommonVersion = "2.0.0"
 lazy val prometheusClientVersion = "0.9.0"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
