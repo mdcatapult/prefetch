@@ -121,16 +121,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     initialPrefetchProcess
       .value
-      .recoverWith {
-        case e: SilentValidationException => Future.successful(Option(SilentValidationExceptionWrapper(e)))
-      }
       .andThen {
-        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).recover {
-          case e: Throwable => throw e
+        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).andThen {
+          case flagWrite if flagWrite.isFailure =>
+            logger.error("error attempting error flag write", e)
         }
         case Success(container: Option[PrefetchResultContainer]) =>
-          updateHandlerCountAndLog(container, msg).recover {
-            case e: Throwable => throw e
+          val handlerCountAndLogResult = updateHandlerCountAndLog(container, msg)
+          if (handlerCountAndLogResult.isFailure) {
+            logger.error("error updating handler count", handlerCountAndLogResult.failed.get)
           }
       }
   }
