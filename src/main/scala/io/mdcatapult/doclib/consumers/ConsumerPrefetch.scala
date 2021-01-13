@@ -8,11 +8,10 @@ import io.mdcatapult.doclib.handlers.PrefetchHandler
 import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
-import io.mdcatapult.klein.queue.{Envelope, Queue}
+import io.mdcatapult.klein.queue.Queue
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
 import io.mdcatapult.util.admin.Server
 import org.mongodb.scala.MongoCollection
-import play.api.libs.json.Format
 
 object ConsumerPrefetch extends AbstractConsumer() {
 
@@ -29,12 +28,6 @@ object ConsumerPrefetch extends AbstractConsumer() {
 
     val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
-
-    // initialise queues
-    def queue[T <: Envelope](property: String)(implicit f: Format[T]): Queue[T] =
-      Queue[T](config.getString(property),
-        consumerName = Some(config.getString("consumer.name")),
-        errorQueue = Some(config.getString("doclib.error.queue")))
 
     val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
     val upstream: Queue[PrefetchMsg] = queue("consumer.queue")
