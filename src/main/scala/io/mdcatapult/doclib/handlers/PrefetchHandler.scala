@@ -73,7 +73,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       derivativesCollection: MongoCollection[ParentChildMapping]
                      ) extends LazyLogging with TargetPath {
 
-  val consumerName: String = config.getString("appName")
+  val consumerName: String = config.getString("consumer.name")
   /** set props for target path generation */
   override val doclibConfig: Config = config
 
@@ -107,7 +107,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
-    val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("upstream.queue")))
+    val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("consumer.name")))
 
     val initialPrefetchProcess =
       for {
@@ -198,7 +198,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   private def incrementHandlerCount(labels: String*): Unit = {
-    val labelsWithDefaults = Seq(consumerName, config.getString("upstream.queue")) ++ labels
+    val labelsWithDefaults = Seq(consumerName, config.getString("consumer.queue")) ++ labels
     handlerCount.labels(labelsWithDefaults: _*).inc()
   }
 
