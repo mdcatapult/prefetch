@@ -7,6 +7,7 @@ import cats.implicits._
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.consumer.ConsumerHandler
 import io.mdcatapult.doclib.exception.DoclibDocException
 import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
@@ -15,11 +16,10 @@ import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
-import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
-import io.mdcatapult.klein.queue.Sendable
+import io.mdcatapult.klein.queue.{Envelope, Sendable}
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
@@ -71,7 +71,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping]
-                     ) extends LazyLogging with TargetPath {
+                     ) extends LazyLogging with TargetPath with ConsumerHandler {
 
   val consumerName: String = config.getString("consumer.name")
   /** set props for target path generation */
@@ -102,7 +102,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    */
   sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
 
-  def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
+  override def handle(msg: PrefetchMsg, key: String): Future[Option[DoclibDoc]] = {
     logger.info(f"RECEIVED: ${msg.source}")
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
@@ -117,7 +117,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         newDoc <- OptionT(process(found, msg))
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-      } yield NewAndFoundDoc(newDoc, found.doc)
+      } yield found.doc
 
     initialPrefetchProcess
       .value
@@ -126,7 +126,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           case flagWrite if flagWrite.isFailure =>
             logger.error("error attempting error flag write", e)
         }
-        case Success(container: Option[PrefetchResultContainer]) =>
+        case Success(container: Option[DoclibDoc]) =>
           val handlerCountAndLogResult = updateHandlerCountAndLog(container, msg)
           if (handlerCountAndLogResult.isFailure) {
             logger.error("error updating handler count", handlerCountAndLogResult.failed.get)
@@ -175,18 +175,12 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param msg PrefetchMsg
    * @return
    */
-  private def updateHandlerCountAndLog(container: Option[PrefetchResultContainer], msg: PrefetchMsg): Try[Unit] = {
+  private def updateHandlerCountAndLog(container: Option[DoclibDoc], msg: PrefetchMsg): Try[Unit] = {
     container match {
       case Some(value) =>
         Success {
-          value match {
-            case NewAndFoundDoc(_, foundDoc) =>
               incrementHandlerCount("success")
-              logger.info(f"COMPLETED: ${msg.source} - ${foundDoc._id}")
-            case SilentValidationExceptionWrapper(e) =>
-              incrementHandlerCount("dropped")
-              logger.info(f"DROPPED: ${msg.source} - ${e.getDoc._id}")
-          }
+              logger.info(f"COMPLETED: ${msg.source} - ${value._id}")
         }
       case None =>
         val exception = new RuntimeException("Unknown Error Occurred")
@@ -859,4 +853,5 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       }
     )
   }
+
 }
