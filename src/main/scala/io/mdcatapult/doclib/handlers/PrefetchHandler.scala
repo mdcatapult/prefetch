@@ -19,7 +19,7 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
-import io.mdcatapult.klein.queue.{Envelope, Sendable}
+import io.mdcatapult.klein.queue.{Sendable}
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
@@ -71,7 +71,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping]
-                     ) extends LazyLogging with TargetPath with ConsumerHandler {
+                     ) extends LazyLogging with TargetPath with ConsumerHandler[PrefetchMsg] {
 
   val consumerName: String = config.getString("consumer.name")
   /** set props for target path generation */

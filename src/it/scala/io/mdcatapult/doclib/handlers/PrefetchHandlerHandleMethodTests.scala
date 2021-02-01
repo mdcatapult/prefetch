@@ -6,7 +6,6 @@ import com.typesafe.config.ConfigFactory
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
-import io.mdcatapult.doclib.prefetch.model._
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
@@ -75,8 +74,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
 
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val resultFromOption = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
-      assert(resultFromOption.isInstanceOf[NewAndFoundDoc])
+      val result = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
+      assert(result.source == "ingress/test_1.csv")
     }
 
   override def beforeEach(): Unit = {
