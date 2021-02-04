@@ -61,7 +61,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       |    target-dir: "archive"
       |  }
       |  derivative {
-      |    path: "derivatives"
+      |    target-dir: "derivatives"
       |  }
       |}
       |prefetch {
