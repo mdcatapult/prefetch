@@ -34,7 +34,7 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
        |    target-dir: "archive"
        |  }
        |  derivative {
-       |    target-dir: "derivatives"
+       |    path: "derivatives"
        |  }
        |}
        |mongo {
