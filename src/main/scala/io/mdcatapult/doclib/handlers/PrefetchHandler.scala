@@ -18,6 +18,8 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.util.Common
+import io.mdcatapult.doclib.util.FileProcessor
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
@@ -85,11 +87,11 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   private val version = Version.fromConfig(config)
 
 
-  private val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
+  private val doclibRoot: String = Common.getDoclibRoot
 
-  private val archiveDirName = config.getString("doclib.archive.target-dir")
-  private val localDirName = config.getString("doclib.local.target-dir")
-  private val remoteDirName = config.getString("doclib.remote.target-dir")
+  private val archiveDirName = Common.getArchiveDirName
+  private val localDirName = Common.getLocalDirName
+  private val remoteDirName = Common.getRemoteDirName
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
@@ -318,107 +320,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     ).distinct
 
   /**
-   * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-   *
-   * @param source current relative source path
-   * @param target relative target path to move file to
-   * @return
-   */
-  def moveFile(source: String, target: String): Option[Path] = moveFile(
-    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
-    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
-  ) match {
-    case Success(_) => Some(Paths.get(target))
-    case Failure(err) => throw err
-  }
-
-  /**
-   * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-   *
-   * @param source current absolute source path
-   * @param target absolute target path to move file to
-   * @return
-   */
-  def moveFile(source: File, target: File): Try[Path] = {
-    Try({
-      if (source == target) {
-        target.toPath
-      } else {
-        target.getParentFile.mkdirs
-        val latency = fileOperationLatency.labels("move").startTimer()
-        val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
-        latency.observeDuration()
-        path
-      }
-    })
-  }
-
-  /**
-   * Copies a file to a new location
-   *
-   * @param source source path
-   * @param target target path
-   * @return
-   */
-  def copyFile(source: String, target: String): Option[Path] = copyFile(
-    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
-    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
-  ) match {
-    case Success(_) => Some(Paths.get(target))
-    case Failure(_: FileNotFoundException) => None
-    case Failure(err) => throw err
-  }
-
-  /**
-   * Copies a file to a new location
-   *
-   * @param source source path
-   * @param target target path
-   * @return
-   */
-  def copyFile(source: File, target: File): Try[Path] =
-    Try({
-      target.getParentFile.mkdirs
-      val latency = fileOperationLatency.labels("copy").startTimer()
-      val path = Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
-      latency.observeDuration()
-      path
-    })
-
-  /**
-   * Silently remove file and empty parent dirs
-   *
-   * @param source String
-   */
-  def removeFile(source: String): Unit = {
-    val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
-    val latency = fileOperationLatency.labels("remove").startTimer()
-    removeFile(file)
-    latency.observeDuration()
-  }
-
-
-  /**
-   * Silently remove file and empty parent dirs
-   *
-   * @param file File
-   */
-  def removeFile(file: File): Unit = {
-
-    @tailrec
-    def remove(o: Option[File]): Unit = {
-      o match {
-        case Some(f) if f.isFile || Option(f.listFiles()).exists(_.isEmpty) =>
-          file.delete()
-          remove(Option(f.getParentFile))
-        case _ => ()
-      }
-    }
-
-    remove(Option(file))
-  }
-
-  /**
    * tests if source string starts with the configured remote target-dir
    *
    * @param source String
@@ -487,7 +388,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
     logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
-      archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
+      archivePath: Path <- OptionT.fromOption[Future](FileProcessor.copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
     } yield archivePath).value
   }
@@ -527,7 +428,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   //    */
   def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] = {
     val targetSource = target.getOrElse(foundDoc.doc.source)
-    archiveDocument(foundDoc, targetSource, archive).map(_ => moveFile(temp, targetSource))
+    archiveDocument(foundDoc, targetSource, archive).map(_ => FileProcessor.moveFile(temp, targetSource))
   }
 
   /**
@@ -569,15 +470,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           if (newHash != oldHash && foundDoc.doc.derivative) {
             // File already exists at target location but is not the same file.
             // Overwrite it and continue because we don't archive derivatives.
-            moveFile(tempPath, targetPath)
+            FileProcessor.moveFile(tempPath, targetPath)
           } else if (newHash != oldHash) {
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, oldHash)
             Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
           } else if (!inRightLocation(foundDoc.doc.source)) {
-            moveFile(tempPath, targetPath)
+            FileProcessor.moveFile(tempPath, targetPath)
           } else { // not a new file or a file that requires updating so we will just cleanup the temp file
-            removeFile(tempPath)
+            FileProcessor.removeFile(tempPath)
             None
           }
         case None => None

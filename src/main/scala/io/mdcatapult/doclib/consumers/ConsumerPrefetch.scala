@@ -7,6 +7,7 @@ import io.mdcatapult.doclib.consumer.AbstractConsumer
 import io.mdcatapult.doclib.handlers.PrefetchHandler
 import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
+import io.mdcatapult.doclib.util.Common
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.{Envelope, Queue}
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -39,6 +40,8 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
     val archiver: Queue[DoclibMsg] = queue("doclib.archive.queue")
 
     adminServer.start()
+
+    Common.init(config)
 
     upstream.subscribe(
       new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter).handle,
