@@ -41,8 +41,6 @@ object ConsumerPrefetch extends AbstractConsumer("consumer-prefetch") {
 
     adminServer.start()
 
-    Common.init(config)
-
     upstream.subscribe(
       new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter).handle,
       config.getInt("upstream.concurrent"))

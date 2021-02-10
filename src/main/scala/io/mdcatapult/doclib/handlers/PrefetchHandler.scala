@@ -86,12 +86,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   val remoteClient = new RemoteClient()
   private val version = Version.fromConfig(config)
 
+  private val sharedConfig = Common.getSharedConfig(config)
+  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
 
-  private val doclibRoot: String = Common.getDoclibRoot
-
-  private val archiveDirName = Common.getArchiveDirName
-  private val localDirName = Common.getLocalDirName
-  private val remoteDirName = Common.getRemoteDirName
+  private val doclibRoot = sharedConfig.doclibRoot
+  private val archiveDirName = sharedConfig.archiveDirName
+  private val localDirName = sharedConfig.localDirName
+  private val remoteDirName = sharedConfig.remoteDirName
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
@@ -388,7 +389,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
     logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
-      archivePath: Path <- OptionT.fromOption[Future](FileProcessor.copyFile(archiveSource, archiveTarget))
+      archivePath: Path <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
     } yield archivePath).value
   }
@@ -428,7 +429,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   //    */
   def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] = {
     val targetSource = target.getOrElse(foundDoc.doc.source)
-    archiveDocument(foundDoc, targetSource, archive).map(_ => FileProcessor.moveFile(temp, targetSource))
+    archiveDocument(foundDoc, targetSource, archive).map(_ => fileProcessor.moveFile(temp, targetSource))
   }
 
   /**
@@ -470,15 +471,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           if (newHash != oldHash && foundDoc.doc.derivative) {
             // File already exists at target location but is not the same file.
             // Overwrite it and continue because we don't archive derivatives.
-            FileProcessor.moveFile(tempPath, targetPath)
+            fileProcessor.moveFile(tempPath, targetPath)
           } else if (newHash != oldHash) {
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, oldHash)
             Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
           } else if (!inRightLocation(foundDoc.doc.source)) {
-            FileProcessor.moveFile(tempPath, targetPath)
+            fileProcessor.moveFile(tempPath, targetPath)
           } else { // not a new file or a file that requires updating so we will just cleanup the temp file
-            FileProcessor.removeFile(tempPath)
+            fileProcessor.removeFile(tempPath)
             None
           }
         case None => None

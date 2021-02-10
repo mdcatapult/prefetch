@@ -7,8 +7,7 @@ import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 
-object FileProcessor {
-  private val doclibRoot: String = Common.getDoclibRoot
+class FileProcessor(doclibRoot: String) {
 
   /**
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
@@ -33,7 +32,6 @@ object FileProcessor {
    * @return
    */
 
-    // should be private?
   def moveFile(source: File, target: File): Try[Path] = {
     Try({
       if (source == target) {
