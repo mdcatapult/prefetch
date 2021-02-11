@@ -4,14 +4,15 @@ import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.File
+import java.nio.file.NoSuchFileException
 
 class FileProcessorSpec extends AnyFlatSpec {
 
-  val fileProcessor = new FileProcessor("foobar")
+  val fileProcessor = new FileProcessor("")
   val path = "/a/path/to/a/file.txt"
 
   "Moving a non existent file" should "throw an exception" in {
-    assertThrows[Exception] {
+    assertThrows[NoSuchFileException] {
       fileProcessor.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
     }
   }
@@ -21,11 +22,10 @@ class FileProcessorSpec extends AnyFlatSpec {
     assert(actualPath.success.value == new File(path).toPath)
   }
 
-//  "Moving a file from source to target" should "return the new file path" in {
-//    val (source, target) = ("/source.txt", "/target.txt")
-//    val src = new File(source)
-//    src.createNewFile()
-//    val actualPath = fileProcessor.moveFile(src.getPath, target)
-//    assert(actualPath.toString == target)
-//  }
+  "Moving a file from source to target" should "return the new file path" in {
+    val target = "tmp/target.txt"
+    val src = File.createTempFile("source", ".txt")
+    val actualPath = fileProcessor.moveFile(src.getPath, target)
+    assert(actualPath.get.toString == target)
+  }
 }
