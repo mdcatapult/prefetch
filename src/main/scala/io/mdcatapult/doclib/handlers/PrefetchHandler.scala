@@ -20,7 +20,6 @@ import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.Common
 import io.mdcatapult.doclib.util.FileProcessor
-import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -38,12 +37,11 @@ import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 
-import java.io.{File, FileInputStream, FileNotFoundException}
+import java.io.{FileInputStream}
 import java.nio.file.attribute.BasicFileAttributeView
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
-import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}

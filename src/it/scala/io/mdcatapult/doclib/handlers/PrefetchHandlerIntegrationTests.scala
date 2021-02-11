@@ -17,14 +17,12 @@ import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.OptionValues._
-import org.scalatest.TryValues._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
 
-import java.io.File
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
@@ -185,16 +183,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
-  "Moving a non existent file" should "throw an exception" in {
-    assertThrows[Exception] {
-      handler.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
-    }
-  }
-
-  "Moving a file with the same source and target" should "return the original file path" in {
-    val path = handler.moveFile(new File("/a/path/to/a/file.txt"), new File("/a/path/to/a/file.txt"))
-    assert(path.success.value == new File("/a/path/to/a/file.txt").toPath)
-  }
 
   "A file with a space in the path" should "be found" in {
     val docLocation = "local/test file.txt"
