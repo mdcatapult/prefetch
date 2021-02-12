@@ -56,12 +56,13 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
         _ <- collection.insertOne(doclibDoc).toFuture()
         inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
         handlerRes <- handler.handle(inputMessage, prefetchKey)
-      } yield handlerRes.asInstanceOf[Option[SilentValidationExceptionWrapper]]
+      } yield handlerRes
 
-      val resultFromOption = Await.result(futureResult, awaitDuration).map(_.silentValidationException).get
+      intercept[SilentValidationException] {
+        Await.result(futureResult, awaitDuration)
+      }
 
-      assert(resultFromOption.isInstanceOf[SilentValidationException])
-    }
+  }
 
     it should "return a FileNotFoundException given an incorrect file path" in {
       val nonExistentFile = "bingress/blah.csv"

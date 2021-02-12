@@ -6,8 +6,7 @@ lazy val akkaVersion = "2.6.4"
 lazy val catsVersion = "2.1.0"
 lazy val awsScalaVersion = "0.8.4"
 lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "1.1.4"
-lazy val prometheusClientVersion = "0.9.0"
+lazy val doclibCommonVersion = "2.0.6"
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
@@ -61,9 +60,6 @@ lazy val root = (project in file("."))
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
       "org.xerial" % "sqlite-jdbc" % "3.30.1",
-      "io.prometheus" % "simpleclient" % prometheusClientVersion,
-      "io.prometheus" % "simpleclient_hotspot" % prometheusClientVersion,
-      "io.prometheus" % "simpleclient_httpserver" % prometheusClientVersion
     ).map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
         .exclude(org = "io.netty", name = "netty-all")

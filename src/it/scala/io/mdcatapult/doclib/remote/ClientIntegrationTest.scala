@@ -39,16 +39,6 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
       |    target-dir: "archive"
       |  }
       |}
-      |mongo {
-      |  database: "prefetch-test"
-      |  collection: "documents"
-      |  connection {
-      |    username: "doclib"
-      |    password: "doclib"
-      |    database: "admin"
-      |    hosts: ["localhost"]
-      |  }
-      |}
     """.stripMargin)
 
   implicit val m: Materializer = Materializer(system)
