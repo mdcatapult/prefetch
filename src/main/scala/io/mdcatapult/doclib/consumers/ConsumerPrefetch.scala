@@ -26,10 +26,10 @@ object ConsumerPrefetch extends AbstractConsumer() {
     implicit val derivativesCollection: MongoCollection[ParentChildMapping] =
       mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.derivative-collection"))
 
-    val readLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
+    val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
-    val downstream: Queue[DoclibMsg] = queue("doclib.supervisor.queue")
+    val downstream: Queue[SupervisorMsg] = queue("doclib.supervisor.queue")
     val upstream: Queue[PrefetchMsg] = queue("consumer.queue")
     val archiver: Queue[DoclibMsg] = queue("doclib.archive.queue")
 

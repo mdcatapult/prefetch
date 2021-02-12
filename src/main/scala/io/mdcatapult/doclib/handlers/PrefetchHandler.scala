@@ -5,12 +5,10 @@ import better.files._
 import cats.data._
 import cats.implicits._
 import com.typesafe.config.Config
-import com.typesafe.scalalogging.LazyLogging
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.consumer.ConsumerHandler
-import io.mdcatapult.doclib.exception.DoclibDocException
+import io.mdcatapult.doclib.consumer.{ConsumerHandler, GenericHandlerReturn, HandlerReturn}
 import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
@@ -19,7 +17,7 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
-import io.mdcatapult.klein.queue.{Sendable}
+import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
@@ -53,7 +51,7 @@ import scala.util.{Failure, Success, Try}
  * all files receive an md5 hash of its contents if there is a detectable difference between
  * hashes it will attempt to archive and update appropriately
  *
- * @param downstream   downstream queue to push Document Library messages onto
+ * @param supervisor   downstream queue to push Document Library messages onto
  * @param archiver     queue to push all archived documents to
  * @param readLimiter  used to limit number of concurrent reads from Mongo
  * @param writeLimiter used to limit number of concurrent writes to Mongo
@@ -62,28 +60,24 @@ import scala.util.{Failure, Success, Try}
  * @param config       Config
  * @param collection   MongoCollection[Document] to read documents from
  */
-class PrefetchHandler(downstream: Sendable[DoclibMsg],
+class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       archiver: Sendable[DoclibMsg],
-                      readLimiter: LimitedExecution,
+                      val readLimiter: LimitedExecution,
                       writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
                       m: Materializer,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
-                      derivativesCollection: MongoCollection[ParentChildMapping]
-                     ) extends LazyLogging with TargetPath with ConsumerHandler[PrefetchMsg] {
+                      derivativesCollection: MongoCollection[ParentChildMapping])
+  extends ConsumerHandler[PrefetchMsg]
+    with TargetPath {
 
-  val consumerName: String = config.getString("consumer.name")
+
   /** set props for target path generation */
-  override val doclibConfig: Config = config
 
-  private val docExtractor = DoclibDocExtractor()
-
-  /** Initialise Apache Tika && Remote Client **/
+  /** Initialise Apache Tika && Remote Client * */
   private val tika = new Tika()
   val remoteClient = new RemoteClient()
-  private val version = Version.fromConfig(config)
-
 
   private val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
 
@@ -91,7 +85,13 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   private val localDirName = config.getString("doclib.local.target-dir")
   private val remoteDirName = config.getString("doclib.remote.target-dir")
 
+  private implicit val consumerNameAndQueue: ConsumerNameAndQueue =
+    ConsumerNameAndQueue(config.getString("consumer.name"), config.getString("consumer.queue"))
+
+  private val consumerName = consumerNameAndQueue.name
+
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
+
 
   /**
    * Case class for handling the various permutations of local and remote documents
@@ -100,16 +100,19 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param origins  PrefetchOrigin
    * @param download DownloadResult
    */
-  sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
+  sealed case class FoundDoc(doc: DoclibDoc,
+                             archiveable: List[DoclibDoc] = Nil,
+                             origins: List[Origin] = Nil,
+                             download: Option[DownloadResult] = None)
 
-  override def handle(msg: PrefetchMsg, key: String): Future[Option[DoclibDoc]] = {
-    logger.info(f"RECEIVED: ${msg.source}")
+  override def handle(msg: PrefetchMsg, key: String): Future[Option[GenericHandlerReturn]] = {
+    logReceived(msg.source)
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
-    val flagContext: FlagContext = flags.findFlagContext(Some(config.getString("consumer.name")))
+    val flagContext: FlagContext = flags.findFlagContext(Some(consumerNameAndQueue.name))
 
-    val initialPrefetchProcess =
+    val prefetchProcess =
       for {
         found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", "")), msg.derivative.getOrElse(false)))
         if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
@@ -117,82 +120,15 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         newDoc <- OptionT(process(found, msg))
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-      } yield found.doc
+      } yield GenericHandlerReturn(found.doc)
 
-    initialPrefetchProcess
-      .value
-      .andThen {
-        case Failure(e) => attemptErrorFlagWrite(e, flagContext, msg).andThen {
-          case flagWrite if flagWrite.isFailure =>
-            logger.error("error attempting error flag write", e)
-        }
-        case Success(container: Option[DoclibDoc]) =>
-          val handlerCountAndLogResult = updateHandlerCountAndLog(container, msg)
-          if (handlerCountAndLogResult.isFailure) {
-            logger.error("error updating handler count", handlerCountAndLogResult.failed.get)
-          }
-      }
-  }
-
-  /**
-   * If the initial prefetch handler process fails with anything other than a silent validation exception,
-   * increment the handler count based on the exception type, log the error, then attempt to write an error flag
-   * to the doclib document.
-   *
-   * @param exception   Exception from the initial prefetch process
-   * @param flagContext The flagContext derived from the upstream queue name
-   * @param msg PrefetchMsg
-   * @return
-   */
-  private def attemptErrorFlagWrite(exception: Throwable,flagContext: FlagContext, msg: PrefetchMsg)
-  : Future[Option[UpdatedResult]] = {
-
-    val failedDocument: Future[Option[DoclibDoc]] = exception match {
-      case exception: DoclibDocException => // thrown by flagContext.end() when started.modifiedCount > 0
-        incrementHandlerCount("doclib_doc_exception")
-        logger.error("failure", exception)
-        Future.successful(Option(exception.getDoc))
-      case _ =>
-        incrementHandlerCount("unknown_error")
-        logger.error("failure", exception)
-        findDocument(toUri(msg.source)).map(_.map(_.doc))
-    }
-
-    val updatedResultFromErrorFlagWrite = for {
-      failedDoc <- OptionT(failedDocument)
-      updatedResult <- OptionT.liftF(flagContext.error(failedDoc, noCheck = true))
-    } yield updatedResult
-
-    updatedResultFromErrorFlagWrite.value
-  }
-
-
-  /**
-   * If the initial prefetch process returns a defined optional value, increment handler count and log appropriately.
-   * When optional value undefined, increment handler count and log, and return runtime exception as failure
-   *
-   * @param container optional PrefetchResultContainer from the initial prefetch process
-   * @param msg PrefetchMsg
-   * @return
-   */
-  private def updateHandlerCountAndLog(container: Option[DoclibDoc], msg: PrefetchMsg): Try[Unit] = {
-    container match {
-      case Some(value) =>
-        Success {
-              incrementHandlerCount("success")
-              logger.info(f"COMPLETED: ${msg.source} - ${value._id}")
-        }
-      case None =>
-        val exception = new RuntimeException("Unknown Error Occurred")
-        incrementHandlerCount("unknown_error")
-        logger.error("failure", exception)
-        Failure(exception)
-    }
-  }
-
-  private def incrementHandlerCount(labels: String*): Unit = {
-    val labelsWithDefaults = Seq(consumerName, config.getString("consumer.queue")) ++ labels
-    handlerCount.labels(labelsWithDefaults: _*).inc()
+    postHandleProcess(
+      message = msg,
+      handlerReturn = prefetchProcess.value,
+      supervisorQueueOpt = Some(supervisor),
+      flagContext,
+      collectionOpt = None
+    )
   }
 
   def zeroLength(filePath: String): Boolean = {
@@ -287,7 +223,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     collection.updateOne(filter, update).toFutureOption()
       .andThen(_ => latency.observeDuration())
       .andThen({
-        case Success(_) => downstream.send(DoclibMsg(id = found.doc._id.toString))
+        case Success(_) => // TODO sort this out  - supervisor.send(DoclibMsg(id = found.doc._id.toString))
         case Failure(e) => throw e
       }).flatMap({
       case Some(_) =>
@@ -853,5 +789,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
       }
     )
   }
+
 
 }

@@ -75,7 +75,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
       val result = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
-      assert(result.source == "ingress/test_1.csv")
+      assert(result.doclibDoc.source == "ingress/test_1.csv")
     }
 
   override def beforeEach(): Unit = {
