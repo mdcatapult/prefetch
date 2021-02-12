@@ -107,7 +107,6 @@ class FileProcessor(doclibRoot: String) {
         case _ => ()
       }
     }
-
     remove(Option(file))
   }
 
