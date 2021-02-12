@@ -90,7 +90,6 @@ class FileProcessor(doclibRoot: String) {
     latency.observeDuration()
   }
 
-
   /**
    * Silently remove file and empty parent dirs
    *
@@ -109,5 +108,4 @@ class FileProcessor(doclibRoot: String) {
     }
     remove(Option(file))
   }
-
 }

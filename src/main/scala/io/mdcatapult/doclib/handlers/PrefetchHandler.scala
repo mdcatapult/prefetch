@@ -18,7 +18,7 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.Common
+import io.mdcatapult.doclib.util.FileConfig
 import io.mdcatapult.doclib.util.FileProcessor
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
@@ -84,7 +84,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   val remoteClient = new RemoteClient()
   private val version = Version.fromConfig(config)
 
-  private val sharedConfig = Common.getSharedConfig(config)
+  private val sharedConfig = FileConfig.getSharedConfig(config)
   private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
 
   private val doclibRoot = sharedConfig.doclibRoot

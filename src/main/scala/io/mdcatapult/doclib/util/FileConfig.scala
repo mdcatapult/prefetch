@@ -2,7 +2,7 @@ package io.mdcatapult.doclib.util
 
 import com.typesafe.config.Config
 
-object Common {
+object FileConfig {
 
   case class SharedConfig(doclibRoot: String,
                           archiveDirName: String,
