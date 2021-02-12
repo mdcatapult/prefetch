@@ -1,7 +1,7 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import akka.actor.ActorSystem
-import akka.stream.{Materializer}
+import akka.stream.{Materializer, StreamTcpException}
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
@@ -28,11 +28,9 @@ class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
   "An URL to nowhere" should "throw an Exception" in {
     val origin = Origin("http", uri = Uri.parseOption("http://www.a.b.c/something"))
-    val v = Http.download(origin)
-    println(v)
-//    assertThrows[StreamTcpException] {
-//
-//    }
+    assertThrows[StreamTcpException] {
+      Http.download(origin)
+    }
   }
 
   "A valid URL with unknown file" should "throw an Exception" in {
