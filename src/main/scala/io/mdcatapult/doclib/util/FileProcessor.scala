@@ -1,5 +1,6 @@
 package io.mdcatapult.doclib.util
 
+import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
 
 import java.io.{File, FileNotFoundException}
@@ -8,6 +9,23 @@ import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 
 class FileProcessor(doclibRoot: String) {
+
+  def process(newHash: String,
+              oldHash: String,
+              tempPath: String,
+              targetPath: String,
+              isDerivative: Boolean,
+              inRightLocation: Boolean
+             ): Option[Path] = {
+    if (newHash != oldHash && isDerivative || !inRightLocation) {
+      // File already exists at target location but is not the same file.
+      // Overwrite it and continue because we don't archive derivatives.
+      moveFile(tempPath, targetPath)
+    } else { // not a new file or a file that requires updating so we will just cleanup the temp file
+      removeFile(tempPath)
+      None
+    }
+  }
 
   /**
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename

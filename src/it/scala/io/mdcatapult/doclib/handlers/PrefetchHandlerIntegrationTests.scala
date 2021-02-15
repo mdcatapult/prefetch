@@ -287,7 +287,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       tags = Some(List[String]())
     )
     assertThrows[ZeroLengthFileException] {
-      handler.handleFileUpdate(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+      handler.archiveOrProcess(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
     }
   }
 

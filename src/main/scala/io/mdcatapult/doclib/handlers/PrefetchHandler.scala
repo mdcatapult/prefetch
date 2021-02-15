@@ -449,7 +449,9 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   * Handles the potential update of a document and is associated file based on supplied properties
+   * Handles the potential update of a document and its associated file based on supplied properties
+   * by archiving, moving, or removing the file.
+   *
    *
    * @param foundDoc            the found document
    * @param tempPath            the path of the temporary file either remote or local
@@ -457,32 +459,24 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param inRightLocation     function to test if the current document source path is in the right location
    * @return
    */
-  def handleFileUpdate(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
-    if (!zeroLength(tempPath)) {
-      val newHash: String = foundDoc.doc.hash
-      targetPathGenerator(foundDoc) match {
-        case Some(targetPath) =>
-          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-          val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
-
-          if (newHash != oldHash && foundDoc.doc.derivative) {
-            // File already exists at target location but is not the same file.
-            // Overwrite it and continue because we don't archive derivatives.
-            fileProcessor.moveFile(tempPath, targetPath)
-          } else if (newHash != oldHash) {
-            // file already exists at target location but is not the same file, archive the old one then add the new one
-            val archivePath = getArchivePath(targetPath, oldHash)
-            Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
-          } else if (!inRightLocation(foundDoc.doc.source)) {
-            fileProcessor.moveFile(tempPath, targetPath)
-          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
-            fileProcessor.removeFile(tempPath)
-            None
-          }
-        case None => None
-      }
-    } else {
+  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
+    if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
+    }
+    targetPathGenerator(foundDoc) match {
+      case Some(targetPath) =>
+        val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+        val newHash: String = foundDoc.doc.hash
+        val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+
+        if (newHash != oldHash) {
+          // found doc is not archived, send to archiver
+          val archivePath = getArchivePath(targetPath, oldHash)
+          Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+        } else {
+          fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
+        }
+      case None => None
     }
   }
 
@@ -497,7 +491,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) =>
-        val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
+        val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
         (source, foundDoc.origins ::: filteredDocOrigin)
 
@@ -508,10 +502,10 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
           remoteOrigins match {
             case origin :: _ =>
               // has at least one remote origin and needs relocating to remote folder
-              handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+              archiveOrProcess(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
             case _ =>
               // does not need remapping to remote location
-              handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+              archiveOrProcess(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
           }
 
         (source, currentOrigins)
