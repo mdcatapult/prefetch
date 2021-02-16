@@ -18,7 +18,7 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.{FileConfig, FileProcessor}
+import io.mdcatapult.doclib.util.{Archiver, FileConfig, FileProcessor}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -62,7 +62,7 @@ import scala.util.{Failure, Success, Try}
  * @param collection   MongoCollection[Document] to read documents from
  */
 class PrefetchHandler(downstream: Sendable[DoclibMsg],
-                      archiver: Sendable[DoclibMsg],
+                      archiverQueue: Sendable[DoclibMsg],
                       readLimiter: LimitedExecution,
                       writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
@@ -84,7 +84,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   private val version = Version.fromConfig(config)
 
   private val sharedConfig = FileConfig.getSharedConfig(config)
-  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot, archiver)
+  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
+  private val archiver = new Archiver(archiverQueue, fileProcessor)
 
   private val doclibRoot = sharedConfig.doclibRoot
   private val archiveDirName = sharedConfig.archiveDirName
@@ -418,7 +419,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         if (newHash != oldHash) {
           // found doc is not archived, send to archiver
           val archivePath = getArchivePath(targetPath, oldHash)
-          Await.result(fileProcessor.updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+          Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
         } else {
           fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
         }

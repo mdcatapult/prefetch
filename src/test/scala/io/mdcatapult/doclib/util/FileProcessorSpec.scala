@@ -8,7 +8,7 @@ import java.nio.file.{Files, NoSuchFileException}
 
 class FileProcessorSpec extends AnyFlatSpec {
 
-  val fileProcessor = new FileProcessor(""
+  val fileProcessor = new FileProcessor("")
   val path = "/a/path/to/a/file.txt"
 
   "Moving a non existent file" should "throw an exception" in {
