@@ -18,8 +18,7 @@ import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.prefetch.model._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.FileConfig
-import io.mdcatapult.doclib.util.FileProcessor
+import io.mdcatapult.doclib.util.{FileConfig, FileProcessor}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -37,7 +36,7 @@ import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 
-import java.io.{FileInputStream}
+import java.io.FileInputStream
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -85,7 +84,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   private val version = Version.fromConfig(config)
 
   private val sharedConfig = FileConfig.getSharedConfig(config)
-  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
+  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot, archiver)
 
   private val doclibRoot = sharedConfig.doclibRoot
   private val archiveDirName = sharedConfig.archiveDirName
@@ -101,7 +100,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
    * @param origins  PrefetchOrigin
    * @param download DownloadResult
    */
-  sealed case class FoundDoc(doc: DoclibDoc, archiveable: List[DoclibDoc] = Nil, origins: List[Origin] = Nil, download: Option[DownloadResult] = None)
 
   def handle(msg: PrefetchMsg, key: String): Future[Option[Any]] = {
     logger.info(f"RECEIVED: ${msg.source}")
@@ -377,59 +375,6 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   }
 
   /**
-   *
-   * @param foundDoc      document to be archived
-   * @param archiveSource string file to copy
-   * @param archiveTarget string location to archive the document to
-   * @return
-   */
-  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
-    logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
-    (for {
-      archivePath: Path <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
-      _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
-    } yield archivePath).value
-  }
-
-  /**
-   * sends documents to archiver for processing.
-   *
-   * @todo send errors to queue without killing the rest of the process
-   */
-  def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
-    val messages =
-      for {
-        doc <- docs
-        id = doc._id.toHexString
-      } yield DoclibMsg(id)
-
-    Try(messages.foreach(msg => archiver.send(msg))) match {
-      case Success(_) =>
-        logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
-        Future.successful(())
-      case Failure(e) =>
-        logger.error("failed to send doc to archive", e)
-        Future.successful(())
-    }
-  }
-
-  //  /**
-  //    * updates a physical file
-  //    *  - copies existing file to archive location
-  //    *  - adds document to archive collection
-  //    *  - moves new file to target/document-source location
-  //    * @param foundDoc FoundDoc
-  //    * @param temp path that the new file is located at
-  //    * @param archive the path that the file needs to be copied to
-  //    * @param target an optional path to set the new source to if not using the source from the document
-  //    * @return path of the target/document-source location
-  //    */
-  def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] = {
-    val targetSource = target.getOrElse(foundDoc.doc.source)
-    archiveDocument(foundDoc, targetSource, archive).map(_ => fileProcessor.moveFile(temp, targetSource))
-  }
-
-  /**
    * generate an archive for the found document
    *
    * @param targetPath the found doc
@@ -462,6 +407,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
   def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
     if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
+      throw new ZeroLengthFileException(tempPath, foundDoc.doc)
     }
     targetPathGenerator(foundDoc) match {
       case Some(targetPath) =>
@@ -472,7 +418,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         if (newHash != oldHash) {
           // found doc is not archived, send to archiver
           val archivePath = getArchivePath(targetPath, oldHash)
-          Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+          Await.result(fileProcessor.updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
         } else {
           fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
         }

@@ -159,7 +159,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(parentResultOne.exists(_.wasAcknowledged()))
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
 
     docUpdate.value.derivative should be(true)
     Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath) should be(true)
@@ -190,9 +190,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
     val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
 
-    def docId(d: handler.FoundDoc) = d.doc._id
+    def docId(d: FoundDoc) = d.doc._id
 
-    def uuid(d: handler.FoundDoc) = d.doc.uuid
+    def uuid(d: FoundDoc) = d.doc.uuid
 
     origDoc.map(docId) should be(fetchedDoc.map(docId))
     origDoc.flatMap(uuid) should be(fetchedDoc.flatMap(uuid))
@@ -287,7 +287,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       tags = Some(List[String]())
     )
     assertThrows[ZeroLengthFileException] {
-      handler.archiveOrProcess(handler.FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+      handler.archiveOrProcess(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
     }
   }
 
@@ -323,7 +323,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     result.value.wasAcknowledged() should be(true)
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (doclibDoc.metadata.getOrElse(Nil) ::: metadataMap: _*)
     docUpdate.value.tags.value should contain only (doclibDoc.tags.getOrElse(Nil) ::: extraTags: _*)
@@ -360,7 +360,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(result.get.wasAcknowledged())
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(handler.FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (metadataMap: _*)
     docUpdate.value.tags.value should contain only (extraTags: _*)

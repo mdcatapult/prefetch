@@ -1,14 +1,21 @@
 package io.mdcatapult.doclib.util
 
+import cats.data.OptionT
+import cats.implicits.catsStdInstancesForFuture
+import com.typesafe.scalalogging.LazyLogging
+import io.mdcatapult.doclib.handlers.FoundDoc
+import io.mdcatapult.doclib.messages.DoclibMsg
 import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
+import io.mdcatapult.klein.queue.Sendable
 
 import java.io.{File, FileNotFoundException}
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import scala.annotation.tailrec
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class FileProcessor(doclibRoot: String) {
+class FileProcessor(doclibRoot: String, archiver: Sendable[DoclibMsg])(implicit executionContext: ExecutionContext) extends LazyLogging {
 
   def process(newHash: String,
               oldHash: String,
@@ -125,5 +132,58 @@ class FileProcessor(doclibRoot: String) {
       }
     }
     remove(Option(file))
+  }
+
+    /**
+      * updates a physical file
+      *  - copies existing file to archive location
+      *  - adds document to archive collection
+      *  - moves new file to target/document-source location
+      * @param foundDoc FoundDoc
+      * @param temp path that the new file is located at
+      * @param archive the path that the file needs to be copied to
+      * @param target an optional path to set the new source to if not using the source from the document
+      * @return path of the target/document-source location
+      */
+  def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] = {
+    val targetSource = target.getOrElse(foundDoc.doc.source)
+    archiveDocument(foundDoc, targetSource, archive).map(_ => moveFile(temp, targetSource))
+  }
+
+  /**
+   *
+   * @param foundDoc      document to be archived
+   * @param archiveSource string file to copy
+   * @param archiveTarget string location to archive the document to
+   * @return
+   */
+  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
+    logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
+    (for {
+      archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
+      _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
+    } yield archivePath).value
+  }
+
+  /**
+   * sends documents to archiver for processing.
+   *
+   * @todo send errors to queue without killing the rest of the process
+   */
+  def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
+    val messages =
+      for {
+        doc <- docs
+        id = doc._id.toHexString
+      } yield DoclibMsg(id)
+
+    Try(messages.foreach(msg => archiver.send(msg))) match {
+      case Success(_) =>
+        logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
+        Future.successful(())
+      case Failure(e) =>
+        logger.error("failed to send doc to archive", e)
+        Future.successful(())
+    }
   }
 }
