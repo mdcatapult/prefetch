@@ -17,8 +17,8 @@ class Archiver(archiver: Sendable[DoclibMsg])(implicit executionContext: Executi
   /**
    * updates a physical file
    *  - copies existing file to archive location
-   *  - adds document to archive collection
    *  - moves new file to target/document-source location
+   *  - publishes message to archiver
    * @param foundDoc FoundDoc
    * @param temp path that the new file is located at
    * @param archive the path that the file needs to be copied to
