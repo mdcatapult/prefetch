@@ -1,6 +1,5 @@
 package io.mdcatapult.doclib.util
 
-import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.File
@@ -18,12 +17,13 @@ class FileProcessorSpec extends AnyFlatSpec {
   }
 
   "Moving a file with the same source and target" should "return the original file path" in {
-    val actualPath = fileProcessor.moveFile(new File(path), new File(path))
-    assert(actualPath.success.value == new File(path).toPath)
+    val src = File.createTempFile("source", ".txt")
+    val actualPath = fileProcessor.moveFile(src.getPath, src.getPath)
+    assert(actualPath.get.toString == src.getAbsolutePath)
   }
 
   "Moving a file from source to target" should "return the new file path" in {
-    val target = "tmp/target.txt"
+    val target = File.createTempFile("target", ".txt").getPath
     val src = File.createTempFile("source", ".txt")
     val actualPath = fileProcessor.moveFile(src.getPath, target)
     assert(actualPath.get.toString == target)

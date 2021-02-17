@@ -53,7 +53,7 @@ import scala.util.{Failure, Success, Try}
  * hashes it will attempt to archive and update appropriately
  *
  * @param downstream   downstream queue to push Document Library messages onto
- * @param archiver     queue to push all archived documents to
+ * @param archiverQueue queue to push all archived documents to
  * @param readLimiter  used to limit number of concurrent reads from Mongo
  * @param writeLimiter used to limit number of concurrent writes to Mongo
  * @param ec           ExecutionContext
@@ -85,7 +85,8 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
 
   private val sharedConfig = FileConfig.getSharedConfig(config)
   private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
-  private val archiver = new Archiver(archiverQueue, fileProcessor)
+
+  private val archiver = new Archiver(archiverQueue)
 
   private val doclibRoot = sharedConfig.doclibRoot
   private val archiveDirName = sharedConfig.archiveDirName
@@ -419,7 +420,7 @@ class PrefetchHandler(downstream: Sendable[DoclibMsg],
         if (newHash != oldHash) {
           // found doc is not archived, send to archiver
           val archivePath = getArchivePath(targetPath, oldHash)
-          Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+          Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath), fileProcessor), Duration.Inf)
         } else {
           fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
         }

@@ -33,35 +33,28 @@ class FileProcessor(doclibRoot: String) {
    * @param target relative target path to move file to
    * @return
    */
-  def moveFile(source: String, target: String): Option[Path] = moveFile(
-    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
-    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
-  ) match {
-    case Success(_) => Some(Paths.get(target))
-    case Failure(err) => throw err
-  }
 
-  /**
-   * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-   *
-   * @param source current absolute source path
-   * @param target absolute target path to move file to
-   * @return
-   */
+  def moveFile(sourcePath: String, target: String): Option[Path] = {
+    val source = Paths.get(s"$doclibRoot$sourcePath").toAbsolutePath.toFile
+    val destination = Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
 
-  def moveFile(source: File, target: File): Try[Path] = {
-    Try({
-      if (source == target) {
-        target.toPath
+    val result = Try({
+      if (source == destination) {
+        destination.toPath
       } else {
-        target.getParentFile.mkdirs
+        destination.getParentFile.mkdirs
         val latency = fileOperationLatency.labels("move").startTimer()
-        val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
+        val path = Files.move(source.toPath, destination.toPath, StandardCopyOption.REPLACE_EXISTING)
         latency.observeDuration()
         path
       }
     })
+      result match {
+      case Success(_) => Some(destination.toPath)
+      case Failure(err) => throw err
+    }
   }
+
 
   /**
    * Copies a file to a new location
@@ -98,6 +91,8 @@ class FileProcessor(doclibRoot: String) {
   def removeFile(source: String): Unit = {
     val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
     val latency = fileOperationLatency.labels("remove").startTimer()
+    remove(Option(file))
+    latency.observeDuration()
 
     @tailrec
     def remove(o: Option[File]): Unit = {
@@ -108,8 +103,5 @@ class FileProcessor(doclibRoot: String) {
         case _ => ()
       }
     }
-
-    remove(Option(file))
-    latency.observeDuration()
   }
 }

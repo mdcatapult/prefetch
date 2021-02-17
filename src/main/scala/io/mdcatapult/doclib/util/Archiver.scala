@@ -12,7 +12,7 @@ import java.nio.file.Path
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)(implicit executionContext: ExecutionContext) extends LazyLogging {
+class Archiver(archiver: Sendable[DoclibMsg])(implicit executionContext: ExecutionContext) extends LazyLogging {
 
   /**
    * updates a physical file
@@ -25,7 +25,8 @@ class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)(impl
    * @param target an optional path to set the new source to if not using the source from the document
    * @return path of the target/document-source location
    */
-  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None): Future[Option[Path]] = {
+  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None,
+                      fileProcessor: FileProcessor): Future[Option[Path]] = {
     val archiveSource = target.getOrElse(foundDoc.doc.source)
     logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
@@ -55,5 +56,4 @@ class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)(impl
         Future.successful(())
     }
   }
-
 }
