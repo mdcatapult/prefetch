@@ -2,12 +2,12 @@ package io.mdcatapult.doclib.handlers
 
 import akka.stream.Materializer
 import better.files._
-import cats.data._
+import cats.data.OptionT
 import cats.implicits._
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.consumer.{ConsumerHandler, GenericHandlerReturn, HandlerReturn}
-import io.mdcatapult.doclib.flag.{FlagContext, MongoFlagStore}
+import io.mdcatapult.doclib.consumer.{ConsumerHandler, GenericHandlerResult}
+import io.mdcatapult.doclib.flag.MongoFlagContext
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
@@ -63,7 +63,7 @@ import scala.util.{Failure, Success, Try}
 class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       archiver: Sendable[DoclibMsg],
                       val readLimiter: LimitedExecution,
-                      writeLimiter: LimitedExecution)
+                      val writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
                       m: Materializer,
                       config: Config,
@@ -90,6 +90,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   private val consumerName = consumerNameAndQueue.name
 
+  val version: Version = Version.fromConfig(config)
+
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
 
@@ -105,29 +107,30 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                              origins: List[Origin] = Nil,
                              download: Option[DownloadResult] = None)
 
-  override def handle(msg: PrefetchMsg, key: String): Future[Option[GenericHandlerReturn]] = {
+  override def handle(msg: PrefetchMsg, key: String): Future[Option[GenericHandlerResult]] = {
     logReceived(msg.source)
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
-    val flags = new MongoFlagStore(version, DoclibDocExtractor(), collection, nowUtc)
-    val flagContext: FlagContext = flags.findFlagContext(Some(consumerNameAndQueue.name))
+    val flagContext = new MongoFlagContext(key, version, collection, nowUtc)
 
     val prefetchProcess =
       for {
-        found: FoundDoc <- OptionT(findDocument(toUri(msg.source.replaceFirst(s"^$doclibRoot", "")), msg.derivative.getOrElse(false)))
-        if !docExtractor.isRunRecently(found.doc) && valid(msg, found)
+        found: FoundDoc <- OptionT {
+          val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
+          findDocument(prefetchUri, msg.derivative.getOrElse(false))
+        }
+        if !flagContext.isRunRecently(found.doc) && valid(msg, found)
         started: UpdatedResult <- OptionT.liftF(flagContext.start(found.doc))
         newDoc <- OptionT(process(found, msg))
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-      } yield GenericHandlerReturn(found.doc)
+      } yield GenericHandlerResult(found.doc)
 
     postHandleProcess(
-      message = msg,
-      handlerReturn = prefetchProcess.value,
-      supervisorQueueOpt = Some(supervisor),
+      msg.source,
+      prefetchProcess.value,
       flagContext,
-      collectionOpt = None
+      supervisor
     )
   }
 

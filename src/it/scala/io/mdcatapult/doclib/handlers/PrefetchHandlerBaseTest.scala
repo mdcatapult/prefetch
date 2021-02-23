@@ -3,7 +3,7 @@ package io.mdcatapult.doclib.handlers
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
@@ -52,7 +52,7 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.derivatives-collection"))
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))

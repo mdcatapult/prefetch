@@ -9,7 +9,7 @@ import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
@@ -44,6 +44,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     s"""
       |consumer {
       |  name = "prefetch"
+      |  queue = "prefetch"
       |}
       |appName = $${?consumer.name}
       |doclib {
@@ -84,7 +85,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val readLimiter = SemaphoreLimitedExecution.create(1)

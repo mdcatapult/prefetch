@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
@@ -11,7 +10,7 @@ import better.files.{File => ScalaFile}
 import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.klein.queue.Sendable
@@ -42,6 +41,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
     s"""
        |consumer {
        |  name = "prefetch"
+       |  queue = "prefetch"
        |}
        |appName = $${?consumer.name}
        |doclib {
@@ -80,7 +80,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val readLimiter = SemaphoreLimitedExecution.create(1)
