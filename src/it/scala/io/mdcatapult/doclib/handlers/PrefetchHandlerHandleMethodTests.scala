@@ -37,7 +37,6 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   private val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
   private val awaitDuration = 5 seconds
-  private val prefetchKey = "prefetch"
 
   "The PrefetchHandler handle method" should
     "return a SilentValidationException given a db record exists from the previous day" in {
@@ -54,7 +53,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val futureResult = for {
         _ <- collection.insertOne(doclibDoc).toFuture()
         inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
-        handlerRes <- handler.handle(inputMessage, prefetchKey)
+        handlerRes <- handler.handle(inputMessage)
       } yield handlerRes
 
       intercept[SilentValidationException] {
@@ -68,13 +67,13 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
       intercept[FileNotFoundException] {
-        Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration)
+        Await.result(handler.handle(inputMessage), awaitDuration)
       }
     }
 
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val result = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
+      val result = Await.result(handler.handle(inputMessage), awaitDuration).get
       assert(result.doclibDoc.source == "ingress/test_1.csv")
     }
 
