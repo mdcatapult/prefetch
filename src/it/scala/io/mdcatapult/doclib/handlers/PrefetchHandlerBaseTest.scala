@@ -4,7 +4,7 @@ import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
-import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
+import io.mdcatapult.doclib.models.{ConsumerConfig, DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -37,12 +37,26 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
        |    target-dir: "derivatives"
        |  }
        |}
+       |consumer {
+       |  name = "prefetch"
+       |  queue = "prefetch"
+       |  concurrency = 1
+       |  exchange = "doclib"
+       |}
        |mongo {
        |  doclib-database: "prefetch-test"
        |  documents-collection: "documents"
        |  derivatives-collection : "derivatives"
        |}
     """.stripMargin).withFallback(ConfigFactory.load())
+
+  implicit val consumerConfig: ConsumerConfig =
+    ConsumerConfig(
+      config.getString("consumer.name"),
+      config.getInt("consumer.concurrency"),
+      config.getString("consumer.queue"),
+      Option(config.getString("consumer.exchange"))
+    )
 
   /** Initialise Mongo * */
   implicit val codecs: CodecRegistry = MongoCodecs.get

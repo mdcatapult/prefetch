@@ -6,7 +6,8 @@ import cats.data.OptionT
 import cats.implicits._
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.doclib.consumer.{ConsumerHandler, GenericHandlerResult}
+import io.mdcatapult.doclib.consumer.HandlerLogStatus.NoDocumentError
+import io.mdcatapult.doclib.consumer.{AbstractHandler, Failed, HandlerResult}
 import io.mdcatapult.doclib.flag.MongoFlagContext
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.metrics.Metrics._
@@ -68,8 +69,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       m: Materializer,
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
-                      derivativesCollection: MongoCollection[ParentChildMapping])
-  extends ConsumerHandler[PrefetchMsg]
+                      derivativesCollection: MongoCollection[ParentChildMapping],
+                      consumerConfig: ConsumerConfig)
+  extends AbstractHandler[PrefetchMsg]
     with TargetPath {
 
 
@@ -85,10 +87,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   private val localDirName = config.getString("doclib.local.target-dir")
   private val remoteDirName = config.getString("doclib.remote.target-dir")
 
-  private implicit val consumerNameAndQueue: ConsumerNameAndQueue =
-    ConsumerNameAndQueue(config.getString("consumer.name"), config.getString("consumer.queue"))
-
-  private val consumerName = consumerNameAndQueue.name
+  private val consumerName = consumerConfig.name
 
   val version: Version = Version.fromConfig(config)
 
@@ -107,31 +106,41 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                              origins: List[Origin] = Nil,
                              download: Option[DownloadResult] = None)
 
-  override def handle(msg: PrefetchMsg): Future[Option[GenericHandlerResult]] = {
-    logReceived(msg.source)
+  case class PrefetchResult(doclibDoc: DoclibDoc, foundDoc: FoundDoc) extends HandlerResult
+
+  override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
-    val flagContext = new MongoFlagContext(consumerNameAndQueue.name, version, collection, nowUtc)
+    val flagContext = new MongoFlagContext(consumerConfig.name, version, collection, nowUtc)
 
-    val prefetchProcess =
-      for {
-        found: FoundDoc <- OptionT {
-          val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
-          findDocument(prefetchUri, msg.derivative.getOrElse(false))
+    val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
+
+    findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
+      case None =>
+        incrementHandlerCount(NoDocumentError)
+        logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
+        Future.failed(new Exception(s"no document found for URI: $prefetchUri"))
+      case Some(foundDoc) =>
+        // if we have a foundDoc we can use the postHandleProcess which requires a doclib document id
+        val foundDocId = foundDoc.doc._id.toHexString
+        logReceived(foundDocId)
+
+        val prefetchProcess = {
+          if (flagContext.isRunRecently(foundDoc.doc)) {
+            Future.failed(new Exception(s"document: ${foundDoc.doc._id} run too recently")) //TODO is this exception useful?
+          } else {
+            (for {
+              _ <- OptionT(Future(Option(valid(msg, foundDoc))))
+              started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
+              newDoc <- OptionT(process(foundDoc, msg))
+              _ <- OptionT.liftF(processParent(newDoc, msg))
+              _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
+            } yield PrefetchResult(newDoc, foundDoc)).value
+          }
         }
-        if !flagContext.isRunRecently(found.doc) && valid(msg, found)
-        started: UpdatedResult <- OptionT.liftF(flagContext.start(found.doc))
-        newDoc <- OptionT(process(found, msg))
-        _ <- OptionT.liftF(processParent(newDoc, msg))
-        _ <- OptionT.liftF(flagContext.end(found.doc, noCheck = started.modifiedCount > 0))
-      } yield GenericHandlerResult(found.doc)
 
-    postHandleProcess(
-      msg.source,
-      prefetchProcess.value,
-      flagContext,
-      supervisor
-    )
+        postHandleProcess(foundDocId, prefetchProcess, flagContext, supervisor, collection)
+    }.flatten
   }
 
   def zeroLength(filePath: String): Boolean = {
@@ -792,6 +801,5 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       }
     )
   }
-
 
 }
