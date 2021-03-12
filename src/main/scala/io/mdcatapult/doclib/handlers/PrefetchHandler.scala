@@ -116,31 +116,45 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
+      case Some(foundDoc) =>
+        foundDocumentProcess(msg, foundDoc, flagContext)
+
       case None =>
+        // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
         logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
         Future.failed(new Exception(s"no document found for URI: $prefetchUri"))
-      case Some(foundDoc) =>
-        // if we have a foundDoc we can use the postHandleProcess which requires a doclib document id
-        val foundDocId = foundDoc.doc._id.toHexString
-        logReceived(foundDocId)
-
-        val prefetchProcess = {
-          if (flagContext.isRunRecently(foundDoc.doc)) {
-            Future.failed(new Exception(s"document: ${foundDoc.doc._id} run too recently")) //TODO is this exception useful?
-          } else {
-            (for {
-              _ <- OptionT(Future(Option(valid(msg, foundDoc))))
-              started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
-              newDoc <- OptionT(process(foundDoc, msg))
-              _ <- OptionT.liftF(processParent(newDoc, msg))
-              _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
-            } yield PrefetchResult(newDoc, foundDoc)).value
-          }
-        }
-
-        postHandleProcess(foundDocId, prefetchProcess, flagContext, supervisor, collection)
     }.flatten
+  }
+
+  def foundDocumentProcess(msg: PrefetchMsg,
+                           foundDoc: FoundDoc,
+                           flagContext: MongoFlagContext): Future[Option[PrefetchResult]] = {
+
+    val foundDocId = foundDoc.doc._id.toHexString
+    logReceived(foundDocId)
+
+    val prefetchProcess = {
+      if (flagContext.isRunRecently(foundDoc.doc)) {
+        Future.failed(new Exception(s"document: ${foundDoc.doc._id} run too recently")) //TODO is this exception useful?
+      } else {
+        (for {
+          _ <- OptionT(Future(Option(valid(msg, foundDoc))))
+          started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
+          newDoc <- OptionT(process(foundDoc, msg))
+          _ <- OptionT.liftF(processParent(newDoc, msg))
+          _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
+        } yield PrefetchResult(newDoc, foundDoc)).value
+      }
+    }
+
+    postHandleProcess(
+      documentId = foundDocId,
+      handlerResult = prefetchProcess,
+      flagContext = flagContext,
+      supervisorQueue = supervisor,
+      collection = collection
+    )
   }
 
   def zeroLength(filePath: String): Boolean = {

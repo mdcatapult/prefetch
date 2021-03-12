@@ -14,7 +14,9 @@ import org.mongodb.scala.MongoCollection
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterAll
 
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.DurationInt
 
 trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
 
@@ -73,8 +75,8 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
   val writeLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
   override def afterAll(): Unit = {
-    //    Await.result(collection.drop().toFutureOption(), 5.seconds)
-    //    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
+    Await.result(collection.drop().toFutureOption(), 5.seconds)
+    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd / "test" / "prefetch-test"))
   }
