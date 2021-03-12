@@ -337,7 +337,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     targetPath match {
       case withoutExt(path, file) => s"${getTargetPath(path, archiveDirName)}/$file/$hash"
       case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
-      case _ => throw new RuntimeException("Unable to identify path and filename")
+      case _ => throw new RuntimeException(s"Unable to identify path and filename for targetPath: $targetPath")
     }
   }
 
@@ -354,8 +354,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
     if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
-      throw new ZeroLengthFileException(tempPath, foundDoc.doc)
     }
+
     targetPathGenerator(foundDoc) match {
       case Some(targetPath) =>
         val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
@@ -407,7 +407,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val pathNormalisedSource = {
       val rawPath =
         source match {
-          case Some(path: Path) => path.toString
+          case Some(path) => path.toString
           case None => foundDoc.doc.source
         }
       val root = config.getString("doclib.root")
