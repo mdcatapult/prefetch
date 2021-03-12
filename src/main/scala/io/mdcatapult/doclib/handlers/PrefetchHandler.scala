@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.Metrics.fileOperationLatency
+import io.mdcatapult.doclib.util.{Archiver, FileConfig, FileProcessor}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -35,15 +35,14 @@ import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 
-import java.io.{File, FileInputStream, FileNotFoundException}
+import java.io.FileInputStream
 import java.nio.file.attribute.BasicFileAttributeView
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
-import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 /**
  * Handler to perform prefetch of source supplied in Prefetch Messages
@@ -52,17 +51,17 @@ import scala.util.{Failure, Success, Try}
  * all files receive an md5 hash of its contents if there is a detectable difference between
  * hashes it will attempt to archive and update appropriately
  *
- * @param supervisor   downstream queue to push Document Library messages onto
- * @param archiver     queue to push all archived documents to
- * @param readLimiter  used to limit number of concurrent reads from Mongo
- * @param writeLimiter used to limit number of concurrent writes to Mongo
- * @param ec           ExecutionContext
- * @param m            Materializer
- * @param config       Config
- * @param collection   MongoCollection[Document] to read documents from
+ * @param supervisor    downstream queue to push Document Library messages onto
+ * @param archiverQueue queue to push all archived documents to
+ * @param readLimiter   used to limit number of concurrent reads from Mongo
+ * @param writeLimiter  used to limit number of concurrent writes to Mongo
+ * @param ec            ExecutionContext
+ * @param m             Materializer
+ * @param config        Config
+ * @param collection    MongoCollection[Document] to read documents from
  */
 class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
-                      archiver: Sendable[DoclibMsg],
+                      archiverQueue: Sendable[DoclibMsg],
                       val readLimiter: LimitedExecution,
                       val writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
@@ -81,11 +80,15 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   private val tika = new Tika()
   val remoteClient = new RemoteClient()
 
-  private val doclibRoot: String = s"${config.getString("doclib.root").replaceFirst("""/+$""", "")}/"
+  private val sharedConfig = FileConfig.getSharedConfig(config)
+  private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
 
-  private val archiveDirName = config.getString("doclib.archive.target-dir")
-  private val localDirName = config.getString("doclib.local.target-dir")
-  private val remoteDirName = config.getString("doclib.remote.target-dir")
+  private val archiver = new Archiver(archiverQueue)
+
+  private val doclibRoot = sharedConfig.doclibRoot
+  private val archiveDirName = sharedConfig.archiveDirName
+  private val localDirName = sharedConfig.localDirName
+  private val remoteDirName = sharedConfig.remoteDirName
 
   private val consumerName = consumerConfig.name
 
@@ -93,18 +96,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
-
-  /**
-   * Case class for handling the various permutations of local and remote documents
-   *
-   * @param doc      Document
-   * @param origins  PrefetchOrigin
-   * @param download DownloadResult
-   */
-  sealed case class FoundDoc(doc: DoclibDoc,
-                             archiveable: List[DoclibDoc] = Nil,
-                             origins: List[Origin] = Nil,
-                             download: Option[DownloadResult] = None)
 
   case class PrefetchResult(doclibDoc: DoclibDoc, foundDoc: FoundDoc) extends HandlerResult
 
@@ -273,107 +264,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     ).distinct
 
   /**
-   * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-   *
-   * @param source current relative source path
-   * @param target relative target path to move file to
-   * @return
-   */
-  def moveFile(source: String, target: String): Option[Path] = moveFile(
-    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
-    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
-  ) match {
-    case Success(_) => Some(Paths.get(target))
-    case Failure(err) => throw err
-  }
-
-  /**
-   * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
-   *
-   * @param source current absolute source path
-   * @param target absolute target path to move file to
-   * @return
-   */
-  def moveFile(source: File, target: File): Try[Path] = {
-    Try({
-      if (source == target) {
-        target.toPath
-      } else {
-        target.getParentFile.mkdirs
-        val latency = fileOperationLatency.labels("move").startTimer()
-        val path = Files.move(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
-        latency.observeDuration()
-        path
-      }
-    })
-  }
-
-  /**
-   * Copies a file to a new location
-   *
-   * @param source source path
-   * @param target target path
-   * @return
-   */
-  def copyFile(source: String, target: String): Option[Path] = copyFile(
-    Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile,
-    Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
-  ) match {
-    case Success(_) => Some(Paths.get(target))
-    case Failure(_: FileNotFoundException) => None
-    case Failure(err) => throw err
-  }
-
-  /**
-   * Copies a file to a new location
-   *
-   * @param source source path
-   * @param target target path
-   * @return
-   */
-  def copyFile(source: File, target: File): Try[Path] =
-    Try({
-      target.getParentFile.mkdirs
-      val latency = fileOperationLatency.labels("copy").startTimer()
-      val path = Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
-      latency.observeDuration()
-      path
-    })
-
-  /**
-   * Silently remove file and empty parent dirs
-   *
-   * @param source String
-   */
-  def removeFile(source: String): Unit = {
-    val file = Paths.get(s"$doclibRoot$source").toAbsolutePath.toFile
-    val latency = fileOperationLatency.labels("remove").startTimer()
-    removeFile(file)
-    latency.observeDuration()
-  }
-
-
-  /**
-   * Silently remove file and empty parent dirs
-   *
-   * @param file File
-   */
-  def removeFile(file: File): Unit = {
-
-    @tailrec
-    def remove(o: Option[File]): Unit = {
-      o match {
-        case Some(f) if f.isFile || Option(f.listFiles()).exists(_.isEmpty) =>
-          file.delete()
-          remove(Option(f.getParentFile))
-        case _ => ()
-      }
-    }
-
-    remove(Option(file))
-  }
-
-  /**
    * tests if source string starts with the configured remote target-dir
    *
    * @param source String
@@ -433,59 +323,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   *
-   * @param foundDoc      document to be archived
-   * @param archiveSource string file to copy
-   * @param archiveTarget string location to archive the document to
-   * @return
-   */
-  def archiveDocument(foundDoc: FoundDoc, archiveSource: String, archiveTarget: String): Future[Option[Path]] = {
-    logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
-    (for {
-      archivePath: Path <- OptionT.fromOption[Future](copyFile(archiveSource, archiveTarget))
-      _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
-    } yield archivePath).value
-  }
-
-  /**
-   * sends documents to archiver for processing.
-   *
-   * @todo send errors to queue without killing the rest of the process
-   */
-  def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
-    val messages =
-      for {
-        doc <- docs
-        id = doc._id.toHexString
-      } yield DoclibMsg(id)
-
-    Try(messages.foreach(msg => archiver.send(msg))) match {
-      case Success(_) =>
-        logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
-        Future.successful(())
-      case Failure(e) =>
-        logger.error("failed to send doc to archive", e)
-        Future.successful(())
-    }
-  }
-
-  //  /**
-  //    * updates a physical file
-  //    *  - copies existing file to archive location
-  //    *  - adds document to archive collection
-  //    *  - moves new file to target/document-source location
-  //    * @param foundDoc FoundDoc
-  //    * @param temp path that the new file is located at
-  //    * @param archive the path that the file needs to be copied to
-  //    * @param target an optional path to set the new source to if not using the source from the document
-  //    * @return path of the target/document-source location
-  //    */
-  def updateFile(foundDoc: FoundDoc, temp: String, archive: String, target: Option[String] = None): Future[Option[Path]] = {
-    val targetSource = target.getOrElse(foundDoc.doc.source)
-    archiveDocument(foundDoc, targetSource, archive).map(_ => moveFile(temp, targetSource))
-  }
-
-  /**
    * generate an archive for the found document
    *
    * @param targetPath the found doc
@@ -505,7 +342,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Handles the potential update of a document and is associated file based on supplied properties
+   * Handles the potential update of a document and its associated file based on supplied properties
+   * by archiving, moving, or removing the file.
    *
    * @param foundDoc            the found document
    * @param tempPath            the path of the temporary file either remote or local
@@ -513,32 +351,25 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param inRightLocation     function to test if the current document source path is in the right location
    * @return
    */
-  def handleFileUpdate(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
-    if (!zeroLength(tempPath)) {
-      val newHash: String = foundDoc.doc.hash
-      targetPathGenerator(foundDoc) match {
-        case Some(targetPath) =>
-          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-          val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
-
-          if (newHash != oldHash && foundDoc.doc.derivative) {
-            // File already exists at target location but is not the same file.
-            // Overwrite it and continue because we don't archive derivatives.
-            moveFile(tempPath, targetPath)
-          } else if (newHash != oldHash) {
-            // file already exists at target location but is not the same file, archive the old one then add the new one
-            val archivePath = getArchivePath(targetPath, oldHash)
-            Await.result(updateFile(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
-          } else if (!inRightLocation(foundDoc.doc.source)) {
-            moveFile(tempPath, targetPath)
-          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
-            removeFile(tempPath)
-            None
-          }
-        case None => None
-      }
-    } else {
+  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
+    if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
+      throw new ZeroLengthFileException(tempPath, foundDoc.doc)
+    }
+    targetPathGenerator(foundDoc) match {
+      case Some(targetPath) =>
+        val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+        val newHash: String = foundDoc.doc.hash
+        val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+
+        if (newHash != oldHash) {
+          // found doc is not archived, send to archiver
+          val archivePath = getArchivePath(targetPath, oldHash)
+          Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath), fileProcessor), Duration.Inf)
+        } else {
+          fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
+        }
+      case None => None
     }
   }
 
@@ -553,7 +384,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
     val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) =>
-        val source = handleFileUpdate(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
+        val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
         (source, foundDoc.origins ::: filteredDocOrigin)
 
@@ -564,10 +395,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           remoteOrigins match {
             case origin :: _ =>
               // has at least one remote origin and needs relocating to remote folder
-              handleFileUpdate(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+              archiveOrProcess(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
             case _ =>
               // does not need remapping to remote location
-              handleFileUpdate(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+              archiveOrProcess(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
           }
 
         (source, currentOrigins)

@@ -34,29 +34,26 @@ The app allows runtime configuration via environment variables
 * **MONGO_PASSWORD** - login password for mongodb
 * **MONGO_HOST** - host to connect to
 * **MONGO_PORT** - optional: port to connect to (default: 27017) 
-* **MONGO_DATABASE** - database to connect to
-* **MONGO_AUTH_DB** - optional: database to authenticate against (default: admin)
-* **MONGO_COLLECTION** - default collection to read and write to
+* **MONGO_DOCLIB_DATABASE** - the doclib database
+* **MONGO_AUTHSOURCE** - optional: database to authenticate against (default: admin)
+* **MONGO_DOCUMENTS_COLLECTION** - the documents collection
 * **RABBITMQ_USERNAME** - login username for rabbitmq
 * **RABBITMQ_PASSWORD** - login password for rabbitmq
 * **RABBITMQ_HOST** - host to connect to
 * **RABBITMQ_PORT** - optional: port to connect to (default: 5672)
 * **RABBITMQ_VHOST** - optional: vhost to connect to (default: /)
-* **RABBITMQ_EXCHANGE** - optional: exchange that the consumer should be bound to
-* **UPSTREAM_QUEUE** - optional: name of the queue to consume (default: klein.prefetch)
-* **UPSTREAM_CONCURRENT** - optional: number of messages to handle concurrently (default: 1)
-* **DOWNSTREAM_QUEUE** - optional: name of queue to enqueue new files to (default: klein.preprocess)
+* **RABBITMQ_DOCLIB_EXCHANGE** - optional: exchange that the consumer should be bound to
+* **CONSUMER_QUEUE** - optional: name of the queue to consume (default: klein.prefetch)
+* **CONSUMER_CONCURRENCY** - optional: number of messages to handle concurrently (default: 1)
+* **DOCLIB_SUPERVISOR_QUEUE** - optional: the supercisor queue
 * **DOCLIB_ROOT** - optional: The filesystem root that the document library (defaults: /)
 * **DOCLIB_REMOTE_TARGET** - The target location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
 * **DOCLIB_REMOTE_TEMP** - The temporary location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
 * **DOCLIB_ARCHIVE_TARGET** - The location, relative to the DOCLIB_ROOT, to store remote files that are archived via prefetch
 * **DOCLIB_LOCAL_TARGET** - The location, relative to the DOCLIB_ROOT, to store local files that are managed via prefetch
 * **DOCLIB_LOCAL_TEMP** - A temp folder, relative to the DOCLIB_ROOT, for local files waiting to be added/updated to the document library
-* **AWS_ACCESS_KEY_ID** - optional: AWS access key for use when not run withing AWS 
-* **AWS_SECRET_ACCESS_KEY** - optional: AWS secret key for use when not run withing AWS
-* **SEND_ERRORS** - send errors to the errors queue after retries exhausted and message failed (default: true)
 * **ADMIN_PORT** - Port that prometheus metrics are exposed on (default: 9090)
-* **APP_NAME** - Name of the consumer (default: prefetch)
+* **CONSUMER_NAME** - Name of the consumer (default: prefetch)
 
 ## Messages
 
@@ -95,3 +92,9 @@ The following metrics are exposed via prometheus on port `ADMIN_PORT` (default `
 * `mongo_latency` containing `consumer` and `operation` (update_document, insert_document, insert_parent_child_mapping & update_parent_child_mapping)
 * `handler_count` containing `consumer` and `result` (success, dropped, doclib_doc_exception and unknown_error)
 * `file_operation_latency` containing `source`, `target`, `size` and `operation` (move, remove or copy)
+
+## Testing
+```bash
+docker-compose up -d
+sbt clean test it:test
+```

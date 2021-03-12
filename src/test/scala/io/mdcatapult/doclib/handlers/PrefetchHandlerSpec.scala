@@ -165,18 +165,18 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative local path for local files from a relative ingress path" in {
-      val result = handler.getLocalUpdateTargetPath(handler.FoundDoc(createNewDoc("ingress/cheese/stinking-bishop.cz")))
+      val result = handler.getLocalUpdateTargetPath(FoundDoc(createNewDoc("ingress/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
     "return an relative local path for local files from a relative local path" in {
-      val result = handler.getLocalUpdateTargetPath(handler.FoundDoc(createNewDoc("local/cheese/stinking-bishop.cz")))
+      val result = handler.getLocalUpdateTargetPath(FoundDoc(createNewDoc("local/cheese/stinking-bishop.cz")))
       assert(result.get == "local/cheese/stinking-bishop.cz")
     }
 
 
     "return an relative remote path for remote files from a relative remote ingress path" in {
-      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(doc =
+      val result = handler.getRemoteUpdateTargetPath(FoundDoc(doc =
         createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         download = Some(DownloadResult("remote-ingress/cheese/stinking-bishop.cz", "1234567890", target = Some("remote/cheese/stinking-bishop.cz")))
       ))
@@ -184,7 +184,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
 
     "return an relative remote path for remote files from a relative remote path" in {
-      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(createNewDoc("remote/cheese/stinking-bishop.cz")))
+      val result = handler.getRemoteUpdateTargetPath(FoundDoc(createNewDoc("remote/cheese/stinking-bishop.cz")))
       assert(result.get == "remote/cheese/stinking-bishop.cz")
     }
 
@@ -235,7 +235,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     )
 
     "return an relative doclib path for remote files from a relative remote-ingress path" in {
-      val result = handler.getRemoteUpdateTargetPath(handler.FoundDoc(
+      val result = handler.getRemoteUpdateTargetPath(FoundDoc(
         doc = createNewDoc("remote-ingress/cheese/stinking-bishop.cz"),
         Nil,
         Nil,
@@ -253,7 +253,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = handler.FoundDoc(
+      val foundDoc = FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         Nil,
         Nil,
@@ -272,7 +272,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = handler.FoundDoc(
+      val foundDoc = FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         Nil,
         Nil,
@@ -291,7 +291,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = handler.FoundDoc(
+      val foundDoc = FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         Nil,
         Nil,
@@ -364,7 +364,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     val oldDoc = createOldDoc(15)
 
-    val oldFoundDoc = handler.FoundDoc(
+    val oldFoundDoc = FoundDoc(
       doc = oldDoc,
       Nil,
       Nil,
@@ -383,7 +383,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     val newDoc = createNewDoc("/a/file/somewhere.pdf")
 
-    val foundDoc = handler.FoundDoc(
+    val foundDoc = FoundDoc(
       doc = newDoc,
       Nil,
       Nil,
@@ -400,7 +400,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     val newDoc = createNewDoc("/a/file/somewhere.pdf")
 
-    val foundDoc = handler.FoundDoc(
+    val foundDoc = FoundDoc(
       doc = newDoc,
       Nil,
       Nil,
@@ -428,7 +428,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = handler.FoundDoc(
+      val foundDoc = FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         Nil,
         Nil,
@@ -447,7 +447,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
         metadata = None,
         headers = None
       )
-      val foundDoc = handler.FoundDoc(
+      val foundDoc = FoundDoc(
         doc = createNewDoc("ingress/ebi/supplementary_data/NON_OA/PMC1953900-PMC1957899/PMC1955304.zip"),
         Nil,
         Nil,
