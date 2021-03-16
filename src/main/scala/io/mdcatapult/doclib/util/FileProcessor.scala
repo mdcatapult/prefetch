@@ -30,7 +30,7 @@ class FileProcessor(doclibRoot: String) {
    * moves a file on the file system from its source path to an new root location maintaining the path and prefixing the filename
    *
    * @param sourcePath current relative source path
-   * @param target relative target path to move file to
+   * @param target     relative target path to move file to
    * @return
    */
 
@@ -38,7 +38,7 @@ class FileProcessor(doclibRoot: String) {
     val source = Paths.get(s"$doclibRoot$sourcePath").toAbsolutePath.toFile
     val destination = Paths.get(s"$doclibRoot$target").toAbsolutePath.toFile
 
-    val result = Try({
+    val result = Try {
       if (source == destination) {
         destination.toPath
       } else {
@@ -48,8 +48,9 @@ class FileProcessor(doclibRoot: String) {
         latency.observeDuration()
         path
       }
-    })
-      result match {
+    }
+
+    result match {
       case Success(_) => Some(destination.toPath)
       case Failure(err) => throw err
     }
@@ -71,10 +72,10 @@ class FileProcessor(doclibRoot: String) {
     val latency = fileOperationLatency.labels("copy").startTimer()
 
     val path =
-      Try({
+      Try {
         Files.copy(source.toPath, target.toPath, StandardCopyOption.REPLACE_EXISTING)
         latency.observeDuration()
-      })
+      }
 
     path match {
       case Success(_) => Some(Paths.get(targetPath))

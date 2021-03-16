@@ -1,12 +1,14 @@
 package io.mdcatapult.doclib.util
 
 import better.files.Dsl.pwd
+import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.File
 import java.nio.file.{Files, NoSuchFileException, Paths}
 
-class FileProcessorSpec extends AnyFlatSpec {
+class FileProcessorSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
   val doclibRoot = "doclib"
   val fileProcessor = new FileProcessor(doclibRoot)
@@ -24,7 +26,7 @@ class FileProcessorSpec extends AnyFlatSpec {
 
   "Moving a non existent file" should "throw an exception" in {
     assertThrows[NoSuchFileException] {
-      fileProcessor.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
+      fileProcessor.moveFile("/a/file/that/does/no/exist.txt", "/aFile.txt")
     }
   }
 
@@ -37,7 +39,7 @@ class FileProcessorSpec extends AnyFlatSpec {
   "Moving a file from source to target" should "return the new file path" in {
     val (sourcePath, targetPath) = getSourceAndTarget()
     val actualPath = fileProcessor.moveFile(sourcePath, targetPath)
-    assert(actualPath.get.toString == s"$pwd/$doclibRoot${targetPath}")
+    assert(actualPath.get.toString == s"$pwd/$doclibRoot$targetPath")
   }
 
   "Copying a file from source to target" should "copy the new file" in {
@@ -48,7 +50,7 @@ class FileProcessorSpec extends AnyFlatSpec {
 
   "Copying a non existent file" should "throw an exception" in {
     assertThrows[NoSuchFileException] {
-      fileProcessor.copyFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
+      fileProcessor.copyFile("/a/file/that/does/no/exist.txt", "/aFile.txt")
     }
   }
 
@@ -66,5 +68,9 @@ class FileProcessorSpec extends AnyFlatSpec {
     val sourceFileName = source.getName
     fileProcessor.removeFile(s"/tmp/$sourceFileName")
     assert(!Files.exists(source.toPath))
+  }
+
+  override def afterAll(): Unit = {
+    deleteDirectories(Seq(pwd/s"$doclibRoot"))
   }
 }

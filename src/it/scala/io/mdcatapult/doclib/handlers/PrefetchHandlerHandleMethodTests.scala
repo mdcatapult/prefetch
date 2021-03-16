@@ -80,6 +80,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   override def beforeEach(): Unit = {
     Await.result(collection.drop().toFuture(), 5 seconds)
     Await.result(derivativesCollection.drop().toFuture(), 5 seconds)
+
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
