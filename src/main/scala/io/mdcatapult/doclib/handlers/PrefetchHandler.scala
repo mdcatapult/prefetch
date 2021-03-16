@@ -406,7 +406,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val pathNormalisedSource = {
       val rawPath =
         source match {
-          case Some(path) => path.toString
+          case Some(path: Path) => path.toString
           case None => foundDoc.doc.source
         }
       val root = config.getString("doclib.root")
