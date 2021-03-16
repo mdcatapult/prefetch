@@ -240,7 +240,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     collection.updateOne(filter, update).toFutureOption()
       .andThen(_ => latency.observeDuration())
       .andThen({
-        case Success(_) => // TODO sort this out  - supervisor.send(DoclibMsg(id = found.doc._id.toString))
         case Failure(e) => throw e
       }).flatMap({
       case Some(_) =>
