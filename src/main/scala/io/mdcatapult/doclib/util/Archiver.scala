@@ -31,7 +31,7 @@ class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)(impl
     (for {
       archivePath: Path <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
-    } yield archivePath).value
+    } yield archivePath).value.map(_ => fileProcessor.moveFile(temp, archiveSource))
   }
 
   /**
