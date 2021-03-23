@@ -1,76 +1,57 @@
 package io.mdcatapult.doclib.util
 
-import better.files.Dsl.pwd
-import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 
 import java.io.File
-import java.nio.file.{Files, NoSuchFileException, Paths}
+import java.nio.file.{Files, NoSuchFileException}
 
-class FileProcessorSpec extends AnyFlatSpec with BeforeAndAfterAll {
+class FileProcessorSpec extends AnyFlatSpec {
 
-  val doclibRoot = "doclib"
-  val fileProcessor = new FileProcessor(doclibRoot)
+  val fileProcessor = new FileProcessor("")
   val path = "/a/path/to/a/file.txt"
-
-  private def getSourceAndTarget(): (String, String) = {
-    Files.createDirectories(Paths.get(s"$pwd/$doclibRoot/tmp"))
-    val targetfileName = File.createTempFile("target", ".txt", new File(s"$pwd/$doclibRoot/tmp")).getName
-    val targetPath = s"/tmp/$targetfileName"
-
-    val sourcefileName = File.createTempFile("source", ".txt", new File(s"$pwd/$doclibRoot/tmp")).getName
-    val sourcePath = s"/tmp/$sourcefileName"
-    (sourcePath, targetPath)
-  }
 
   "Moving a non existent file" should "throw an exception" in {
     assertThrows[NoSuchFileException] {
-      fileProcessor.moveFile("/a/file/that/does/no/exist.txt", "/aFile.txt")
+      fileProcessor.moveFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
     }
   }
 
   "Moving a file with the same source and target" should "return the original file path" in {
-    val src = File.createTempFile("source", ".txt")
-    val actualPath = fileProcessor.moveFile(src.getPath, src.getPath)
-    assert(actualPath.get.toString == s"$pwd/$doclibRoot${src.getPath}")
+    val actualPath = fileProcessor.moveFile(new File(path).getPath, new File(path).getPath)
+    assert(actualPath.get == new File(path).toPath)
   }
 
   "Moving a file from source to target" should "return the new file path" in {
-    val (sourcePath, targetPath) = getSourceAndTarget()
-    val actualPath = fileProcessor.moveFile(sourcePath, targetPath)
-    assert(actualPath.get.toString == s"$pwd/$doclibRoot$targetPath")
+    val target = "tmp/target.txt"
+    val src = File.createTempFile("source", ".txt")
+    val actualPath = fileProcessor.moveFile(src.getPath, target)
+    assert(actualPath.get.toString == target)
   }
 
   "Copying a file from source to target" should "copy the new file" in {
-    val (sourcePath, targetPath) = getSourceAndTarget()
-    val filePath = fileProcessor.copyFile(sourcePath, targetPath)
-    assert(filePath.get.toString == targetPath)
+    val target = "tmp/target.txt"
+    val src = File.createTempFile("source", ".txt")
+    val filePath = fileProcessor.copyFile(src.getPath, target)
+    assert(filePath.get.toString == target)
   }
 
   "Copying a non existent file" should "throw an exception" in {
     assertThrows[NoSuchFileException] {
-      fileProcessor.copyFile("/a/file/that/does/no/exist.txt", "/aFile.txt")
+      fileProcessor.copyFile("/a/file/that/does/no/exist.txt", "./aFile.txt")
     }
   }
 
   "Removing a file from source" should "remove the new file" in {
-    val source = File.createTempFile("source", ".txt", new File(s"$pwd/$doclibRoot/tmp"))
-    val sourceFileName = source.getName
-    fileProcessor.removeFile(s"/tmp/$sourceFileName")
+    val src = File.createTempFile("source", ".txt")
+    fileProcessor.removeFile(src.getPath)
 
-    assert(!Files.exists(source.toPath))
+    assert(!Files.exists(src.toPath))
   }
 
   "Removing a file that doesn't exist" should "not remove the new file" in {
-    val source = File.createTempFile("source", ".txt", new File(s"$pwd/$doclibRoot/tmp"))
-    source.deleteOnExit()
-    val sourceFileName = source.getName
-    fileProcessor.removeFile(s"/tmp/$sourceFileName")
-    assert(!Files.exists(source.toPath))
-  }
-
-  override def afterAll(): Unit = {
-    deleteDirectories(Seq(pwd/s"$doclibRoot"))
+    val src = File.createTempFile("source", ".txt")
+    src.deleteOnExit()
+    fileProcessor.removeFile(src.getPath)
+    assert(!Files.exists(src.toPath))
   }
 }

@@ -74,6 +74,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |}
     """.stripMargin)
 
+
+
   implicit val m: Materializer = Materializer(system)
 
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
@@ -96,6 +98,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
       config.getString("consumer.queue"),
       Option(config.getString("consumer.exchange"))
     )
+
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
@@ -134,7 +137,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, None)
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$ingressDir/$sourceFile", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
-        val movedFilePath = s"$doclibRoot/$localTargetDir/$sourceFile"
+        val movedFilePath = s"$localTargetDir/$sourceFile"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
@@ -172,7 +175,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
-        val movedFilePath = s"$doclibRoot/$remoteTargetDir/https/path/to/aFile.txt"
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
@@ -212,7 +215,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, docFileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
-        val movedFilePath = s"$doclibRoot/$remoteTargetDir/https/path/to/aFile.txt"
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }

@@ -83,7 +83,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   private val sharedConfig = FileConfig.getSharedConfig(config)
   private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
 
-  private val archiver = new Archiver(archiverQueue)
+  private val archiver = new Archiver(archiverQueue, fileProcessor)
 
   private val doclibRoot = sharedConfig.doclibRoot
   private val archiveDirName = sharedConfig.archiveDirName
@@ -353,22 +353,33 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
     if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
-    }
+    } else {
+      targetPathGenerator(foundDoc) match {
+        case Some(targetPath) =>
+          val newHash: String = foundDoc.doc.hash
 
-    targetPathGenerator(foundDoc) match {
-      case Some(targetPath) =>
-        val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-        val newHash: String = foundDoc.doc.hash
-        val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+          val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
 
-        if (newHash != oldHash) {
-          // found doc is not archived, send to archiver
-          val archivePath = getArchivePath(targetPath, oldHash)
-          Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath), fileProcessor), Duration.Inf)
-        } else {
-          fileProcessor.process(newHash, oldHash, tempPath, targetPath, foundDoc.doc.derivative, inRightLocation(foundDoc.doc.source))
-        }
-      case None => None
+          if (newHash != oldHash && foundDoc.doc.derivative) {
+            // File already exists at target location but is not the same file.
+            // Overwrite it and continue because we don't archive derivatives.
+            fileProcessor.moveFile(tempPath, targetPath)
+          } else if (newHash != oldHash) {
+            // file already exists at target location but is not the same file, archive the old one then add the new one
+            val archivePath = getArchivePath(targetPath, oldHash)
+
+
+            Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+          } else if (!inRightLocation(foundDoc.doc.source)) {
+            fileProcessor.moveFile(tempPath, targetPath)
+          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
+            fileProcessor.removeFile(tempPath)
+            None
+          }
+        case None => None
+
+      }
     }
   }
 
