@@ -69,7 +69,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       config: Config,
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping],
-                      consumerConfig: ConsumerConfig)
+                      appConfig: AppConfig)
   extends AbstractHandler[PrefetchMsg]
     with TargetPath {
 
@@ -90,7 +90,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   private val localDirName = sharedConfig.localDirName
   private val remoteDirName = sharedConfig.remoteDirName
 
-  private val consumerName = consumerConfig.name
+  private val consumerName = appConfig.name
 
   val version: Version = Version.fromConfig(config)
 
@@ -102,7 +102,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
 
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
-    val flagContext = new MongoFlagContext(consumerConfig.name, version, collection, nowUtc)
+    val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 

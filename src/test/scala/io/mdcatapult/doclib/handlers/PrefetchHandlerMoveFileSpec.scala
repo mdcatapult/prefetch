@@ -11,7 +11,7 @@ import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
-import io.mdcatapult.doclib.models.{ConsumerConfig, DoclibDoc, FileAttrs, ParentChildMapping}
+import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -91,8 +91,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   private val readLimiter = SemaphoreLimitedExecution.create(1)
   private val writeLimiter = SemaphoreLimitedExecution.create(1)
 
-  implicit val consumerConfig: ConsumerConfig =
-    ConsumerConfig(
+  implicit val appConfig: AppConfig =
+    AppConfig(
       config.getString("consumer.name"),
       config.getInt("consumer.concurrency"),
       config.getString("consumer.queue"),

@@ -4,7 +4,7 @@ import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
 import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
-import io.mdcatapult.doclib.models.{ConsumerConfig, DoclibDoc, ParentChildMapping}
+import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -52,8 +52,8 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
        |}
     """.stripMargin).withFallback(ConfigFactory.load())
 
-  implicit val consumerConfig: ConsumerConfig =
-    ConsumerConfig(
+  implicit val appConfig: AppConfig =
+    AppConfig(
       config.getString("consumer.name"),
       config.getInt("consumer.concurrency"),
       config.getString("consumer.queue"),
