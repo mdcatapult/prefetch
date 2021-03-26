@@ -9,9 +9,9 @@ import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.metadata.MetaString
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, FileAttrs, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.doclib.remote.adapters._
 import io.mdcatapult.doclib.codec.MongoCodecs
@@ -28,6 +28,7 @@ import org.scalatest.matchers.should.Matchers
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
+import scala.util.Try
 
 /**
  * PrefetchHandler Spec with Actor test system and config
@@ -44,6 +45,9 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     s"""
       |consumer {
       |  name = "prefetch"
+      |  queue = "prefetch"
+      |  concurrency = 1
+      |  exchange = "doclib"
       |}
       |appName = $${?consumer.name}
       |doclib {
@@ -84,11 +88,19 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val readLimiter = SemaphoreLimitedExecution.create(1)
   private val writeLimiter = SemaphoreLimitedExecution.create(1)
+
+  implicit val appConfig: AppConfig =
+    AppConfig(
+      config.getString("consumer.name"),
+      config.getInt("consumer.concurrency"),
+      config.getString("consumer.queue"),
+      Try(config.getString("consumer.exchange")).toOption
+    )
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 

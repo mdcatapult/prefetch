@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.testkit.{ImplicitSender, TestKit}
@@ -11,8 +10,8 @@ import better.files.{File => ScalaFile}
 import com.mongodb.reactivestreams.client.{MongoCollection => JMongoCollection}
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.{DoclibDoc, FileAttrs, ParentChildMapping}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
+import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, FileAttrs, ParentChildMapping}
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -42,6 +41,10 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
     s"""
        |consumer {
        |  name = "prefetch"
+       |  concurrency = 20
+       |  queue = "prefetch"
+       |  exchange = "doclib"
+       |
        |}
        |appName = $${?consumer.name}
        |doclib {
@@ -71,6 +74,8 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |}
     """.stripMargin)
 
+
+
   implicit val m: Materializer = Materializer(system)
 
   implicit val mongoCodecs: CodecRegistry = MongoCodecs.get
@@ -80,11 +85,20 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = MongoCollection[ParentChildMapping](wrappedPCCollection)
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val readLimiter = SemaphoreLimitedExecution.create(1)
   private val writeLimiter = SemaphoreLimitedExecution.create(1)
+
+  implicit val appConfig: AppConfig =
+    AppConfig(
+      config.getString("consumer.name"),
+      config.getInt("consumer.concurrency"),
+      config.getString("consumer.queue"),
+      Option(config.getString("consumer.exchange"))
+    )
+
 
   val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
 
@@ -123,7 +137,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, None)
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$ingressDir/$sourceFile", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
-        val movedFilePath = s"$doclibRoot/$localTargetDir/$sourceFile"
+        val movedFilePath = s"$localTargetDir/$sourceFile"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
@@ -161,7 +175,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
-        val movedFilePath = s"$doclibRoot/$remoteTargetDir/https/path/to/aFile.txt"
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }
@@ -201,7 +215,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, docFileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
         val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
-        val movedFilePath = s"$doclibRoot/$remoteTargetDir/https/path/to/aFile.txt"
+        val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
         assert(actualMovedFilePath.get.toString == movedFilePath)
       }
     }

@@ -12,27 +12,29 @@ import java.nio.file.Path
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class Archiver(archiver: Sendable[DoclibMsg])(implicit executionContext: ExecutionContext) extends LazyLogging {
+class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)
+              (implicit executionContext: ExecutionContext) extends LazyLogging {
 
   /**
    * updates a physical file
    *  - copies existing file to archive location
+   *  - adds document to archive collection
    *  - moves new file to target/document-source location
-   *  - publishes message to archiver
-   * @param foundDoc FoundDoc
-   * @param temp path that the new file is located at
-   * @param archive the path that the file needs to be copied to
-   * @param target an optional path to set the new source to if not using the source from the document
+   *
+   * @param foundDoc      FoundDoc
+   * @param temp          path that the new file is located at
+   * @param archiveTarget the path that the file needs to be copied to
+   * @param target        an optional path to set the new source to if not using the source from the document
    * @return path of the target/document-source location
    */
-  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None,
-                      fileProcessor: FileProcessor): Future[Option[Path]] = {
+  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None): Future[Option[Path]] = {
     val archiveSource = target.getOrElse(foundDoc.doc.source)
     logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
-      archivePath: Path <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
+      _ <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
       _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
-    } yield archivePath).value
+      movedFilePath <- OptionT.fromOption(fileProcessor.moveFile(temp, archiveSource))
+    } yield movedFilePath).value
   }
 
   /**
@@ -56,4 +58,5 @@ class Archiver(archiver: Sendable[DoclibMsg])(implicit executionContext: Executi
         Future.successful(())
     }
   }
+
 }
