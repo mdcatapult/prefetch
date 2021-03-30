@@ -3,8 +3,8 @@ package io.mdcatapult.doclib.handlers
 import better.files.Dsl.pwd
 import com.typesafe.config.{Config, ConfigFactory}
 import io.mdcatapult.doclib.codec.MongoCodecs
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg}
-import io.mdcatapult.doclib.models.{DoclibDoc, ParentChildMapping}
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
+import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.SemaphoreLimitedExecution
@@ -14,7 +14,9 @@ import org.mongodb.scala.MongoCollection
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterAll
 
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.DurationInt
 
 trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
 
@@ -37,12 +39,26 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
        |    target-dir: "derivatives"
        |  }
        |}
+       |consumer {
+       |  name = "prefetch"
+       |  queue = "prefetch"
+       |  concurrency = 1
+       |  exchange = "doclib"
+       |}
        |mongo {
        |  doclib-database: "prefetch-test"
        |  documents-collection: "documents"
        |  derivatives-collection : "derivatives"
        |}
     """.stripMargin).withFallback(ConfigFactory.load())
+
+  implicit val appConfig: AppConfig =
+    AppConfig(
+      config.getString("consumer.name"),
+      config.getInt("consumer.concurrency"),
+      config.getString("consumer.queue"),
+      Option(config.getString("consumer.exchange"))
+    )
 
   /** Initialise Mongo * */
   implicit val codecs: CodecRegistry = MongoCodecs.get
@@ -52,15 +68,15 @@ trait PrefetchHandlerBaseTest extends MockFactory with BeforeAndAfterAll {
   implicit val derivativesCollection: MongoCollection[ParentChildMapping] = mongo.getCollection(config.getString("mongo.doclib-database"), config.getString("mongo.derivatives-collection"))
 
   implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
-  val downstream: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
   val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
   val writeLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
   override def afterAll(): Unit = {
-    //    Await.result(collection.drop().toFutureOption(), 5.seconds)
-    //    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
+    Await.result(collection.drop().toFutureOption(), 5.seconds)
+    Await.result(derivativesCollection.drop().toFutureOption(), 5.seconds)
     // These may or may not exist but are all removed anyway
     deleteDirectories(List(pwd / "test" / "prefetch-test"))
   }

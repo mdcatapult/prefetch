@@ -6,7 +6,6 @@ import com.typesafe.config.ConfigFactory
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
-import io.mdcatapult.doclib.prefetch.model._
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
@@ -38,7 +37,6 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   private val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
   private val awaitDuration = 5 seconds
-  private val prefetchKey = "prefetch"
 
   "The PrefetchHandler handle method" should
     "return a SilentValidationException given a db record exists from the previous day" in {
@@ -55,7 +53,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val futureResult = for {
         _ <- collection.insertOne(doclibDoc).toFuture()
         inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
-        handlerRes <- handler.handle(inputMessage, prefetchKey)
+        handlerRes <- handler.handle(inputMessage)
       } yield handlerRes
 
       intercept[SilentValidationException] {
@@ -69,19 +67,20 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
       intercept[FileNotFoundException] {
-        Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration)
+        Await.result(handler.handle(inputMessage), awaitDuration)
       }
     }
 
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val resultFromOption = Await.result(handler.handle(inputMessage, prefetchKey), awaitDuration).get
-      assert(resultFromOption.isInstanceOf[NewAndFoundDoc])
+      val result = Await.result(handler.handle(inputMessage), awaitDuration).get
+      assert(result.foundDoc.doc.source == "ingress/test_1.csv")
     }
 
   override def beforeEach(): Unit = {
     Await.result(collection.drop().toFuture(), 5 seconds)
     Await.result(derivativesCollection.drop().toFuture(), 5 seconds)
+
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)

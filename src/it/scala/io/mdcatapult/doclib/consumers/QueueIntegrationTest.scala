@@ -31,7 +31,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
   "A queue" should {
     "be created if it does not exist" in {
 
-      var messagesFromQueue = List[(String, DoclibMsg)]()
+      var messagesFromQueue = List[DoclibMsg]()
 
       implicit val timeout: Timeout = Timeout(5 seconds)
       implicit val config: Config = ConfigFactory.load()
@@ -43,7 +43,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
       val queue = Queue[DoclibMsg](queueName, consumerName)
 
       val subscription: SubscriptionRef =
-        queue.subscribe((msg: DoclibMsg, key: String) => messagesFromQueue ::= key -> msg)
+        queue.subscribe((msg: DoclibMsg) => messagesFromQueue ::= msg)
 
       Await.result(subscription.initialized, 5.seconds)
 
@@ -58,7 +58,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
       }
 
       eventually {
-        messagesFromQueue should contain ("" -> DoclibMsg("test message"))
+        messagesFromQueue should contain (DoclibMsg("test message"))
       }
     }
   }
