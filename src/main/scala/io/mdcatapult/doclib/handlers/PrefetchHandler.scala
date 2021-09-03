@@ -16,7 +16,7 @@ import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
-import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
+import io.mdcatapult.doclib.remote.{UndefinedSchemeException, Client => RemoteClient}
 import io.mdcatapult.doclib.util.{Archiver, FileConfig, FileProcessor}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
@@ -538,11 +538,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
         origin = origins.head
         originUri = origin.uri.get //TODO .get
-        downloaded: DownloadResult <- OptionT.fromOption[Future](remoteClient.download(origin))
+        downloaded <- OptionT.liftF(remoteClient.download(origin))
         (doc, archivable) <- OptionT(
           findOrCreateDoc(
             originUri.toString,
-            downloaded.hash,
+            downloaded.get.hash,
             false,
             Some(
               or(
@@ -552,7 +552,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             )
           )
         )
-            } yield FoundDoc(doc, archivable, origins = origins, download = Option(downloaded))
+            } yield FoundDoc(doc, archivable, origins = origins, download = downloaded)
       ).value
 
 
