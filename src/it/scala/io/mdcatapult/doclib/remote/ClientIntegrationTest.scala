@@ -90,7 +90,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "An invalid https URI " should {
     "throw an exception" in {
       val origin: Origin = Origin("https", uri = Uri.parseOption("https://a.b.c"))
-      assertThrows[StreamTcpException] {
+      recoverToSucceededIf[StreamTcpException] {
         client.download(origin)
       }
     }
