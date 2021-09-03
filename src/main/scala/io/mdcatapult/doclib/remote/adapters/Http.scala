@@ -28,12 +28,6 @@ object Http extends Adapter {
 
   case class Result(fileName: Option[String], contentType: Option[String], entity: HttpEntity)
 
-  def unapply(origin: Origin): Boolean =
-    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
-      true
-    else
-      false
-
   /**
    * Create appropriate https download mechanism for file
    * @param uri Resolved location of remote file

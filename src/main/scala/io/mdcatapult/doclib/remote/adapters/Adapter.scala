@@ -26,7 +26,6 @@ object Adapter {
 
 trait Adapter {
 
-  def unapply(origin: Origin): Boolean
   def download(origin: Origin)(implicit config: Config, m: Materializer): Future[Option[DownloadResult]]
 
   /**

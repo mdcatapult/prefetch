@@ -25,18 +25,6 @@ object Ftp extends Adapter {
   val protocols = List("ftp", "ftps", "sftp")
 
   /**
-   * test if supported scheme and perform download
-   *
-   * @param origin io.mdcatapult.doclib.models.Origin
-   * @param config config
-   * @return
-   */
-  def unapply(origin: Origin): Boolean =
-    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
-      true
-    else false
-
-  /**
    * build FTP credentials for FTP connection
    *
    * @param url Url
