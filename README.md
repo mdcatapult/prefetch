@@ -30,13 +30,18 @@ java -jar consumer-unarchive.jar
 
 The app allows runtime configuration via environment variables
 
-* **MONGO_USERNAME** - login username for mongodb
-* **MONGO_PASSWORD** - login password for mongodb
-* **MONGO_HOST** - host to connect to
-* **MONGO_PORT** - optional: port to connect to (default: 27017) 
-* **MONGO_DOCLIB_DATABASE** - the doclib database
-* **MONGO_AUTHSOURCE** - optional: database to authenticate against (default: admin)
-* **MONGO_DOCUMENTS_COLLECTION** - the documents collection
+* **MONGO_USERNAME** - login username for mongodb (default: doclib)
+* **MONGO_PASSWORD** - login password for mongodb (default: doclib)
+* **MONGO_HOST** - host to connect to (default: localhost)
+* **MONGO_PORT** - port to connect to (default: 27017) 
+* **MONGO_DOCLIB_DATABASE** - the doclib database (default: doclib)
+* **MONGO_AUTHSOURCE** - database to authenticate against (default: admin)
+* **MONGO_DOCUMENTS_COLLECTION** - the documents collection (default: documents)
+* **MONGO_DERIVATIVES_COLLECTION** - the collection where parent/child references are stored (default: documents_derivatives)
+* **MONGO_SRV** - whether to use mongodb [DNS seed list](https://docs.mongodb.com/manual/reference/connection-string/) connection. (default: false)
+* **MONGO_READ_LIMIT** - how many mongodb simultaneous read connections (default: 50)
+* **MONGO_WRITE_LIMIT** - how many mongodb simultaneous write connections (default: 100)
+
 * **RABBITMQ_USERNAME** - login username for rabbitmq
 * **RABBITMQ_PASSWORD** - login password for rabbitmq
 * **RABBITMQ_HOST** - host to connect to
@@ -46,7 +51,7 @@ The app allows runtime configuration via environment variables
 * **CONSUMER_QUEUE** - optional: name of the queue to consume (default: klein.prefetch)
 * **CONSUMER_CONCURRENCY** - optional: number of messages to handle concurrently (default: 1)
 * **DOCLIB_SUPERVISOR_QUEUE** - optional: the supercisor queue
-* **DOCLIB_ROOT** - optional: The filesystem root that the document library (defaults: /)
+* **DOCLIB_ROOT** - optional: The filesystem root where the documents are stored (defaults: /)
 * **DOCLIB_REMOTE_TARGET** - The target location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
 * **DOCLIB_REMOTE_TEMP** - The temporary location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
 * **DOCLIB_ARCHIVE_TARGET** - The location, relative to the DOCLIB_ROOT, to store remote files that are archived via prefetch
