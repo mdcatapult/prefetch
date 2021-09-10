@@ -9,7 +9,9 @@ import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{UndefinedSchemeException, UnsupportedSchemeException}
 import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.RecoverMethods.recoverToSucceededIf
 import org.scalatest.flatspec.AnyFlatSpec
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
@@ -29,20 +31,20 @@ class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
   "A broken FTP URL" should "fail" in {
     val origin = Origin("ftp", uri =  Uri.parseOption("ftp://a.b.c/something"))
-    assertThrows[Exception] {
+    recoverToSucceededIf[Exception] {
       Ftp.download(origin)
     }
   }
 
   "A broken SFTP URL" should "fail" in {
     val origin = Origin("ftp", uri = Uri.parseOption("sftp://a.b.c/something"))
-    assertThrows[Exception] {
+    recoverToSucceededIf[Exception] {
       Ftp.download(origin)
     }
   }
   "A broken FTPS URL" should "fail" in {
     val origin = Origin("ftp", uri = Uri.parseOption("ftps://a.b.c/something"))
-    assertThrows[Exception] {
+    recoverToSucceededIf[Exception] {
       Ftp.download(origin)
     }
   }
@@ -50,21 +52,21 @@ class FtpSpec extends AnyFlatSpec with BeforeAndAfterAll {
   "An FTP URL with credentials" should "parse" in {
     // The download will fail but we are just testing whether getFTPCredentials works
     val origin = Origin("ftp", uri = Uri.parseOption("ftp://user:password@a.b.c/something"))
-    assertThrows[Exception] {
+    recoverToSucceededIf[Exception] {
       Ftp.download(origin)
     }
   }
 
   "An unsupported scheme" should "return exception" in {
     val origin = Origin("ftp", uri = Uri.parseOption("xftp://a.b.c/something"))
-    assertThrows[UnsupportedSchemeException] {
+    recoverToSucceededIf[UnsupportedSchemeException] {
       Ftp.download(origin)
     }
   }
 
   "A URI without a scheme" should "return exception" in {
     val origin = Origin("ftp", uri = Uri.parseOption("a.b.c/something"))
-    assertThrows[UndefinedSchemeException] {
+    recoverToSucceededIf[UndefinedSchemeException] {
       Ftp.download(origin)
     }
   }

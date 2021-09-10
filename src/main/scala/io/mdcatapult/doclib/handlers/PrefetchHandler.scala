@@ -368,8 +368,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           } else if (newHash != oldHash) {
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, oldHash)
-
-
+            // Infinite await? Do we care if this happens before we move on? We already know the path that gets returned here
+            // so why are we waiting for it?
             Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
           } else if (!inRightLocation(foundDoc.doc.source)) {
             fileProcessor.moveFile(tempPath, targetPath)
@@ -536,13 +536,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     (
       for { // assumes remote
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
-        origin = origins.head
-        originUri = origin.uri.get //TODO .get
-        downloaded: DownloadResult <- OptionT.fromOption[Future](remoteClient.download(origin))
+        origin: Origin = origins.head
+        originUri: Uri = origin.uri.get //TODO .get
+        downloaded: Option[DownloadResult] <- OptionT.liftF(remoteClient.download(origin))
         (doc, archivable) <- OptionT(
           findOrCreateDoc(
             originUri.toString,
-            downloaded.hash,
+            downloaded.get.hash,
             false,
             Some(
               or(
@@ -552,7 +552,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             )
           )
         )
-            } yield FoundDoc(doc, archivable, origins = origins, download = Option(downloaded))
+            } yield FoundDoc(doc, archivable, origins = origins, download = downloaded)
       ).value
 
 

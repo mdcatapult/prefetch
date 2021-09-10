@@ -13,7 +13,8 @@ import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpecLike
 import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
-
+import scala.concurrent.duration._
+import scala.concurrent.Await
 import scala.io.Source
 
 class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest", ConfigFactory.parseString(
@@ -54,7 +55,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "A valid https URI " should {
     "be downloadable" in {
       val origin: Origin = Origin("https", uri = Uri.parseOption("https://www.bbc.co.uk/news"))
-      val a = client.download(origin)
+      val a = Await.result(client.download(origin), 10.seconds)
       assert(a.value.origin.value == "https://www.bbc.co.uk/news")
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/www.bbc.co.uk/news.html")
       assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/www.bbc.co.uk/news.html")
@@ -64,7 +65,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "A valid http URI that relies on cookie " should {
     "be downloadable" in {
       val origin: Origin = Origin("http", uri = Uri.parseOption("http://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true"))
-      val a = client.download(origin)
+      val a = Await.result(client.download(origin), 10.seconds)
 
       assert(a.value.origin.value == "http://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/http/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712/Effects of Verbascoside Supplemented Diets on Growth Performance Blood Traits Meat Quality Lipid Oxidation and Histological Features in Broiler.f3e24e247796d0e8aadc4607bfdfdbe4.pdf")
@@ -77,7 +78,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "A valid https URI that relies on cookie " should {
     "be downloadable" in {
       val origin: Origin = Origin("https", uri = Uri.parseOption("https://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true"))
-      val a = client.download(origin)
+      val a = Await.result(client.download(origin), 10.seconds)
       assert(a.value.origin.value == "https://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true")
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/https/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712/Effects of Verbascoside Supplemented Diets on Growth Performance Blood Traits Meat Quality Lipid Oxidation and Histological Features in Broiler.f3e24e247796d0e8aadc4607bfdfdbe4.pdf")
       assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/https/www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712/Effects of Verbascoside Supplemented Diets on Growth Performance Blood Traits Meat Quality Lipid Oxidation and Histological Features in Broiler.f3e24e247796d0e8aadc4607bfdfdbe4.pdf")
@@ -89,7 +90,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "An invalid https URI " should {
     "throw an exception" in {
       val origin: Origin = Origin("https", uri = Uri.parseOption("https://a.b.c"))
-      assertThrows[StreamTcpException] {
+      recoverToSucceededIf[StreamTcpException] {
         client.download(origin)
       }
     }
@@ -98,7 +99,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   "A valid FTP URI " should {
     "be downloadable" in {
       val origin: Origin = Origin("ftp", uri = Uri.parseOption("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
-      val a = client.download(origin)
+      val a = Await.result(client.download(origin), 10.seconds)
       assert(a.value.origin.value == "ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
       assert(a.value.target.value == s"$pwd/${config.getString("doclib.root")}/${config.getString("doclib.remote.target-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
       assert(a.value.source == s"${config.getString("doclib.remote.temp-dir")}/ftp/ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")

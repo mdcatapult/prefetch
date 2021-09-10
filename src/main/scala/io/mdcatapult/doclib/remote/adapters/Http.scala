@@ -1,8 +1,5 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.io.File
-import java.nio.file.Paths
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.`Set-Cookie`
@@ -19,8 +16,9 @@ import io.mdcatapult.doclib.util.Metrics._
 import io.mdcatapult.doclib.util.MimeType
 import io.mdcatapult.util.hash.Md5.md5
 
-import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import java.io.File
+import java.nio.file.Paths
+import scala.concurrent.Future
 
 object Http extends Adapter {
 
@@ -29,12 +27,6 @@ object Http extends Adapter {
   val maxRedirection = 20
 
   case class Result(fileName: Option[String], contentType: Option[String], entity: HttpEntity)
-
-  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] =
-    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
-      Http.download(origin)
-    else
-      None
 
   /**
    * Create appropriate https download mechanism for file
@@ -93,7 +85,7 @@ object Http extends Adapter {
    * @param origin io.mdcatapult.doclib.models.Origin
    * @return
    */
-  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Future[Option[DownloadResult]] = {
     //TODO We should probably turn this all into futures and for-comps but is a bigger refactor
     // and something for another issue.
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-http", config)
@@ -103,7 +95,7 @@ object Http extends Adapter {
     val uri = origin.uri.get
     val latency = documentFetchLatency.labels("http").startTimer()
 
-    Await.result(retrieve(uri).recover {
+    retrieve(uri).recover {
       // Something happened before fetching file, might want to do something about it....
       case streamException: StreamTcpException => throw streamException
       case e: UnableToFollow => throw e
@@ -141,6 +133,6 @@ object Http extends Adapter {
           target = Some(new File(finalTargetFinal).getAbsolutePath)
         ))
       })
-    }, Duration.Inf)
+    }
   }
 }

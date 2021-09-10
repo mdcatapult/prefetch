@@ -10,7 +10,6 @@ import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
-import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.util.hash.Md5.md5
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
@@ -166,23 +165,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     docUpdate.value.uuid should not be None
   }
-
-  "An http origin" should "be downloaded by the HTTP adapter" in {
-    // Result not actually important just the fact that it triggers the "download" method
-    val origin = Origin("http", uri = Uri.parseOption("http://a/file/somewhere"))
-    assertThrows[Exception] {
-      Http.unapply(origin)
-    }
-  }
-
-  "An ftp URI" should "be downloaded by the FTP adapter" in {
-    // Result not actually important just the fact that it triggers the "download" method
-    val origin = Origin("ftp", uri = Uri.parseOption("ftp://a/file/somewhere"))
-    assertThrows[Exception] {
-      Ftp.unapply(origin)
-    }
-  }
-
 
   "A file with a space in the path" should "be found" in {
     val docLocation = "local/test file.txt"
