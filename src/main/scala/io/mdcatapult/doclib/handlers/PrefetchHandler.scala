@@ -41,7 +41,7 @@ import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 /**
@@ -350,7 +350,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param inRightLocation     function to test if the current document source path is in the right location
    * @return
    */
-  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Option[Path] = {
+  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Option[Path]] = {
     if (zeroLength(tempPath)) {
       throw new ZeroLengthFileException(tempPath, foundDoc.doc)
     } else {
@@ -364,20 +364,20 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           if (newHash != oldHash && foundDoc.doc.derivative) {
             // File already exists at target location but is not the same file.
             // Overwrite it and continue because we don't archive derivatives.
-            fileProcessor.moveFile(tempPath, targetPath)
+            Future.successful(fileProcessor.moveFile(tempPath, targetPath))
           } else if (newHash != oldHash) {
             // file already exists at target location but is not the same file, archive the old one then add the new one
             val archivePath = getArchivePath(targetPath, oldHash)
             // Infinite await? Do we care if this happens before we move on? We already know the path that gets returned here
             // so why are we waiting for it?
-            Await.result(archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath)), Duration.Inf)
+            archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
           } else if (!inRightLocation(foundDoc.doc.source)) {
-            fileProcessor.moveFile(tempPath, targetPath)
+            Future.successful(fileProcessor.moveFile(tempPath, targetPath))
           } else { // not a new file or a file that requires updating so we will just cleanup the temp file
             fileProcessor.removeFile(tempPath)
-            None
+            Future.successful(None)
           }
-        case None => None
+        case None => Future.successful(None)
 
       }
     }
@@ -392,7 +392,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
-    val (source: Option[Path], origin: List[Origin]) = foundDoc.download match {
+    val (source: Future[Option[Path]], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) =>
         val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
@@ -413,6 +413,18 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
         (source, currentOrigins)
     }
+    val root = config.getString("doclib.root")
+    val pathNormalisedSource = {
+      val rawPath = source.map(path => path match {
+        case Some(path: Path) => path.toString
+        case None => foundDoc.doc.source
+      }
+
+      rawPath.replaceFirst(s"^$root", "")
+
+      )
+    }
+
     // source needs to be relative path from doclib.root
     val pathNormalisedSource = {
       val rawPath =
