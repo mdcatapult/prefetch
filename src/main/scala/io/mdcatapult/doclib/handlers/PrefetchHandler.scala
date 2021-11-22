@@ -226,27 +226,32 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
     val latency = mongoLatency.labels(consumerName, "update_document").startTimer()
-    val update = combine(
-      getDocumentUpdate(found, msg),
-      set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
-      set("metadata", (msg.metadata.getOrElse(List[MetaValueUntyped]()) ::: found.doc.metadata.getOrElse(List[MetaValueUntyped]())).distinct),
-      set("derivative", msg.derivative.getOrElse(false)),
-      set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
-      set("updated", LocalDateTime.now())
-    )
 
-    val filter: Bson = equal("_id", found.doc._id)
+    getDocumentUpdate(found, msg).flatMap(bsonChanges => {
 
-    collection.updateOne(filter, update).toFutureOption()
-      .andThen(_ => latency.observeDuration())
-      .andThen({
-        case Failure(e) => throw e
-      }).flatMap({
-      case Some(_) =>
-        collection.find(filter).headOption()
-      case None =>
-        Future.successful(None)
+      val update = combine(
+        bsonChanges,
+        set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
+        set("metadata", (msg.metadata.getOrElse(List[MetaValueUntyped]()) ::: found.doc.metadata.getOrElse(List[MetaValueUntyped]())).distinct),
+        set("derivative", msg.derivative.getOrElse(false)),
+        set("derivatives", found.doc.derivatives.getOrElse(List[Derivative]())),
+        set("updated", LocalDateTime.now())
+      )
+
+      val filter: Bson = equal("_id", found.doc._id)
+
+      collection.updateOne(filter, update).toFutureOption()
+        .andThen(_ => latency.observeDuration())
+        .andThen({
+          case Failure(e) => throw e
+        }).flatMap({
+        case Some(_) =>
+          collection.find(filter).headOption()
+        case None =>
+          Future.successful(None)
+      })
     })
+
   }
 
   /**
@@ -390,8 +395,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param msg      PrefetchMsg
    * @return Bson
    */
-  def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Bson = {
+  def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Future[Bson] = {
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
+
     val (source: Future[Option[Path]], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) =>
         val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
@@ -413,31 +419,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
         (source, currentOrigins)
     }
+
+
     val root = config.getString("doclib.root")
-    val pathNormalisedSource = {
-      val rawPath = source.map(path => path match {
-        case Some(path: Path) => path.toString
-        case None => foundDoc.doc.source
-      }
 
-      rawPath.replaceFirst(s"^$root", "")
-
-      )
-    }
-
-    // source needs to be relative path from doclib.root
-    val pathNormalisedSource = {
-      val rawPath =
-        source match {
-          case Some(path: Path) => path.toString
-          case None => foundDoc.doc.source
-        }
-      val root = config.getString("doclib.root")
-
-      rawPath.replaceFirst(s"^$root", "")
-    }
-
-    val uuidAssignment =
+    val uuidAssignment: List[Bson] =
       foundDoc.doc.uuid match {
         case None =>
           List(set("uuid", UUID.randomUUID()))
@@ -445,16 +431,47 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           List()
       }
 
-    val changes = List(
-      set("source", pathNormalisedSource),
-      set("origin", origin),
-      getFileAttrs(source),
-      getMimetype(source)
-    )
+    val bsonChanges: Future[Bson] =  for {
+      sourceValue <- source
+      pathNormalisedSource <- Future.successful{
+        sourceValue match {
+          case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
+          case None => foundDoc.doc.source
+        }
+      }
+      changes <- Future.successful {
+        List(
+          set("source", pathNormalisedSource),
+          set("origin", origin),
+          getFileAttrs(sourceValue),
+          getMimetype(sourceValue)
+        )
+      }
+    } yield combine(uuidAssignment ::: changes: _*)
 
-    combine(
-      uuidAssignment ::: changes: _*
-    )
+    bsonChanges
+
+//    val changes: Seq[Bson] = List(
+//      set("source", pathNormalisedSource),
+//      set("origin", origin),
+//      getFileAttrs(source),
+//      getMimetype(source)
+//    )
+//
+
+    // source needs to be relative path from doclib.root
+//    val pathNormalisedSource: Future[String] = {
+//      source.map {
+//        case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
+//        case None => foundDoc.doc.source
+//      }
+//    }
+
+
+//
+//    combine(
+//      uuidAssignment ::: bsonChanges: _*
+//    )
   }
 
   /**
