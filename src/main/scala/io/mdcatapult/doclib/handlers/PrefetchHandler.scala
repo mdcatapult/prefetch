@@ -419,7 +419,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         (source, currentOrigins)
     }
 
-
     val root = config.getString("doclib.root")
 
     val uuidAssignment: List[Bson] =
@@ -432,45 +431,19 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     val bsonChanges: Future[Bson] =  for {
       sourceValue <- source
-      pathNormalisedSource <- Future.successful{
-        sourceValue match {
-          case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
-          case None => foundDoc.doc.source
-        }
+      pathNormalisedSource = sourceValue match {
+        case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
+        case None => foundDoc.doc.source
       }
-      changes <- Future.successful {
-        List(
-          set("source", pathNormalisedSource),
-          set("origin", origin),
-          getFileAttrs(sourceValue),
-          getMimetype(sourceValue)
-        )
-      }
+      changes = List(
+        set("source", pathNormalisedSource),
+        set("origin", origin),
+        getFileAttrs(sourceValue),
+        getMimetype(sourceValue)
+      )
     } yield combine(uuidAssignment ::: changes: _*)
 
     bsonChanges
-
-//    val changes: Seq[Bson] = List(
-//      set("source", pathNormalisedSource),
-//      set("origin", origin),
-//      getFileAttrs(source),
-//      getMimetype(source)
-//    )
-//
-
-    // source needs to be relative path from doclib.root
-//    val pathNormalisedSource: Future[String] = {
-//      source.map {
-//        case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
-//        case None => foundDoc.doc.source
-//      }
-//    }
-
-
-//
-//    combine(
-//      uuidAssignment ::: bsonChanges: _*
-//    )
   }
 
   /**
