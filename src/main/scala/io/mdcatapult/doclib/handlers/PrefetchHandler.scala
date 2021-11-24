@@ -374,7 +374,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             val archivePath = getArchivePath(targetPath, oldHash)
             // Infinite await? Do we care if this happens before we move on? We already know the path that gets returned here
             // so why are we waiting for it?
-            archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
+            val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
+            // Is this really the way to do this!!
+            val archivePathResult = archiveResult.map(res => Some(res.get._1))
+            archivePathResult
           } else if (!inRightLocation(foundDoc.doc.source)) {
             Future.successful(fileProcessor.moveFile(tempPath, targetPath))
           } else { // not a new file or a file that requires updating so we will just cleanup the temp file

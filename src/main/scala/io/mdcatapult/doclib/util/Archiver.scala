@@ -27,35 +27,49 @@ class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)
    * @param target        an optional path to set the new source to if not using the source from the document
    * @return path of the target/document-source location
    */
-  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None): Future[Option[Path]] = {
+  def archiveDocument(foundDoc: FoundDoc, temp: String, archiveTarget: String, target: Option[String] = None): Future[Option[(Path, List[Either[String, String]])]] = {
     val archiveSource = target.getOrElse(foundDoc.doc.source)
     logger.info(s"Archive ${foundDoc.archiveable.map(d => d._id).mkString(",")} source=$archiveSource target=$archiveTarget")
     (for {
       _ <- OptionT.fromOption[Future](fileProcessor.copyFile(archiveSource, archiveTarget))
-      _ <- OptionT.liftF(sendDocumentsToArchiver(foundDoc.archiveable))
+      archivedDocs = sendDocumentsToArchiver(foundDoc.archiveable)
       movedFilePath <- OptionT.fromOption(fileProcessor.moveFile(temp, archiveSource))
-    } yield movedFilePath).value
+    } yield (movedFilePath, archivedDocs)).value
   }
 
   /**
-   * sends documents to archiver for processing.
-   *
-   * @todo send errors to queue without killing the rest of the process
+   * Sends documents to archiver for processing.
+   * Returns a list of docs that got sent successfully and others that failed
+   * 
+   * @param docs
+   * @return
    */
-  private def sendDocumentsToArchiver(docs: List[DoclibDoc]): Future[Unit] = {
-    val messages =
+  private def sendDocumentsToArchiver(docs: List[DoclibDoc]): List[Either[String, String]] = {
+    val messageSuccess = {
       for {
         doc <- docs
         id = doc._id.toHexString
-      } yield DoclibMsg(id)
+        successOrFail = sendMessage(id)
+      } yield successOrFail
+    }
+    messageSuccess
+  }
 
-    Try(messages.foreach(msg => archiver.send(msg))) match {
+  /**
+   * Send a single message to the archiver with the id of
+   * the document to be archived. Return an Either with the id in a Left or Right
+   * depending on whether success(R) or fail(L)
+   * @param id
+   * @return Either[String, String]
+   */
+  private def sendMessage(id: String): Either[String, String] = {
+    Try (archiver.send(DoclibMsg(id))) match {
       case Success(_) =>
-        logger.info(s"Sent documents to archiver: ${messages.map(d => d.id).mkString(",")}")
-        Future.successful(())
+        logger.info(s"Sent documents to archiver: ${id}")
+        Right(id)
       case Failure(e) =>
         logger.error("failed to send doc to archive", e)
-        Future.successful(())
+        Left(id)
     }
   }
 
