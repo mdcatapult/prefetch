@@ -12,7 +12,13 @@ import java.nio.file.Path
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-
+/**
+ * Sends messages to the archive queue, moves existing files to archive location.
+ *
+ * @param archiver
+ * @param fileProcessor
+ * @param executionContext
+ */
 class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)
 (implicit executionContext: ExecutionContext) extends LazyLogging {
 
