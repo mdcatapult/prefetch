@@ -449,7 +449,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       pathNormalisedSource = sourceValue match {
         case Right(Some(path: Path)) => path.toString.replaceFirst(s"^$root", "")
         case Right(None) => foundDoc.doc.source
-        case Right(Some(_)) => foundDoc.doc.source
         case Left(_) => foundDoc.doc.source
       }
       changes = List(
