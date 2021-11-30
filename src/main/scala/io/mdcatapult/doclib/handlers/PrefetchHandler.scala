@@ -17,7 +17,7 @@ import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.{Archiver, FileConfig, FileProcessor}
+import io.mdcatapult.doclib.util.{Archiver, FileProcessor, PathTransformer}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -65,12 +65,12 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       val writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
                       m: Materializer,
-                      config: Config,
+                      implicit val config: Config,
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping],
                       appConfig: AppConfig)
   extends AbstractHandler[PrefetchMsg]
-    with TargetPath {
+    with TargetPath with PathTransformer {
 
 
   /** set props for target path generation */
@@ -79,15 +79,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   private val tika = new Tika()
   val remoteClient = new RemoteClient()
 
-  private val sharedConfig = FileConfig.getSharedConfig(config)
   private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
 
   private val archiver = new Archiver(archiverQueue, fileProcessor)
-
-  private val doclibRoot = sharedConfig.doclibRoot
-  private val archiveDirName = sharedConfig.archiveDirName
-  private val localDirName = sharedConfig.localDirName
-  private val remoteDirName = sharedConfig.remoteDirName
 
   private val consumerName = appConfig.name
 
@@ -264,135 +258,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       msg.origins.getOrElse(List[Origin]())
     ).distinct
 
-  /**
-   * tests if source string starts with the configured remote target-dir
-   *
-   * @param source String
-   * @return
-   */
-  def inRemoteRoot(source: String): Boolean = source.startsWith(s"$remoteDirName/")
-
-  /**
-   * tests if source string starts with the configured local target-dir
-   *
-   * @param source String
-   * @return
-   */
-  def inLocalRoot(source: String): Boolean = source.startsWith(s"$localDirName/")
-
-  /**
-   * Tests if found Document currently in the remote root and is not returns the appropriate download target
-   *
-   * @param foundDoc Found Document and remote data
-   * @return
-   */
-  def getRemoteUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
-    if (inRemoteRoot(foundDoc.doc.source))
-      Some(Paths.get(s"${foundDoc.doc.source}").toString)
-    else
-      Some(Paths.get(s"${foundDoc.download.get.target.get}").toString.replaceFirst(s"^$doclibRoot/*", ""))
-
-  /**
-   * determines appropriate local target path if required
-   *
-   * @param foundDoc Found Doc
-   * @return
-   */
-  def getLocalUpdateTargetPath(foundDoc: FoundDoc): Option[String] =
-    if (inLocalRoot(foundDoc.doc.source))
-      Some(Paths.get(s"${foundDoc.doc.source}").toString)
-    else {
-      // strips temp dir if present plus any prefixed slashes
-      val relPath = foundDoc.doc.source.replaceFirst(s"^$doclibRoot/*", "")
-      Some(Paths.get(getTargetPath(relPath, localDirName)).toString)
-    }
-
   def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
     Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
   })
-
-  def getLocalToRemoteTargetUpdatePath(origin: Origin): FoundDoc => Option[String] = {
-    def getTargetPath(foundDoc: FoundDoc): Option[String] =
-      if (inRemoteRoot(foundDoc.doc.source))
-        Some(Paths.get(s"${foundDoc.doc.source}").toString)
-      else {
-        val remotePath = Http.generateFilePath(origin, Option(remoteDirName), None, None)
-        Some(Paths.get(s"$remotePath").toString)
-      }
-
-    getTargetPath
-  }
-
-  /**
-   * generate an archive for the found document
-   *
-   * @param targetPath the found doc
-   * @return
-   */
-  def getArchivePath(targetPath: String, hash: String): String = {
-    // withExt will incorrectly match files without extensions if there is a "." in the path.
-    val withExt = """^(.+)/([^/]+)\.(.+)$""".r
-    val withoutExt = """^(.+)/([^/\.]+)$""".r
-
-    // match against withoutExt first and fall through to withExt
-    targetPath match {
-      case withoutExt(path, file) => s"${getTargetPath(path, archiveDirName)}/$file/$hash"
-      case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
-      case _ => throw new RuntimeException(s"Unable to identify path and filename for targetPath: $targetPath")
-    }
-  }
-
-  /**
-   * Handles the potential update of a document and its associated file based on supplied properties
-   * by archiving, moving, or removing the file.
-   *
-   * @param foundDoc            the found document
-   * @param tempPath            the path of the temporary file either remote or local
-   * @param targetPathGenerator function to generate the absolute target path for the file. It can be for remote or local files depending on what
-   *                            was in the original message
-   * @param inRightLocation     function to test if the current document source path is in the right location
-   * @return
-   */
-  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
-    // First check if the file has any length - this has happened in the past
-    if (zeroLength(tempPath)) {
-      Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
-    } else {
-      // generate the path for the new(?) file using the function parameter
-      targetPathGenerator(foundDoc) match {
-        case Some(targetPath) => {
-          archiveFile(foundDoc, tempPath, targetPath, inRightLocation)
-        }
-        // This file should exist so pass the failure up the chain
-        case None => Future.successful(Left(new FileNotFoundException(s"This file really should exist ${foundDoc.doc._id}")))
-      }
-    }
-  }
-
-  def archiveFile(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
-    val newHash: String = foundDoc.doc.hash
-
-    val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-    val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
-
-    if (newHash != oldHash && foundDoc.doc.derivative) {
-      // File already exists at target location but is not the same file.
-      // Overwrite it and continue because we don't archive derivatives.
-      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
-    } else if (newHash != oldHash) {
-      // file already exists at target location but is not the same file, archive the old one then add the new one
-      val archivePath = getArchivePath(targetPath, oldHash)
-      val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
-      // We are not doing anything with any messages that failed to be queued at the moment
-      archiveResult.map(res => Right(res.map(_.path)))
-    } else if (!inRightLocation(foundDoc.doc.source)) {
-      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
-    } else {
-      // not a new file or a file that requires updating so we will just cleanup the temp file
-      fileProcessor.removeFile(tempPath)
-      Future.successful(Right(None))
-    }
-  }
 
   /**
    * Builds a document update which updates source and origins
@@ -437,7 +305,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       }
 
     // If the archive process failed then use the foundDoc, otherwise use the path returned from archive process (why?)
-    // TODO is the Right(None) actually valid or is it covered by the Left. Should Option[Path] really be Path
+    // Right(None) means that it is the same file (probably!)
     val bsonChanges: Future[Bson] = for {
       sourceValue <- source
       archivedPath: Option[Path] = sourceValue match {
@@ -460,6 +328,75 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     } yield combine(uuidAssignment ::: changes: _*)
 
     bsonChanges
+  }
+
+  /**
+   * Handles the potential update of a document and its associated file based on supplied properties
+   * by archiving, moving, or removing the file.
+   *
+   * @param foundDoc            the found document
+   * @param tempPath            the path of the temporary file either remote or local
+   * @param targetPathGenerator function to generate the absolute target path for the file. It can be for remote or local files depending on what
+   *                            was in the original message
+   * @param inRightLocation     function to test if the current document source path is in the right location
+   * @return
+   */
+  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+    // First check if the file has any length - this has happened in the past
+    if (zeroLength(tempPath)) {
+      Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
+    } else {
+      // generate the path for the new(?) file using the function parameter
+      targetPathGenerator(foundDoc) match {
+        case Some(targetPath) => {
+          archiveFile(foundDoc, tempPath, targetPath, inRightLocation)
+        }
+        // This file should exist so pass the failure up the chain
+        case None => Future.successful(Left(new FileNotFoundException(s"This file really should exist ${foundDoc.doc._id}")))
+      }
+    }
+  }
+
+  /**
+   * Moves files to the correct place and also archives old versions if appropriate. Uses MD5 hash to test
+   * whether a file is different from existing one. There are 4 possible options:
+   * 1. It's a new version of a derivative.
+   * 2. It's a new version of a "parent" file
+   * 3. It's a brand new file
+   * 4. It's (probably) a parent or derivative file that already exists
+   * @param foundDoc
+   * @param tempPath
+   * @param targetPath
+   * @param inRightLocation
+   * @return
+   */
+  def archiveFile(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+    val newHash: String = foundDoc.doc.hash
+
+    val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+    val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+
+    if (newHash != oldHash && foundDoc.doc.derivative) {
+      // 1. It's a derivative file ie one that we transformed from the original.
+      // 2. It already exists at target location but is not the same file.
+      // 3. Overwrite it and continue because we don't archive derivatives.
+      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
+    } else if (newHash != oldHash) {
+      // 1. File already exists at target location but is not the same file
+      // 2. The file is not a derivative
+      // 3. Run the archiver process to move the old file to the appropriate archive path and the new one to the doclib folder
+      val archivePath = getArchivePath(targetPath, oldHash)
+      val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
+      // TODO We are not doing anything with any messages that failed to be queued at the moment
+      archiveResult.map(res => Right(res.map(_.path)))
+    } else if (!inRightLocation(foundDoc.doc.source)) {
+      // It's a new fille so move it to the correct place
+      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
+    } else {
+      // Not a new file or a file that requires updating so we will just cleanup the temp file
+      fileProcessor.removeFile(tempPath)
+      Future.successful(Right(None))
+    }
   }
 
   /**
