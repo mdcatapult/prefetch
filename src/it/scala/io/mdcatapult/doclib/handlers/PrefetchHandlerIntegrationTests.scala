@@ -268,9 +268,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    assertThrows[ZeroLengthFileException] {
-      handler.archiveOrProcess(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
-    }
+    val result = Await.result(handler.archiveOrProcess(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot), Duration.Inf)
+    assert(result.isLeft)
+    result.left.map(e => assert(e.isInstanceOf[ZeroLengthFileException]))
   }
 
   "Processing the same doc with additional metadata" should "add the metadata to the doclib doc" in {

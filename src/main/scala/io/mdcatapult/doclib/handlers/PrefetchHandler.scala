@@ -35,7 +35,7 @@ import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 
-import java.io.FileInputStream
+import java.io.{FileInputStream, FileNotFoundException}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -225,9 +225,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
     val latency = mongoLatency.labels(consumerName, "update_document").startTimer()
-
     getDocumentUpdate(found, msg).flatMap(bsonChanges => {
-
       val update = combine(
         bsonChanges,
         set("tags", (msg.tags.getOrElse(List[String]()) ::: found.doc.tags.getOrElse(List[String]())).distinct),
@@ -350,47 +348,54 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * @param foundDoc            the found document
    * @param tempPath            the path of the temporary file either remote or local
-   * @param targetPathGenerator function to generate the absolute target path for the file
+   * @param targetPathGenerator function to generate the absolute target path for the file. It can be for remote or local files depending on what
+   *                            was in the original message
    * @param inRightLocation     function to test if the current document source path is in the right location
    * @return
    */
-  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Option[Path]] = {
+  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+    // First check if the file has any length - this has happened in the past
     if (zeroLength(tempPath)) {
-      throw new ZeroLengthFileException(tempPath, foundDoc.doc)
+      Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
     } else {
+      // generate the path for the new(?) file using the function parameter
       targetPathGenerator(foundDoc) match {
-        case Some(targetPath) =>
-          val newHash: String = foundDoc.doc.hash
-
-          val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
-          val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
-
-          if (newHash != oldHash && foundDoc.doc.derivative) {
-            // File already exists at target location but is not the same file.
-            // Overwrite it and continue because we don't archive derivatives.
-            Future.successful(fileProcessor.moveFile(tempPath, targetPath))
-          } else if (newHash != oldHash) {
-            // file already exists at target location but is not the same file, archive the old one then add the new one
-            val archivePath = getArchivePath(targetPath, oldHash)
-            // Infinite await? Do we care if this happens before we move on? We already know the path that gets returned here
-            // so why are we waiting for it?
-            val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
-            // We are not doing anything with any messages that failed to be queued at the moment
-            archiveResult.map(res => res.map(_.path))
-          } else if (!inRightLocation(foundDoc.doc.source)) {
-            Future.successful(fileProcessor.moveFile(tempPath, targetPath))
-          } else { // not a new file or a file that requires updating so we will just cleanup the temp file
-            fileProcessor.removeFile(tempPath)
-            Future.successful(None)
-          }
-        case None => Future.successful(None)
-
+        case Some(targetPath) => {
+          archiveFile(foundDoc, tempPath, targetPath, inRightLocation)
+        }
+        // This file should exist so pass the failure up the chain
+        case None => Future.successful(Left(new FileNotFoundException(s"This file really should exist ${foundDoc.doc._id}")))
       }
     }
   }
 
+  def archiveFile(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+    val newHash: String = foundDoc.doc.hash
+
+    val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
+    val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
+
+    if (newHash != oldHash && foundDoc.doc.derivative) {
+      // File already exists at target location but is not the same file.
+      // Overwrite it and continue because we don't archive derivatives.
+      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
+    } else if (newHash != oldHash) {
+      // file already exists at target location but is not the same file, archive the old one then add the new one
+      val archivePath = getArchivePath(targetPath, oldHash)
+      val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
+      // We are not doing anything with any messages that failed to be queued at the moment
+      archiveResult.map(res => Right(res.map(_.path)))
+    } else if (!inRightLocation(foundDoc.doc.source)) {
+      Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
+    } else {
+      // not a new file or a file that requires updating so we will just cleanup the temp file
+      fileProcessor.removeFile(tempPath)
+      Future.successful(Right(None))
+    }
+  }
+
   /**
-   * Builds a document update with updates source and origins
+   * Builds a document update which updates source and origins
    *
    * @param foundDoc FoundDoc
    * @param msg      PrefetchMsg
@@ -399,7 +404,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Future[Bson] = {
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
 
-    val (source: Future[Option[Path]], origin: List[Origin]) = foundDoc.download match {
+    val (source: Future[Either[Exception, Option[Path]]], origin: List[Origin]) = foundDoc.download match {
       case Some(downloaded) =>
         val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
@@ -431,17 +436,27 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           List()
       }
 
-    val bsonChanges: Future[Bson] =  for {
+    // If the archive process failed then use the foundDoc, otherwise use the path returned from archive process (why?)
+    // TODO is the Right(None) actually valid or is it covered by the Left. Should Option[Path] really be Path
+    val bsonChanges: Future[Bson] = for {
       sourceValue <- source
+      archivedPath: Option[Path] = sourceValue match {
+        case Right(Some(path: Path)) => Some(path)
+        case Right(None) => None
+        case Left(_) => None
+      }
+      // Fancy name for remove the full path up to the doclib root which is used in the metadata in the mongo record as the "source"
       pathNormalisedSource = sourceValue match {
-        case Some(path: Path) => path.toString.replaceFirst(s"^$root", "")
-        case None => foundDoc.doc.source
+        case Right(Some(path: Path)) => path.toString.replaceFirst(s"^$root", "")
+        case Right(None) => foundDoc.doc.source
+        case Right(Some(_)) => foundDoc.doc.source
+        case Left(_) => foundDoc.doc.source
       }
       changes = List(
         set("source", pathNormalisedSource),
         set("origin", origin),
-        getFileAttrs(sourceValue),
-        getMimetype(sourceValue)
+        getFileAttrs(archivedPath),
+        getMimetype(archivedPath)
       )
     } yield combine(uuidAssignment ::: changes: _*)
 
