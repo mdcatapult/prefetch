@@ -5,8 +5,10 @@ import io.mdcatapult.doclib.handlers.FoundDoc
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.path.TargetPath
 import io.mdcatapult.doclib.remote.adapters.Http
+import better.files._
 
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
+import java.nio.file.attribute.BasicFileAttributeView
 
 /**
  * Util methods to figure out local & remote file paths within the doclib root
@@ -86,6 +88,12 @@ trait PathTransformer extends TargetPath {
       case withExt(path, file, ext) => s"${getTargetPath(path, archiveDirName)}/$file.$ext/$hash.$ext"
       case _ => throw new RuntimeException(s"Unable to identify path and filename for targetPath: $targetPath")
     }
+  }
+
+  def zeroLength(filePath: String): Boolean = {
+    val absPath = (doclibRoot / filePath).path
+    val attrs = Files.getFileAttributeView(absPath, classOf[BasicFileAttributeView]).readAttributes()
+    attrs.size == 0
   }
 
   /**
