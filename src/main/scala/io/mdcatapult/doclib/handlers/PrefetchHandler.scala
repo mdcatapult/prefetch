@@ -91,10 +91,15 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   /**
    * Given an incoming message the process flow is approximately the following:
+   *
    * 1. Find an existing record in the db for it.
-   * 2. OR Create a new record if it is a new document
-   * 3. Move the document to the appropriate place in the doclib file structure and add metadata to the db record
+   *
+   * 2. OR Create a new record if it is a new document.
+   *
+   * 3. Move the document to the appropriate place in the doclib file structure and add metadata to the db record.
+   *
    * 4. Archive any existing documents for this record
+   *
    * @param msg
    * @return
    */
@@ -136,13 +141,20 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   /**
    * Given a db record for a document process it:
-   * 1. Check that it is valid ie that it wasn't created recently
-   * 2. Change the "context" metadata on the db record for the document to started
+   *
+   * 1. Check that it is valid ie that it wasn't created recently.
+   *
+   * 2. Change the "context" metadata on the db record for the document to started.
+   *
    * 3. Update the db record in "updateFoundDocument". This also moves the document file to the correct place and archives
-   * it if required
+   *    it if required.
+   *
    * 4. Update the parent-child mappings if the document is a derivative
+   *
    * 5. Change the db record context to "finished"
+   *
    * 6. Return the original document (ie foundDoc) and the updated document (ie newDoc)
+   *
    * @param msg
    * @param foundDoc
    * @param flagContext
@@ -157,7 +169,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       val prefetchResult = for {
         _ <- OptionT(Future(Option(valid(msg, foundDoc))))
         started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
-        newDoc <- OptionT(updateFoundDocument(foundDoc, msg))
+        newDoc <- OptionT(updateDatabaseRecord(foundDoc, msg))
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
@@ -196,38 +208,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Given existing parent and child details create parent-child mappings
-   */
-  def createParentChildDerivative(parentDoc: DoclibDoc, childDoc: DoclibDoc, target: String): Future[List[Option[InsertOneResult]]] = {
-
-    val derivatives: List[Derivative] = parentDoc.derivatives.getOrElse(List())
-
-    val mappings: List[Future[Option[InsertOneResult]]] =
-      for {
-        derivative <- derivatives
-        latency = mongoLatency.labels(consumerName, "insert_parent_child_mapping").startTimer()
-        parentChild = derivativesCollection.insertOne(
-          ParentChildMapping(
-            _id = UUID.randomUUID,
-            parent = parentDoc._id,
-            child = Some(childDoc._id),
-            childPath = target,
-            metadata = derivative.metadata
-          )
-        ).toFutureOption().andThen(_ => latency.observeDuration())
-      } yield parentChild
-
-    Future.sequence(mappings)
-  }
-
-  /**
    * Process the found documents and generate an update to apply to the document before pushing downstream
    *
    * @param found FoundDoc
    * @param msg   PrefetchMsg
    * @return
    */
-  def updateFoundDocument(found: FoundDoc, msg: PrefetchMsg): Future[Option[DoclibDoc]] = {
+  def updateDatabaseRecord(found: FoundDoc, msg: PrefetchMsg): Future[Option[DoclibDoc]] = {
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
@@ -259,31 +246,12 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * build consolidated list of origins from doc and msg
+   * Fetches and process a document and then creates db update.
    *
-   * @param found FoundDoc
-   * @param msg   PrefetchMsg
-   * @return
-   */
-  def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
-    found.doc.origin.getOrElse(List[Origin]()) :::
-      found.origins :::
-      msg.origins.getOrElse(List[Origin]())
-    ).distinct
-
-  /**
-   * Return http or ftp urls in a list of Origins
-   * @param origins
-   * @return
-   */
-  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
-    Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
-  })
-
-  /**
-   * Fetches and process a document and then creates db update
-   * 1. Download a remote document if not in the db.
-   * 2. Push document through the archive process.
+   * 1. Ingest the document ie download it if required, move it to the correct place and archive existing versions.
+   *
+   * 2. Get the path to the document and all the remote origins for it after it gets ingested.
+   *
    * 3. Build BSON update for mongo which updates source, origins and file attributes.
    *
    * @param foundDoc FoundDoc
@@ -291,33 +259,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @return Bson
    */
   def getDocumentUpdate(foundDoc: FoundDoc, msg: PrefetchMsg): Future[Bson] = {
-    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
 
-    val (source: Future[Either[Exception, Option[Path]]], origin: List[Origin]) = foundDoc.download match {
-      // If the doc was not in the existing db/doclib file system ie we had to fetch it from remote http/ftp source
-      case Some(downloaded) =>
-        val source = archiveOrProcess(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
-        val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
-        (source, foundDoc.origins ::: filteredDocOrigin)
+    val (source: Future[Either[Exception, Option[Path]]], origin: List[Origin]) = ingestDocument(foundDoc, msg)
 
-      // Or it is a local doc on the filesystem already. It might be a "local to remote" file or just a local one. Either way pass it
-      // through the archive process
-      case None =>
-        val remoteOrigins = getRemoteOrigins(currentOrigins)
-        val source =
-          remoteOrigins match {
-            case origin :: _ =>
-              // has at least one remote origin and needs relocating to remote folder
-              archiveOrProcess(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
-            case _ =>
-              // does not need remapping to remote location
-              archiveOrProcess(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
-          }
-        (source, currentOrigins)
-    }
-
-    val root = config.getString("doclib.root")
-
+    // Note that this is not actually used but at one point we nearly switched to UUIDs instead of ObjecIds for DoclibDoc records
     val uuidAssignment: List[Bson] =
       foundDoc.doc.uuid match {
         case None =>
@@ -326,7 +271,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           List()
       }
 
-    // If the archive process failed then use the foundDoc, otherwise use the path returned from archive process (why?)
+    // If the archive process failed then use the foundDoc, otherwise use the path that the document was moved to via the
     // Right(None) means that it is the same file (probably!)
     val bsonChanges: Future[Bson] = for {
       sourceValue <- source
@@ -336,13 +281,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         case Left(_) => None
       }
       // Fancy name for remove the full path up to the doclib root which is used in the metadata in the mongo record as the "source"
-      pathNormalisedSource = sourceValue match {
-        case Right(Some(path: Path)) => path.toString.replaceFirst(s"^$root", "")
+      normalisedDoclibPath = sourceValue match {
+        case Right(Some(path: Path)) => path.toString.replaceFirst(s"^$doclibRoot", "")
         case Right(None) => foundDoc.doc.source
         case Left(_) => foundDoc.doc.source
       }
       changes = List(
-        set("source", pathNormalisedSource),
+        set("source", normalisedDoclibPath),
         set("origin", origin),
         getFileAttrs(archivedPath),
         getMimetype(archivedPath)
@@ -353,25 +298,82 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Handles the update of a db record for a document and its associated file based on supplied properties
-   * by archiving, moving, or removing the file.
+   * Ingestion process moves a document from the ingress or remote-ingress folder into local or remote-ingress.
+   * Process is:
+   *
+   * 1. Download the document if required.
+   *
+   * 2. Process the document via the processFoundDocument method to get the eventual path in the doclib root for this document
+   *
+   * 3. Determine all the remote http/ftp origins for this document.
+   *
+   * There are 3 different possibilities for a document:
+   *
+   * 1. The document was downloaded through prefetch from http/ftp. Download it into remote-ingress, move it into remote.
+   *
+   * 2. The document was originally downloaded from http/ftp but then placed into ingress folder for ingest. Prefetch message likely has origin in its metadata.
+   *    Move it from ingress into remote-ingress.
+   *
+   * 3. The document is a non remote file in the ingress folder. Move it from ingress into local.
+   *
+   * @param foundDoc
+   * @param msg
+   * @return Path to the document after it has been moved from ingress/remote-ingress and all its origins
+   */
+  def ingestDocument(foundDoc: FoundDoc, msg: PrefetchMsg): (Future[Either[Exception, Option[Path]]], List[Origin]) = {
+    val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
+
+    foundDoc.download match {
+      // If the doc was not in the existing db/doclib file system ie we had to fetch it via prefetch from remote http/ftp source
+      // TODO put the zero length check here?
+      case Some(downloaded) =>
+        val source = processFoundDocument(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
+        val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
+        (source, foundDoc.origins ::: filteredDocOrigin)
+
+      // The doc is on the filesystem already. It might be a "local to remote" file or just a local one. Either way pass it
+      // through the move/archive process
+      case None =>
+        val remoteOrigins = getRemoteOrigins(currentOrigins)
+        val source =
+          remoteOrigins match {
+            case origin :: _ =>
+              // Has at least one remote origin, possibly from the prefetch message itself, and needs relocating to remote folder ie.
+              // 1. It is file that has been downloaded outside of prefetch via ftp/http.
+              // 2. The file was placed in the ingress dir for ingestion.
+              // 3. The user wants it to reside in the remote folder so that future versions that get downloaded from actual http/ftp archive & update correctly.
+              processFoundDocument(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+            case _ =>
+              // Does not need moving to remote doclib folder. It is just a file in ingress that needs to be moved to local
+              processFoundDocument(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+          }
+        (source, currentOrigins)
+    }
+  }
+
+  /**
+   * 1. Checks that the file to be processed is not zero length.
+   *
+   * 2. Generate the file path that the document is to be moved to.
+   *
+   * 3. Start the file move and archive process
    *
    * @param foundDoc            the found document
    * @param tempPath            the path of the temporary file either remote or local
    * @param targetPathGenerator function to generate the absolute target path for the file. It can be for remote or local files depending on what
    *                            was in the original message
    * @param inRightLocation     function to test if the current document source path is in the right location
-   * @return
+   * @return Path to the document after it has been ingressed.
    */
-  def archiveOrProcess(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+  def processFoundDocument(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
     // First check if the file has any length - this has happened in the past
     if (zeroLength(tempPath)) {
       Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
     } else {
-      // generate the path for the new file using the function parameter
+      // Generate the path that the document is to be moved to using the supplied targetPathGenerator
       targetPathGenerator(foundDoc) match {
         case Some(targetPath) => {
-          moveAndArchiveFile(foundDoc, tempPath, targetPath, inRightLocation)
+          moveNewAndArchiveExisting(foundDoc, tempPath, targetPath, inRightLocation)
         }
         // This file should exist so pass the failure up the chain
         case None => Future.successful(Left(new FileNotFoundException(s"This file really should exist ${foundDoc.doc._id}")))
@@ -380,19 +382,24 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Moves files to the correct place and also archives old versions if appropriate. Uses MD5 hash to test
+   * Moves file to the correct place and also archives old versions if appropriate. Uses MD5 hash to test
    * whether a file is different from existing one. There are 4 possible options:
+   *
    * 1. It's a new version of a derivative.
+   *
    * 2. It's a new version of a "parent" file
+   *
    * 3. It's a brand new file
+   *
    * 4. It's (probably) a parent or derivative file that already exists
+   *
    * @param foundDoc
    * @param tempPath
    * @param targetPath
-   * @param inRightLocation
+   * @param inRightLocation Is the file already in the correct final location ie local or remote
    * @return
    */
-  def moveAndArchiveFile(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+  def moveNewAndArchiveExisting(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
     val newHash: String = foundDoc.doc.hash
 
     val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
@@ -412,7 +419,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       // TODO We are not doing anything with any messages that failed to be queued at the moment
       archiveResult.map(res => Right(res.map(_.path)))
     } else if (!inRightLocation(foundDoc.doc.source)) {
-      // It's a new file so move it to the correct place
+      // It's a new file in ingress or remote-ingress so move it to the correct place
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
     } else {
       // Not a new file or a file that requires updating so we will just cleanup the temp file
@@ -652,5 +659,27 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       }
     )
   }
+
+  /**
+   * build consolidated list of origins from doc and msg
+   *
+   * @param found FoundDoc
+   * @param msg   PrefetchMsg
+   * @return
+   */
+  def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
+    found.doc.origin.getOrElse(List[Origin]()) :::
+      found.origins :::
+      msg.origins.getOrElse(List[Origin]())
+    ).distinct
+
+  /**
+   * Return http or ftp urls in a list of Origins
+   * @param origins
+   * @return
+   */
+  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
+    Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
+  })
 
 }
