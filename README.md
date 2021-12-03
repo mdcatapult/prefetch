@@ -18,6 +18,13 @@ identifies the remote location/s that the document was retrieved from. Each orig
 * **headers** - optional: where required will contain header data about the origin
 * **metadata** - optional: where required will contain additional data derived from the remote file that is not part of any headers
 
+## The Prefetch process
+
+The app is booted via `ConsumerPrefetch` which creates connections to rabbit queues & mongo and then creates 
+the `PrefetchHandler` which listens out for messages and does all the work. Each time it gets a new message from rabbit it gets to the `handle` method. This then finds a mongo
+record for this document (or creates one) and then starts the document process. This ends up in the method `prefechProcess`
+which does most of the heavy lifting.
+
 ## Execution
 
 This is a scala application that runs inside the JVM
