@@ -158,8 +158,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(parentResultOne.exists(_.wasAcknowledged()))
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-    val (source, origins) = Await.result(handler.ingestDocument(FoundDoc(doc = parentDocOne), prefetchMsg), 5.seconds)
-
+    val (targetPath, inCorrectPlace, docSource, origins) = handler.generateDocumentTargets(FoundDoc(doc = parentDocOne), prefetchMsg)
+    val source = Await.result(handler.ingressDocument(FoundDoc(doc = parentDocOne), docSource, targetPath, inCorrectPlace), 5.seconds)
     val bsonUpdate = handler.getDocumentUpdate(FoundDoc(parentDocOne), source.map(path => path), origins)
     val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(parentDocOne), prefetchMsg, bsonUpdate), 5.seconds)
 
@@ -206,7 +206,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val firstPrefetchMessage = PrefetchMsg(uriWithRedirect.toString())
     // create initial document
     val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
-    val (source, origins) = Await.result(handler.ingestDocument(firstDoc, firstPrefetchMessage), 5.seconds)
+    val (targetPath, inCorrectPlace, docSource, origins) = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
+    val source = Await.result(handler.ingressDocument(firstDoc, docSource, targetPath, inCorrectPlace), 5.seconds)
     val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), origins)
     val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(firstDoc, firstPrefetchMessage, bsonUpdate), 5.seconds)
 
@@ -223,7 +224,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     firstDoc.doc.uuid should not be None
     secondDoc.doc.uuid should be(firstDoc.doc.uuid)
 
-    val (source2, origins2) = Await.result(handler.ingestDocument(secondDoc, firstPrefetchMessage), 5.seconds)
+    val (targetPath2, inCorrectPlace2, docSource2, origins2) = handler.generateDocumentTargets(secondDoc, firstPrefetchMessage)
+    val source2 = Await.result(handler.ingressDocument(secondDoc, docSource2, targetPath2, inCorrectPlace2), 5.seconds)
     val bsonUpdate2 = handler.getDocumentUpdate(secondDoc, source2.map(path => path), origins2)
     val updatedDocLibDoc: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(secondDoc, firstPrefetchMessage, bsonUpdate2), 5.seconds)
 
@@ -278,7 +280,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    val result = Await.result(handler.processFoundDocument(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath(FoundDoc(doc)), handler.inLocalRoot(doc.source)), Duration.Inf)
+    val result = Await.result(handler.ingressDocument(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath(FoundDoc(doc)), handler.inLocalRoot(doc.source)), Duration.Inf)
     assert(result.isLeft)
     result.left.map(e => assert(e.isInstanceOf[ZeroLengthFileException]))
   }
