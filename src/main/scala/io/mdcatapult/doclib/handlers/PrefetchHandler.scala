@@ -296,14 +296,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   /**
    * Ingestion process moves a document from the ingress or remote-ingress folder into local or remote-ingress.
-   * Process is:
+   * We need to figure out where to relocate it and the process is:
    *
    * 1. Download the document if required.
    *
-   * 2. Process the document via the processFoundDocument method to get the eventual path in the doclib root for this document
+   * 2. Figure out whether it is remote, local to remote or local and pass back the appropriate methods to do this.
    *
    * 3. Determine all the remote http/ftp origins for this document.
    *
+   * 4. Process the document via the processFoundDocument method to get the eventual path in the doclib root for this document
+   **
    * There are 3 different possibilities for a document:
    *
    * 1. The document was downloaded through prefetch from http/ftp. Download it into remote-ingress, move it into remote.
@@ -320,32 +322,28 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   def ingestDocument(foundDoc: FoundDoc, msg: PrefetchMsg): Future[(Either[Exception, Option[Path]], List[Origin])] = {
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
 
-    val (source, origins) = foundDoc.download match {
-      // If the doc was not in the existing db/doclib file system ie we had to fetch it via prefetch from remote http/ftp source
-      // TODO put the zero length check here?
+    val (targetUpdatePath: Option[String], inRightLocation: Boolean, documentSource: String, origins: List[Origin]) = foundDoc.download match {
+     // 1. The doc has been downloaded from http/ftp
       case Some(downloaded) =>
-        val source = processFoundDocument(foundDoc, downloaded.source, getRemoteUpdateTargetPath, inRemoteRoot)
         val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
-        (source, foundDoc.origins ::: filteredDocOrigin)
+        (getRemoteUpdateTargetPath(foundDoc), inRemoteRoot(foundDoc.doc.source), downloaded.source, foundDoc.origins ::: filteredDocOrigin)
 
-      // The doc is on the filesystem already. It might be a "local to remote" file or just a local one. Either way pass it
-      // through the move/archive process
+      //2. The doc was on the filesystem ie it was not downloaded via prefetch
       case None =>
         val remoteOrigins = getRemoteOrigins(currentOrigins)
-        val source =
-          remoteOrigins match {
+        remoteOrigins match {
             case origin :: _ =>
-              // Has at least one remote origin, possibly from the prefetch message itself, and needs relocating to remote folder ie.
-              // 1. It is a file that has been downloaded outside of prefetch via ftp/http.
-              // 2. The file was placed in the ingress dir for ingestion.
-              // 3. The user wants it to reside in the remote folder so that future versions that get downloaded from actual http/ftp archive & update correctly.
-              processFoundDocument(foundDoc, msg.source, getLocalToRemoteTargetUpdatePath(origin), inRemoteRoot)
+              // 2.1 The file has remote origins ie. It is a file that has been downloaded outside of prefetch via ftp/http but placed in the ingress dir for ingestion.
+              //    Relocate it to the remote folder
+              val pathCheck = getLocalToRemoteTargetUpdatePath(origin) //This guy is annoying since it returns an inner function!
+              (pathCheck(foundDoc), inRemoteRoot(foundDoc.doc.source), msg.source, currentOrigins)
             case _ =>
-              // Does not need moving to remote doclib folder. It is just a file in ingress that needs to be moved to local
-              processFoundDocument(foundDoc, msg.source, getLocalUpdateTargetPath, inLocalRoot)
+              // 2.2 Not from remote origin, it is a file in ingress that needs to be moved to local
+              (getLocalUpdateTargetPath(foundDoc), inLocalRoot(foundDoc.doc.source), msg.source, currentOrigins)
           }
-        (source, currentOrigins)
     }
+    // We've figured out where it needs to go so kick off the process
+    val source = processFoundDocument(foundDoc, documentSource, targetUpdatePath, inRightLocation)
     source.map{ s2 => (s2, origins) }
   }
 
@@ -363,13 +361,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param inRightLocation     function to test if the current document source path is in the right location
    * @return Path to the document after it has been ingressed.
    */
-  def processFoundDocument(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: FoundDoc => Option[String], inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+  def processFoundDocument(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: Option[String], inRightLocation: Boolean): Future[Either[Exception, Option[Path]]] = {
     // First check if the file has any length - this has happened in the past
     if (zeroLength(tempPath)) {
       Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
     } else {
       // Generate the path that the document is to be moved to using the supplied targetPathGenerator
-      targetPathGenerator(foundDoc) match {
+      targetPathGenerator match {
         case Some(targetPath) => {
           moveNewAndArchiveExisting(foundDoc, tempPath, targetPath, inRightLocation)
         }
@@ -397,7 +395,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param inRightLocation Is the file already in the correct final location ie local or remote
    * @return
    */
-  def moveNewAndArchiveExisting(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: String => Boolean): Future[Either[Exception, Option[Path]]] = {
+  def moveNewAndArchiveExisting(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: Boolean): Future[Either[Exception, Option[Path]]] = {
     val newHash: String = foundDoc.doc.hash
 
     val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
@@ -416,7 +414,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
       // TODO We are not doing anything with any messages that failed to be queued at the moment
       archiveResult.map(res => Right(res.map(_.path)))
-    } else if (!inRightLocation(foundDoc.doc.source)) {
+    } else if (!inRightLocation) {
       // It's a new file in ingress or remote-ingress so move it to the correct place
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
     } else {

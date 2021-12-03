@@ -278,7 +278,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    val result = Await.result(handler.processFoundDocument(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot), Duration.Inf)
+    val result = Await.result(handler.processFoundDocument(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath(FoundDoc(doc)), handler.inLocalRoot(doc.source)), Duration.Inf)
     assert(result.isLeft)
     result.left.map(e => assert(e.isInstanceOf[ZeroLengthFileException]))
   }
