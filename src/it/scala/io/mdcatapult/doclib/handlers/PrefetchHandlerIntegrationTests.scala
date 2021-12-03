@@ -195,46 +195,50 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       case Nil => fail("no origins found")
     }
   }
-// TODO Fix this test - what is it trying to prove and how can the new ingress process test it
-//  "Multiple urls which redirect to the same url" should "be inserted in the origin as metadata" in {
-//    val sourceRedirect = "https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
-//    val uriWithRedirect = Uri.parse(sourceRedirect)
-//    val similarUri = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
-//    val similarUriUriWithRedirect = Uri.parse(similarUri)
-//    val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
-//
-//    // create initial document
-//    val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
-//    val bsonUpdate = handler.getDocumentUpdate(firstDoc, Right(Some(Paths.get("test/prefetch-test/local/origins-test.txt").toAbsolutePath)), List(Origin("something")))
-//    val docLibDoc = Await.result(handler.updateDatabaseRecord(firstDoc, PrefetchMsg(uriWithRedirect.toString()), bsonUpdate), Duration.Inf).value
-//
-//    docLibDoc.origin.get match {
-//      case canonical :: rest =>
-//        assert(canonical.uri.get == canonicalUri)
-//        assert(rest.head.uri.get == uriWithRedirect)
-//      case _ => fail("Expected origins to be a list")
-//    }
-//
-//    val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
-//    assert(secondDoc.doc._id == firstDoc.doc._id)
-//
-//    firstDoc.doc.uuid should not be None
-//    secondDoc.doc.uuid should be(firstDoc.doc.uuid)
-//
-//    val bsonUpdate2 = handler.getDocumentUpdate(FoundDoc(docLibDoc), Right(Some(Paths.get("local/metadata-tags-test/file2.txt"))), List(Origin("something")))
-//    val updatedDocLibDoc = Await.result(handler.updateDatabaseRecord(secondDoc, PrefetchMsg(uriWithRedirect.toString()), bsonUpdate2), Duration.Inf).get
-//    assert(updatedDocLibDoc.origin.get.size == 3)
-//
-//    updatedDocLibDoc.uuid should be(firstDoc.doc.uuid)
-//
-//    updatedDocLibDoc.origin.get match {
-//      case canonical :: rest =>
-//        assert(canonical.uri.get == canonicalUri)
-//        assert(rest.head.uri.get == uriWithRedirect)
-//        assert(rest(1).uri.get == similarUriUriWithRedirect)
-//      case _ => fail("Expected origins to be a list")
-//    }
-//  }
+
+  "Multiple urls which redirect to the same url" should "be inserted in the origin as metadata" in {
+    val sourceRedirect = "https://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+    val uriWithRedirect = Uri.parse(sourceRedirect)
+    val similarUri = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
+    val similarUriUriWithRedirect = Uri.parse(similarUri)
+    val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
+
+    val firstPrefetchMessage = PrefetchMsg(uriWithRedirect.toString())
+    // create initial document
+    val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
+    val (source, origins) = Await.result(handler.ingestDocument(firstDoc, firstPrefetchMessage), 5.seconds)
+    val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), origins)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(firstDoc, firstPrefetchMessage, bsonUpdate), 5.seconds)
+
+    docUpdate.get.origin.get match {
+      case canonical :: rest =>
+        assert(canonical.uri.get == canonicalUri)
+        assert(rest.head.uri.get == uriWithRedirect)
+      case _ => fail("Expected origins to be a list")
+    }
+
+    val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
+    assert(secondDoc.doc._id == firstDoc.doc._id)
+
+    firstDoc.doc.uuid should not be None
+    secondDoc.doc.uuid should be(firstDoc.doc.uuid)
+
+    val (source2, origins2) = Await.result(handler.ingestDocument(secondDoc, firstPrefetchMessage), 5.seconds)
+    val bsonUpdate2 = handler.getDocumentUpdate(secondDoc, source2.map(path => path), origins2)
+    val updatedDocLibDoc: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(secondDoc, firstPrefetchMessage, bsonUpdate2), 5.seconds)
+
+    assert(updatedDocLibDoc.get.origin.get.size == 3)
+
+    updatedDocLibDoc.get.uuid should be(firstDoc.doc.uuid)
+
+    updatedDocLibDoc.get.origin.get match {
+      case canonical :: rest =>
+        assert(canonical.uri.get == canonicalUri)
+        assert(rest.head.uri.get == uriWithRedirect)
+        assert(rest(1).uri.get == similarUriUriWithRedirect)
+      case _ => fail("Expected origins to be a list")
+    }
+  }
 
 
   "Adding the same url to a doc" should "not be be result in a duplicate origins" in {
