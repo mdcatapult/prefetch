@@ -199,7 +199,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * 3. Determine all the remote http/ftp origins for this document.
    *
    * 4. After this we should process the document via the processFoundDocument method to get the eventual path in the doclib root for this document
-   **
+   *
    * There are 3 different possibilities for a document:
    *
    * 1. The document was downloaded through prefetch from http/ftp. Download it into remote-ingress, move it into remote.
@@ -543,7 +543,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   /**
    * 1. Retrieves existing db records for a document from mongo based on the MD5 hash and query params from calling function eg origin.
+   *
    * 2. If no db record found will ask createDoc to create and persist a new record
+   *
    * 3. The query will also find existing versions of the document and return them as a list of docs to be archived
    *
    * @param source String
@@ -621,7 +623,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 1. If prefetch message is just verifying document then test to ensure is not a new doc (default is more than 10
    * seconds old). If it is an old doc, and verifying, then throw SilentValidationException.
+   *
    * 2. Test that the Origin is not Missing for Ftp/Sftp/Https(s)
+   *
    * 3. It could be some legacy Orign scheme so just shrug and move on
    *
    * @param msg      PrefetchMsg
@@ -655,7 +659,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * build consolidated list of origins from doc and msg
+   * Build consolidated list of origins from doc and msg
    *
    * @param found FoundDoc
    * @param msg   PrefetchMsg
