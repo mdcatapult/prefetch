@@ -36,6 +36,8 @@ which does most of the heavy lifting. The general process goes like this:
 9. Change the db record context to `finished`
 10. Return the original document (ie `foundDoc`) and the updated document (ie `newDoc`)
 
+More info available on the [wiki](https://informatics.pages.mdcatapult.io/doclib/docs/docs/introduction/).
+
 ## Execution
 
 This is a scala application that runs inside the JVM
