@@ -101,6 +101,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
 
+
+    println("HANDLING!!!")
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 
@@ -108,7 +110,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
       case Some(foundDoc) =>
-        foundDocumentProcess(msg, foundDoc, flagContext)
+        if (!foundDoc.doc.rogueFile) foundDocumentProcess(msg, foundDoc, flagContext)
+        else Future.failed(new Exception(s"file ${foundDoc.doc.source} has been marked as rogue - processing aborted"))
 
       case None =>
         // if we can't identify a document by a document id, log error
