@@ -61,14 +61,11 @@ class Archiver(archiver: Sendable[DoclibMsg], fileProcessor: FileProcessor)
    * @return List[ArchiveResult] Result of queuing the messages to move existing versions of a doc
    */
   private def sendDocumentsToArchiver(docs: List[DoclibDoc]): List[ArchiveResult] = {
-    val messageSuccess = {
-      for {
-        doc <- docs
-        id = doc._id.toHexString
-        successOrFail = sendMessage(id)
-      } yield successOrFail
-    }
-    messageSuccess
+    for {
+      doc <- docs
+      id = doc._id.toHexString
+      successOrFail = sendMessage(id)
+    } yield successOrFail
   }
 
   /**
