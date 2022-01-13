@@ -36,7 +36,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
 
   private val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
-  private val awaitDuration = 50 seconds
+  private val awaitDuration = 5 seconds
 
   "The PrefetchHandler handle method" should
     "return a SilentValidationException given a db record exists from the previous day" in {
