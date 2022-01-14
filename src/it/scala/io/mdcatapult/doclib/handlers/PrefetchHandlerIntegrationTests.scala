@@ -478,6 +478,29 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
+  "A document with a rogue file" should "not update" in {
+    val rogueDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = "ingress/derivatives/raw.txt",
+      hash = "2d282102fa671256327d4767ec23bc6c",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.now,
+      updated = LocalDateTime.now,
+      mimetype = "text/plain",
+      tags = Some(List[String]("one")),
+      metadata = Some(List(MetaString("key", "value"))),
+      uuid = Some(UUID.randomUUID()),
+      rogueFile = Some(true),
+    )
+
+    val prefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt")
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(rogueDoc), prefetchMsg), 5 seconds)
+
+    assert (docUpdate.isEmpty)
+
+  }
+
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Await.result(derivativesCollection.drop().toFuture(), 5.seconds)

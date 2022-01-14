@@ -102,16 +102,17 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
 
 
-    println("HANDLING!!!")
+    println(s"HANDLING!!! ${msg.source}")
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
-      case Some(foundDoc) =>
-        if (!foundDoc.doc.rogueFile) foundDocumentProcess(msg, foundDoc, flagContext)
-        else Future.failed(new Exception(s"file ${foundDoc.doc.source} has been marked as rogue - processing aborted"))
+      case Some(foundDoc) => foundDocumentProcess(msg, foundDoc, flagContext)
+//        println(s"foundDoc ${foundDoc.doc.hash} is rogue: ${foundDoc.doc.rogueFile.contains(true)}")
+//        if (!foundDoc.doc.rogueFile.contains(true)) foundDocumentProcess(msg, foundDoc, flagContext)
+//        else Future.failed(new Exception(s"file ${foundDoc.doc.source} has been marked as rogue - processing aborted"))
 
       case None =>
         // if we can't identify a document by a document id, log error
@@ -501,8 +502,14 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       case Some(uri) =>
         uri.schemeOption match {
           case None => throw new UndefinedSchemeException(uri)
-          case Some("file") => findLocalDocument(URI.raw, derivative)
-          case _ => findRemoteDocument(uri)
+          case Some("file") => {
+            println("finding local!")
+            findLocalDocument(URI.raw, derivative)
+          }
+          case _ => {
+            println("finding remote!")
+            findRemoteDocument(uri)
+          }
         }
       case None =>
         findLocalDocument(URI.raw, derivative)
@@ -629,6 +636,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * Checks if just verifying document and if true tests to ensure is not a new doc by checking it is more than 10
    * seconds old (prefetch.verificationTimeout).
+   *
+   * Documents with rogue files will fail validation.
+   *
    * If it is an old doc, and verifying, then throw SilentValidationException.
    *
    * @param msg      PrefetchMsg
@@ -640,6 +650,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
       throw new SilentValidationException(foundDoc.doc)
+
+    if (foundDoc.doc.rogueFile.contains(true)) {
+      throw new Exception(s"file ${foundDoc.doc.source} has been marked as rogue")
+    }
 
     val origins = msg.origins.getOrElse(List())
 
