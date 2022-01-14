@@ -494,7 +494,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       rogueFile = Some(true),
     )
 
-    val prefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt")
+    val prefetchMsg = PrefetchMsg("local/rogue.txt")
     val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(rogueDoc), prefetchMsg), 5 seconds)
 
     assert (docUpdate.isEmpty)
@@ -516,6 +516,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivative-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/rogue.txt").toAbsolutePath)
     }
   }
 }
