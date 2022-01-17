@@ -14,6 +14,7 @@ import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
 import io.mdcatapult.doclib.path.TargetPath
+import io.mdcatapult.doclib.prefetch.model.DocumentTarget
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
@@ -177,9 +178,9 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       val prefetchResult = for {
         _ <- OptionT(Future(Option(valid(msg, foundDoc))))
         started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
-        (targetUpdatePath, inRightLocation, documentSource, origins) = generateDocumentTargets(foundDoc, msg)
-        source <- OptionT.liftF(ingressDocument(foundDoc, documentSource, targetUpdatePath, inRightLocation))
-        documentUpdate = getDocumentUpdate(foundDoc, source, origins)
+        documentTarget = generateDocumentTargets(foundDoc, msg)
+        source <- OptionT.liftF(ingressDocument(foundDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation))
+        documentUpdate = getDocumentUpdate(foundDoc, source, documentTarget.origins)
         newDoc <- OptionT(updateDatabaseRecord(foundDoc, msg, documentUpdate))
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
@@ -213,14 +214,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param msg
    * @return A Tuple4 which contains the target path for the document, whether the doc is currently in correct location, the source for the document, the origins
    */
-  def generateDocumentTargets(foundDoc: FoundDoc, msg: PrefetchMsg): (Option[String], Boolean, String, List[Origin]) = {
+  def generateDocumentTargets(foundDoc: FoundDoc, msg: PrefetchMsg): DocumentTarget = {
     val currentOrigins: List[Origin] = consolidateOrigins(foundDoc, msg)
 
     foundDoc.download match {
       // 1. The doc has been downloaded from http/ftp
       case Some(downloaded) =>
-        val filteredDocOrigin = currentOrigins.filterNot(d => foundDoc.origins.map(_.uri.toString).contains(d.uri.toString))
-        (getRemoteUpdateTargetPath(foundDoc), inRemoteRoot(foundDoc.doc.source), downloaded.source, foundDoc.origins ::: filteredDocOrigin)
+        val filteredDocOrigin = currentOrigins.collect {
+          case origin: Origin if origin.uri.isDefined && foundDoc.origins.contains(origin.uri.get) => origin
+        }
+        DocumentTarget(getRemoteUpdateTargetPath(foundDoc), inRemoteRoot(foundDoc.doc.source), downloaded.source, foundDoc.origins ::: filteredDocOrigin)
 
       //2. The doc was on the filesystem ie it was not downloaded via prefetch
       case None =>
@@ -230,10 +233,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             // 2.1 The file has remote origins ie. It is a file that has been downloaded outside of prefetch via ftp/http but placed in the ingress dir for ingestion.
             // It needs to be relocated to the remote folder, not local
             val pathCheck = getLocalToRemoteTargetUpdatePath(origin) //This guy is annoying since it returns an inner function!
-            (pathCheck(foundDoc), inRemoteRoot(foundDoc.doc.source), msg.source, currentOrigins)
+            DocumentTarget(pathCheck(foundDoc), inRemoteRoot(foundDoc.doc.source), msg.source, currentOrigins)
           case _ =>
             // 2.2 Not from remote origin, it is a file in ingress that needs to be moved to local
-            (getLocalUpdateTargetPath(foundDoc), inLocalRoot(foundDoc.doc.source), msg.source, currentOrigins)
+            DocumentTarget(getLocalUpdateTargetPath(foundDoc), inLocalRoot(foundDoc.doc.source), msg.source, currentOrigins)
         }
     }
   }
@@ -316,16 +319,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Create a db update with latest metadata for source, origins & file attributes. Should occur after the file has
+   *  Create a db update with latest metadata for source, origins & file attributes. Should occur after the file has
    * been moved to the correct place and previous versions archived
-   *
-   * @param foundDoc FoundDoc
-   * @param msg      PrefetchMsg
-   * @return Bson
+   * @param foundDoc
+   * @param source
+   * @param origin
+   * @return
    */
   def getDocumentUpdate(foundDoc: FoundDoc, source: Either[Exception, Option[Path]], origin: List[Origin]): Bson = {
 
-    // Note that this is not actually used but at one point we nearly switched to UUIDs instead of ObjecIds for DoclibDoc records
+    // Note that this is not actually used but at one point we nearly switched to UUIDs instead of ObjectIds for DoclibDoc records
     val uuidAssignment: List[Bson] =
       foundDoc.doc.uuid match {
         case None =>
