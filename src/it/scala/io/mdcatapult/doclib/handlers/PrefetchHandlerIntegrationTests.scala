@@ -9,7 +9,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
-import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
+import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
 import io.mdcatapult.util.hash.Md5.md5
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
@@ -495,9 +495,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     )
 
     val prefetchMsg = PrefetchMsg("local/rogue.txt")
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(rogueDoc), prefetchMsg), 5 seconds)
 
-    assert (docUpdate.isEmpty)
+
+    assertThrows[RogueFileException] {
+        Await.result(handler.process(FoundDoc(rogueDoc), prefetchMsg), 5 seconds)
+    }
 
   }
 

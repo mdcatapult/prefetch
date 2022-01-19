@@ -25,4 +25,6 @@ object Exceptions {
 
   class MissingOriginSchemeException(msg: PrefetchMsg, origin: Origin) extends Exception(s"$origin has no uri: msg=$msg")
 
+  class RogueFileException(msg: PrefetchMsg, source: String) extends  Exception(s"cannot process rogue file. Source=$source, msg=$msg")
+
 }

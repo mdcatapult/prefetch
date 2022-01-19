@@ -640,7 +640,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       throw new SilentValidationException(foundDoc.doc)
 
     if (foundDoc.doc.rogueFile.contains(true)) {
-      throw new Exception(s"file ${foundDoc.doc.source} has been marked as rogue")
+      throw new RogueFileException(msg, foundDoc.doc.source)
     }
 
     val origins = msg.origins.getOrElse(List())
