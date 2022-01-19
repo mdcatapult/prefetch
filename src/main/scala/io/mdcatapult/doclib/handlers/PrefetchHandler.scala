@@ -101,8 +101,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
 
-
-    println(s"HANDLING!!! ${msg.source}")
     // TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 

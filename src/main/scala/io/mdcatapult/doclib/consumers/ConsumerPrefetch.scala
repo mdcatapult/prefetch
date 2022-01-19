@@ -19,7 +19,6 @@ object ConsumerPrefetch extends AbstractConsumer() {
 
   def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
 
-    println("start!!")
     import as.dispatcher
 
     val adminServer = Server(config)
