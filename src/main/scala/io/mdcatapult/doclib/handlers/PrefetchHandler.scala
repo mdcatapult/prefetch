@@ -110,10 +110,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
       case Some(foundDoc) => foundDocumentProcess(msg, foundDoc, flagContext)
-//        println(s"foundDoc ${foundDoc.doc.hash} is rogue: ${foundDoc.doc.rogueFile.contains(true)}")
-//        if (!foundDoc.doc.rogueFile.contains(true)) foundDocumentProcess(msg, foundDoc, flagContext)
-//        else Future.failed(new Exception(s"file ${foundDoc.doc.source} has been marked as rogue - processing aborted"))
-
       case None =>
         // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
@@ -502,14 +498,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       case Some(uri) =>
         uri.schemeOption match {
           case None => throw new UndefinedSchemeException(uri)
-          case Some("file") => {
-            println("finding local!")
-            findLocalDocument(URI.raw, derivative)
-          }
-          case _ => {
-            println("finding remote!")
-            findRemoteDocument(uri)
-          }
+          case Some("file") => findLocalDocument(URI.raw, derivative)
+          case _ => findRemoteDocument(uri)
         }
       case None =>
         findLocalDocument(URI.raw, derivative)
