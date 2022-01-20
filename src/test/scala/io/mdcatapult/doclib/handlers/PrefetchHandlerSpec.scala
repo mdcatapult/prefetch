@@ -476,7 +476,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf")
 
-    assertThrows[Exception] {
+    assertThrows[RogueFileException] {
       handler.valid(prefetchMsg, foundDoc)
     }
   }

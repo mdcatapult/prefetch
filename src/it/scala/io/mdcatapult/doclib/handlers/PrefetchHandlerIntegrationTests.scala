@@ -6,10 +6,13 @@ import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.util.time.nowUtc
 import io.mdcatapult.doclib.messages.PrefetchMsg
+import io.mdcatapult.doclib.flag.MongoFlagContext
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
+import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.hash.Md5.md5
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
@@ -495,12 +498,12 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     )
 
     val prefetchMsg = PrefetchMsg("local/rogue.txt")
+    val emptyFlagContext = new MongoFlagContext("", new Version("", 1, 1, 1, ""), collection, nowUtc)
 
 
     assertThrows[RogueFileException] {
-        Await.result(handler.process(FoundDoc(rogueDoc), prefetchMsg), 5 seconds)
+        Await.result(handler.foundDocumentProcess(prefetchMsg, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
     }
-
   }
 
   override def beforeAll(): Unit = {
