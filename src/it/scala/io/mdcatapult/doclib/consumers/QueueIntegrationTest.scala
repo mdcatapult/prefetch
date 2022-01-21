@@ -28,7 +28,7 @@ class QueueIntegrationTest extends TestKit(ActorSystem("QueueIntegrationTest", C
   with Matchers
   with BeforeAndAfterAll with MockFactory with ScalaFutures with Eventually {
 
-  "A queue" should {
+  "A queue" ignore {
     "be created if it does not exist" in {
 
       var messagesFromQueue = List[DoclibMsg]()
