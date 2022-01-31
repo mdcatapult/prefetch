@@ -128,3 +128,13 @@ The following metrics are exposed via prometheus on port `ADMIN_PORT` (default `
 docker-compose up -d
 sbt clean test it:test
 ```
+## Dependency Scanning
+
+https://github.com/albuch/sbt-dependency-check
+
+The sbt-dependency-check plugin can be used to create a HTML report under `target/scala-x.x/dependency-check-report.html`  
+
+```bash
+sbt dependencyCheck
+```
+

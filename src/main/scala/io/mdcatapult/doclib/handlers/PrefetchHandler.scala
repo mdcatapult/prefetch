@@ -115,8 +115,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
-      case Some(foundDoc) =>
-        foundDocumentProcess(msg, foundDoc, flagContext)
+      case Some(foundDoc) => foundDocumentProcess(msg, foundDoc, flagContext)
       case None =>
         // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
@@ -641,6 +640,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     // TODO don't throw exceptions, use Either instead
     if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
       throw new SilentValidationException(foundDoc.doc)
+
+    if (foundDoc.doc.rogueFile.contains(true)) {
+      throw new RogueFileException(msg, foundDoc.doc.source)
+    }
 
     val origins = msg.origins.getOrElse(List())
 

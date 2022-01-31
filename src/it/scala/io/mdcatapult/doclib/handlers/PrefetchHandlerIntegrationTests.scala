@@ -6,12 +6,15 @@ import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
+import io.mdcatapult.doclib.flag.MongoFlagContext
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
-import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
+import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
 import io.mdcatapult.util.hash.Md5.md5
+import io.mdcatapult.util.models.Version
+import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
@@ -497,6 +500,31 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     }
   }
 
+  "A document with a rogue file" should "not update" in {
+    val rogueDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = "ingress/derivatives/raw.txt",
+      hash = "2d282102fa671256327d4767ec23bc6c",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.now,
+      updated = LocalDateTime.now,
+      mimetype = "text/plain",
+      tags = Some(List[String]("one")),
+      metadata = Some(List(MetaString("key", "value"))),
+      uuid = Some(UUID.randomUUID()),
+      rogueFile = Some(true),
+    )
+
+    val prefetchMsg = PrefetchMsg("local/rogue.txt")
+    val emptyFlagContext = new MongoFlagContext("", new Version("", 1, 1, 1, ""), collection, nowUtc)
+
+
+    assertThrows[RogueFileException] {
+        Await.result(handler.foundDocumentProcess(prefetchMsg, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
+    }
+  }
+
   override def beforeAll(): Unit = {
     Await.result(collection.drop().toFuture(), 5.seconds)
     Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
@@ -514,6 +542,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivative-test.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/origins-test.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/metadata-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/rogue.txt").toAbsolutePath)
     }
   }
 }

@@ -53,7 +53,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   }
 
   "A valid https URI " should {
-    "be downloadable" in {
+    "be downloadable" ignore {
       val origin: Origin = Origin("https", uri = Uri.parseOption("https://www.bbc.co.uk/news"))
       val a = Await.result(client.download(origin), 10.seconds)
       assert(a.value.origin.value == "https://www.bbc.co.uk/news")
@@ -98,7 +98,7 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
   }
 
   "A valid FTP URI " should {
-    "be downloadable" in {
+    "be downloadable" ignore {
       val origin: Origin = Origin("ftp", uri = Uri.parseOption("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
       val a = Await.result(client.download(origin), 10.seconds)
       assert(a.value.origin.value == "ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt")
