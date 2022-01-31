@@ -6,14 +6,15 @@ import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
-import io.mdcatapult.util.time.nowUtc
-import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.flag.MongoFlagContext
+import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
+import io.mdcatapult.doclib.prefetch.model.DocumentTarget
 import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
-import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.hash.Md5.md5
+import io.mdcatapult.util.models.Version
+import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
@@ -161,7 +162,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(parentResultOne.exists(_.wasAcknowledged()))
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(parentDocOne), prefetchMsg), 5 seconds)
+    val documentTarget:DocumentTarget = handler.generateDocumentTargets(FoundDoc(doc = parentDocOne), prefetchMsg)
+    val source = Await.result(handler.ingressDocument(FoundDoc(doc = parentDocOne), documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(parentDocOne), source.map(path => path), documentTarget.origins)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(parentDocOne), prefetchMsg, bsonUpdate), 5.seconds)
 
     docUpdate.value.derivative should be(true)
     Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath) should be(true)
@@ -171,9 +175,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   "A file with a space in the path" should "be found" in {
     val docLocation = "local/test file.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
 
-    val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
-    val fetchedDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    val fetchedDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
 
     def docId(d: FoundDoc) = d.doc._id
 
@@ -202,11 +207,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val similarUriUriWithRedirect = Uri.parse(similarUri)
     val canonicalUri = Uri.parse("https://raw.githubusercontent.com/nginx/nginx/master/conf/fastcgi.conf")
 
+    val firstPrefetchMessage = PrefetchMsg(uriWithRedirect.toString())
     // create initial document
     val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
-    val docLibDoc = Await.result(handler.process(firstDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).value
+//    val (targetPath, inCorrectPlace, docSource, origins) = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
+    val documentTarget: DocumentTarget = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
+    val source = Await.result(handler.ingressDocument(firstDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
+    val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), documentTarget.origins)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(firstDoc, firstPrefetchMessage, bsonUpdate), 5.seconds)
 
-    docLibDoc.origin.get match {
+    docUpdate.get.origin.get match {
       case canonical :: rest =>
         assert(canonical.uri.get == canonicalUri)
         assert(rest.head.uri.get == uriWithRedirect)
@@ -219,12 +229,16 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     firstDoc.doc.uuid should not be None
     secondDoc.doc.uuid should be(firstDoc.doc.uuid)
 
-    val updatedDocLibDoc = Await.result(handler.process(secondDoc, PrefetchMsg(uriWithRedirect.toString())), Duration.Inf).get
-    assert(updatedDocLibDoc.origin.get.size == 3)
+    val documentTarget2: DocumentTarget = handler.generateDocumentTargets(secondDoc, firstPrefetchMessage)
+    val source2 = Await.result(handler.ingressDocument(secondDoc, documentTarget2.source, documentTarget2.targetPath, documentTarget2.correctLocation), 5.seconds)
+    val bsonUpdate2 = handler.getDocumentUpdate(secondDoc, source2.map(path => path), documentTarget2.origins)
+    val updatedDocLibDoc: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(secondDoc, firstPrefetchMessage, bsonUpdate2), 5.seconds)
 
-    updatedDocLibDoc.uuid should be(firstDoc.doc.uuid)
+    assert(updatedDocLibDoc.get.origin.get.size == 3)
 
-    updatedDocLibDoc.origin.get match {
+    updatedDocLibDoc.get.uuid should be(firstDoc.doc.uuid)
+
+    updatedDocLibDoc.get.origin.get match {
       case canonical :: rest =>
         assert(canonical.uri.get == canonicalUri)
         assert(rest.head.uri.get == uriWithRedirect)
@@ -271,9 +285,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       mimetype = "text/plain",
       tags = Some(List[String]())
     )
-    assertThrows[ZeroLengthFileException] {
-      handler.archiveOrProcess(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
-    }
+    val result = Await.result(handler.ingressDocument(FoundDoc(doc), "ingress/zero_length_file.txt", handler.getLocalUpdateTargetPath(FoundDoc(doc)), handler.inLocalRoot(doc.source)), Duration.Inf)
+    assert(result.isLeft)
+    result.left.map(e => assert(e.isInstanceOf[ZeroLengthFileException]))
   }
 
   "Processing the same doc with additional metadata" should "add the metadata to the doclib doc" in {
@@ -308,7 +322,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     result.value.wasAcknowledged() should be(true)
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Right(Some(Paths.get("local/metadata-test.txt"))), origin)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (doclibDoc.metadata.getOrElse(Nil) ::: metadataMap: _*)
     docUpdate.value.tags.value should contain only (doclibDoc.tags.getOrElse(Nil) ::: extraTags: _*)
@@ -345,7 +360,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     assert(result.get.wasAcknowledged())
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.process(FoundDoc(doclibDoc), prefetchMsg), 5 seconds)
+
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Right(Some(Paths.get("ingress/metadata-tags-test/file2.txt"))), origin)
+    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (metadataMap: _*)
     docUpdate.value.tags.value should contain only (extraTags: _*)
@@ -375,9 +392,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   "A file with the same contents" should "not create two docs" in {
     val docLocation = "ingress/zero_length_file.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
     val docLocation2 = "ingress/zero_length_file2.txt"
-    val origDoc = Await.result(handler.findLocalDocument(docLocation), 5.seconds).get
-    val fetchedDoc = Await.result(handler.findLocalDocument(docLocation2), 5.seconds).get
+    val prefetchUri2 = handler.PrefetchUri(docLocation2, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds).get
+    val fetchedDoc = Await.result(handler.findLocalDocument(prefetchUri2), 5.seconds).get
     assert(origDoc.doc._id == fetchedDoc.doc._id)
   }
 
@@ -390,8 +409,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val docFile2: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/second/$secondDoc").createFileIfNotExists(createParents = true)
     docFile.appendLine("Some contents")
     docFile2.appendLine("Different contents")
-    val origDoc = Await.result(handler.findLocalDocument(Paths.get(ingressDir, "first", firstDoc).toString), 5.seconds).get
-    val fetchedDoc = Await.result(handler.findLocalDocument(Paths.get(ingressDir, "second", firstDoc).toString), 5.seconds).get
+    val origDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "first", firstDoc).toString, None)), 5.seconds).get
+    val fetchedDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "second", firstDoc).toString, None)), 5.seconds).get
     assert(origDoc.doc._id != fetchedDoc.doc._id)
   }
 
@@ -521,6 +540,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/metadata-tags-test/file2.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivative-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/origins-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/metadata-test.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/rogue.txt").toAbsolutePath)
     }
   }

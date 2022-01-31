@@ -62,8 +62,9 @@ class ClientIntegrationTest  extends TestKit(ActorSystem("ClientIntegrationTest"
     }
   }
 
+  // These resources are not reliable
   "A valid http URI that relies on cookie " should {
-    "be downloadable" ignore {
+    "be downloadable" ignore  {
       val origin: Origin = Origin("http", uri = Uri.parseOption("http://www.tandfonline.com/doi/pdf/10.4081/ijas.2015.3712?needAccess=true"))
       val a = Await.result(client.download(origin), 10.seconds)
 

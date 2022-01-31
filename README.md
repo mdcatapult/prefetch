@@ -18,6 +18,26 @@ identifies the remote location/s that the document was retrieved from. Each orig
 * **headers** - optional: where required will contain header data about the origin
 * **metadata** - optional: where required will contain additional data derived from the remote file that is not part of any headers
 
+## The Prefetch process
+
+The app is booted via `ConsumerPrefetch` which creates connections to rabbit queues & mongo and then creates 
+the `PrefetchHandler` which listens out for messages and does all the work. Each time it gets a new message from rabbit it gets to the `handle` method. This then finds a mongo
+record for this document (or creates one) and then starts the document process. This ends up in the method `prefetchProcess`
+which does most of the heavy lifting. The general process goes like this:
+
+1. Fetch existing mongo db record for the document or create a new one.
+2. Check that the record is valid ie that it wasn't created recently and has an origin (for remote doc).
+3. Change the "context" metadata on the db record for the document to `started`.
+4. Figure out where the document came from and where it needs to go via `generateDocumentTargets`
+5. `Ingress` the document. This moves it to the correct place in the file system and archives any existing versions via `ingressDocument` > `moveNewAndArchiveExisting`
+6. Get a BSON update for the db record which includes any new origins and the final path for the document via`getDocumentUpdate`
+7. Update the db record in `updateDatabaseRecord` and get the updated record as `newDoc`.
+8. Update the parent-child mappings if the document is a derivative
+9. Change the db record context to `finished`
+10. Return the original document (ie `foundDoc`) and the updated document (ie `newDoc`)
+
+More info available on the [wiki](https://informatics.pages.mdcatapult.io/doclib/docs/docs/introduction/).
+
 ## Execution
 
 This is a scala application that runs inside the JVM
@@ -27,6 +47,7 @@ java -jar consumer-prefetch.jar
 ```
 A custom config file can be passed to the app using the command line option `--config`.  
 Note that the image uses a provided version of `netty.jar` due to version conflicts with other libraries.
+There is also a Dockerfile provided to run as a container via docker or in Kubernetes.
 
 ## Runtime Configuration
 
