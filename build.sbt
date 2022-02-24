@@ -46,8 +46,7 @@ lazy val root = (project in file("."))
       val scalaMockVersion = "5.2.0"
       val scalaLoggingVersion = "3.9.4"
       val logbackClassicVersion = "1.2.10"
-      val betterFilesVersion = "3.8.0"
-      val awsScalaVersion = "0.8.4"
+      val betterFilesVersion = "3.9.1"
       val jaiImageJPEG2000Version = "1.4.0"
       val akkaHttpVersion = "10.2.8"
       val akkaStreamAlpakkaFTPVersion = "3.0.4"
@@ -66,7 +65,6 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
-      "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
       "com.github.jai-imageio" % "jai-imageio-jpeg2000" % jaiImageJPEG2000Version
 //      "org.xerial" % "sqlite-jdbc" % "3.30.1"  - only required to suppress a tika warning. We are not parsing sqlite files
@@ -89,12 +87,15 @@ lazy val root = (project in file("."))
       case PathList(xs@_*) if xs.last == "module-info.class" => MergeStrategy.first
       case PathList("org", "apache", "commons", _*) => MergeStrategy.first
       case PathList("com", "ctc", "wstx", _*) => MergeStrategy.first
+      case PathList("scala", "collection", "compat", _*) => MergeStrategy.first
+      case PathList("scala", "util", "control", "compat", _*) => MergeStrategy.first
       case PathList(xs@_*) if xs.last == "public-suffix-list.txt" => MergeStrategy.first
       case PathList(xs@_*) if xs.last == ".gitkeep" => MergeStrategy.discard
       case "META-INF/jpms.args" => MergeStrategy.discard
       case n if n.startsWith("application.conf") => MergeStrategy.first
       case n if n.startsWith("logback.xml") => MergeStrategy.first
       case n if n.endsWith(".conf") => MergeStrategy.concat
+      case n if n.startsWith("scala-collection-compat.properties") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value
