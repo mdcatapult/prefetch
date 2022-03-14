@@ -1,13 +1,6 @@
 import Release._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
-lazy val configVersion = "1.3.2"
-lazy val akkaVersion = "2.6.4"
-lazy val catsVersion = "2.1.0"
-lazy val awsScalaVersion = "0.8.4"
-lazy val betterFilesVersion = "3.8.0"
-lazy val doclibCommonVersion = "3.0.0"
-
 val meta = """META.INF/(blueprint|cxf).*""".r
 
 lazy val IntegrationTest = config("it") extend Test
@@ -25,42 +18,58 @@ lazy val root = (project in file("."))
       "-deprecation",
       "-explaintypes",
       "-feature",
-      "-Xlint",
-      "-Xfatal-warnings",
+      "-Xlint"
+//      "-Xfatal-warnings", This was removed due to scalamock complaining about deprecated traits
+      //      in the mongo libs that we stub in the tests.
     ),
     useCoursier := false,
     resolvers ++= Seq(
-      "MDC Nexus Releases" at "https://nexus.mdcatapult.io/repository/maven-releases/",
-      "MDC Nexus Snapshots" at "https://nexus.mdcatapult.io/repository/maven-snapshots/"),
+      "MDC Nexus Releases" at "https://nexus.wopr.inf.mdc/repository/maven-releases/",
+      "MDC Nexus Snapshots" at "https://nexus.wopr.inf.mdc/repository/maven-snapshots/"),
     updateOptions := updateOptions.value.withLatestSnapshots(latestSnapshots = false),
     credentials += {
       sys.env.get("NEXUS_PASSWORD") match {
         case Some(p) =>
-          Credentials("Sonatype Nexus Repository Manager", "nexus.mdcatapult.io", "gitlab", p)
+          Credentials("Sonatype Nexus Repository Manager", "nexus.wopr.inf.mdc", "gitlab", p)
         case None =>
           Credentials(Path.userHome / ".sbt" / ".credentials")
       }
     },
-    libraryDependencies ++= Seq(
-      "org.scalactic" %% "scalactic" % "3.1.1",
-      "org.scalatest" %% "scalatest" % "3.1.1" % "it,test",
-      "org.scalamock" %% "scalamock" % "4.4.0" % "it,test",
+    libraryDependencies ++= {
+      val doclibCommonVersion = "3.1.1"
+
+      val configVersion = "1.4.1"
+      val akkaVersion = "2.6.18"
+      val catsVersion = "2.6.1"
+      val scalacticVersion = "3.2.10"
+      val scalaTestVersion = "3.2.11"
+      val scalaMockVersion = "5.2.0"
+      val scalaLoggingVersion = "3.9.4"
+      val logbackClassicVersion = "1.2.10"
+      val betterFilesVersion = "3.9.1"
+      val jaiImageJPEG2000Version = "1.4.0"
+      val akkaHttpVersion = "10.2.8"
+      val akkaStreamAlpakkaFTPVersion = "3.0.4"
+
+      Seq(
+      "org.scalactic" %% "scalactic" % scalacticVersion,
+      "org.scalatest" %% "scalatest" % scalaTestVersion % "it,test",
+      "org.scalamock" %% "scalamock" % scalaMockVersion % "it,test",
       "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "it,test",
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
-      "com.typesafe.akka" %% "akka-http" % "10.1.11",
-      "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % "2.0.0",
-      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2",
+      "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
+      "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % akkaStreamAlpakkaFTPVersion,
+      "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
       "com.typesafe" % "config" % configVersion,
-      "ch.qos.logback" % "logback-classic" % "1.2.3",
-      "org.typelevel" %% "cats-macros" % catsVersion,
+      "ch.qos.logback" % "logback-classic" % logbackClassicVersion,
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-core" % catsVersion,
       "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
-      "com.github.seratch" %% "awscala" % awsScalaVersion,
       "com.github.pathikrit" %% "better-files" % betterFilesVersion,
-      "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.3.0",
-      "org.xerial" % "sqlite-jdbc" % "3.30.1",
-    ).map(
+      "com.github.jai-imageio" % "jai-imageio-jpeg2000" % jaiImageJPEG2000Version
+//      "org.xerial" % "sqlite-jdbc" % "3.30.1"  - only required to suppress a tika warning. We are not parsing sqlite files
+    )
+    }.map(
       _.exclude(org = "com.google.protobuf", name = "protobuf-java")
         .exclude(org = "io.netty", name = "netty-all")
       // IMPORTANT! netty must be excluded to avoid conflict with "sbt assembly", but is needed at runtime for SSL.
@@ -78,12 +87,15 @@ lazy val root = (project in file("."))
       case PathList(xs@_*) if xs.last == "module-info.class" => MergeStrategy.first
       case PathList("org", "apache", "commons", _*) => MergeStrategy.first
       case PathList("com", "ctc", "wstx", _*) => MergeStrategy.first
+      case PathList("scala", "collection", "compat", _*) => MergeStrategy.first
+      case PathList("scala", "util", "control", "compat", _*) => MergeStrategy.first
       case PathList(xs@_*) if xs.last == "public-suffix-list.txt" => MergeStrategy.first
       case PathList(xs@_*) if xs.last == ".gitkeep" => MergeStrategy.discard
       case "META-INF/jpms.args" => MergeStrategy.discard
       case n if n.startsWith("application.conf") => MergeStrategy.first
       case n if n.startsWith("logback.xml") => MergeStrategy.first
       case n if n.endsWith(".conf") => MergeStrategy.concat
+      case n if n.startsWith("scala-collection-compat.properties") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value

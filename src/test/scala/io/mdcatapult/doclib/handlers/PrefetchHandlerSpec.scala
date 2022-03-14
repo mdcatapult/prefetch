@@ -458,4 +458,27 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
     }
   })
 
+  "A document with a rogue file should not be valid" in {
+    val rogueDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = "/a/file/somewhere.pdf",
+      hash = "12345",
+      derivative = false,
+      created = LocalDateTime.now(),
+      updated = LocalDateTime.now(),
+      mimetype = "application/pdf",
+      rogueFile = Some(true)
+    )
+
+    val foundDoc = FoundDoc(
+      rogueDoc
+    )
+
+    val prefetchMsg: PrefetchMsg = PrefetchMsg("/a/file/somewhere.pdf")
+
+    assertThrows[RogueFileException] {
+      handler.valid(prefetchMsg, foundDoc)
+    }
+  }
+
 }

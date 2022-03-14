@@ -2,7 +2,6 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 import java.nio.file.Paths
-
 import akka.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
@@ -11,18 +10,23 @@ import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.util.hash.Md5.md5
 import org.apache.tika.mime.MimeTypesFactory
 
+import scala.concurrent.Future
+
 object Adapter {
 
   private val mimeTypes = MimeTypesFactory.create(getClass.getResource("/org/apache/tika/mime/tika-mimetypes.xml"))
 
+  val _protocols = List()
+
   def contentTypeExtension(contentType: String): String =
     mimeTypes.forName(contentType).getExtension
+
+  def protocols:List[String] = _protocols
 }
 
 trait Adapter {
 
-  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
-  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult]
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Future[Option[DownloadResult]]
 
   /**
     * Generates a file path based on the file origin using the scheme, host, path, location header and content disposition header.

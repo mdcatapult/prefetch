@@ -56,9 +56,13 @@ class Client()(implicit config: Config, ec: ExecutionContext, m: Materializer) {
     headers = None,
     metadata = None)
 
-  def download(origin: Origin): Option[DownloadResult] = origin match {
-    case Http(result: DownloadResult) => Some(result)
-    case Ftp(result: DownloadResult) => Some(result)
+  def download(origin: Origin): Future[Option[DownloadResult]] = origin match {
+    case origin if Http.protocols.contains(origin.uri.get.schemeOption.getOrElse("")) => {
+      Http.download(origin)
+    }
+    case origin if Ftp.protocols.contains(origin.uri.get.schemeOption.getOrElse("")) => {
+      Ftp.download(origin)
+    }
     case _ => throw new UnsupportedSchemeException(origin.uri.get.schemeOption.getOrElse("unknown"))
   }
 

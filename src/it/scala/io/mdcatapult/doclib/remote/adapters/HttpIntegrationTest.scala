@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import better.files.Dsl.pwd
@@ -12,6 +11,9 @@ import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.{BeforeAndAfterAll, Ignore}
+
+import scala.concurrent.Await
+import scala.concurrent.duration._
 
 @Ignore
 class HttpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
@@ -48,7 +50,7 @@ class HttpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
   "A valid HTTPS URL" should "download a file successfully" in {
     val origin = Origin("https", uri = Uri.parseOption("https://www.google.com/humans.txt"))
     //val expectedSize = 286
-    val result: Option[DownloadResult] = Http.download(origin)
+    val result: Option[DownloadResult] = Await.result(Http.download(origin), 10.seconds)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
@@ -59,7 +61,7 @@ class HttpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
   "A valid HTTP URL" should "download a file successfully" in {
     val origin = Origin("http", uri = Uri.parseOption("http://www.google.com/robots.txt"))
     //val expectedSize = 7246
-    val result: Option[DownloadResult] = Http.download(origin)
+    val result: Option[DownloadResult] = Await.result(Http.download(origin), 10.seconds)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")

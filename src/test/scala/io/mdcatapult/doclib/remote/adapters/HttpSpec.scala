@@ -8,7 +8,10 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.RecoverMethods.{recoverToExceptionIf, recoverToSucceededIf}
 import org.scalatest.flatspec.AnyFlatSpec
+
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
@@ -28,7 +31,7 @@ class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll {
 
   "An URL to nowhere" should "throw an Exception" in {
     val origin = Origin("http", uri = Uri.parseOption("http://www.a.b.c/something"))
-    assertThrows[StreamTcpException] {
+    recoverToSucceededIf[StreamTcpException] {
       Http.download(origin)
     }
   }
@@ -36,10 +39,14 @@ class HttpSpec extends AnyFlatSpec with BeforeAndAfterAll {
   "A valid URL with unknown file" should "throw an Exception" in {
     val source = "http://www.google.com/this-is-an-invalid-file.pdf"
     val origin = Origin("http", uri = Uri.parseOption(source))
-    val caught = intercept[Exception] {
+    val caught = recoverToExceptionIf[Exception] {
       Http.download(origin)
     }
-    assert(caught.getMessage == s"Unable to process $source with status code 404 Not Found")
+    caught.map { ex => assert(ex.getMessage == s"Unable to process $source with status code 404 Not Found")}
+  }
+
+  "Http protocols" should "be appropriate" in {
+    Http.protocols.equals(List("http", "https"))
   }
 
   override def afterAll(): Unit = {

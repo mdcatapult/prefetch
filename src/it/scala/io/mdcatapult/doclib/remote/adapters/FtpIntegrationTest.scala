@@ -1,7 +1,6 @@
 package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
-
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import better.files.Dsl.pwd
@@ -11,7 +10,12 @@ import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.RecoverMethods.recoverToSucceededIf
 import org.scalatest.flatspec.AnyFlatSpec
+
+import scala.concurrent.duration._
+import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class FtpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
 
@@ -31,7 +35,7 @@ class FtpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
 
   "A valid anonymous FTP URL" should "download a file successfully" in {
     val origin: Origin = Origin("ftp", uri = Uri.parseOption("ftp://ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
-    val result: Option[DownloadResult] = Ftp.download(origin)
+    val result: Option[DownloadResult] = Await.result(Ftp.download(origin), 10.seconds)
     assert(result.isDefined)
     assert(result.get.isInstanceOf[DownloadResult])
     val file = new File(s"${config.getString("doclib.root")}/${result.get.source}")
@@ -41,7 +45,7 @@ class FtpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
   "A valid FTP URL with credentials" should "parse ok" in {
     // Test username/password. Doesn't matter if it downloads
     val origin = Origin("ftp", uri = Uri.parseOption("ftp://user:password@ftp.ebi.ac.uk/pub/databases/pmc/suppl/PRIVACY-NOTICE.txt"))
-    intercept[Exception] {
+    recoverToSucceededIf[Exception] {
       Ftp.download(origin)
     }
   }

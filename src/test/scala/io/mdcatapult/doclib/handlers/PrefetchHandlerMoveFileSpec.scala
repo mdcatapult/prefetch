@@ -25,6 +25,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
 import org.scalatest.{BeforeAndAfterAll, OptionValues}
 
+import scala.concurrent.Await
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
@@ -48,7 +50,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |}
        |appName = $${?consumer.name}
        |doclib {
-       |  root: "${pwd/"test"}"
+       |  root: "${pwd / "test"}"
        |  flag: "prefetch"
        |  local {
        |    target-dir: "local"
@@ -73,7 +75,6 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
        |  hash =  "12345"
        |}
     """.stripMargin)
-
 
 
   implicit val m: Materializer = Materializer(system)
@@ -136,9 +137,10 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           attrs = Some(fileAttrs)
         )
         val foundDoc = FoundDoc(document, Nil, Nil, None)
-        val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$ingressDir/$sourceFile", handler.getLocalUpdateTargetPath, handler.inLocalRoot)
+        val actualMovedFilePath = Await.result(handler.ingressDocument(foundDoc, s"$ingressDir/$sourceFile", handler.getLocalUpdateTargetPath(foundDoc), handler.inLocalRoot(foundDoc.doc.source)), 5.seconds)
         val movedFilePath = s"$localTargetDir/$sourceFile"
-        assert(actualMovedFilePath.get.toString == movedFilePath)
+        assert(actualMovedFilePath.isRight)
+        actualMovedFilePath.map(a => assert(a.get.toString == movedFilePath))
       }
     }
 
@@ -174,9 +176,10 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           attrs = Some(fileAttrs)
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, fileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
-        val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
+        val actualMovedFilePath = Await.result(handler.ingressDocument(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath(foundDoc), handler.inRemoteRoot(foundDoc.doc.source)), 5.seconds)
         val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
-        assert(actualMovedFilePath.get.toString == movedFilePath)
+        assert(actualMovedFilePath.isRight)
+        actualMovedFilePath.map(a => assert(a.get.toString == movedFilePath))
       }
     }
 
@@ -214,24 +217,24 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
           attrs = Some(fileAttrs)
         )
         val foundDoc = FoundDoc(document, Nil, Nil, Some(DownloadResult(docFile.pathAsString, docFileHash, Some("https://path/to/aFile.txt"), Some(s"${config.getString("doclib.remote.target-dir")}/https/path/to/aFile.txt"))))
-        val actualMovedFilePath = handler.archiveOrProcess(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath, handler.inRemoteRoot)
+        val actualMovedFilePath = Await.result(handler.ingressDocument(foundDoc, s"$remoteIngressDir/$sourceFile", handler.getRemoteUpdateTargetPath(foundDoc), handler.inRemoteRoot(foundDoc.doc.source)), 5.seconds)
         val movedFilePath = s"$remoteTargetDir/https/path/to/aFile.txt"
-        assert(actualMovedFilePath.get.toString == movedFilePath)
+        assert(actualMovedFilePath.isRight)
+        actualMovedFilePath.map(a => assert(a.get.toString == movedFilePath))
       }
     }
   }
 
-  override def afterAll(): Unit = {
-    // These may or may not exist but are all removed anyway
+    override def afterAll(): Unit = {
+      // These may or may not exist but are all removed anyway
 
-    deleteDirectories(Seq(pwd/"test/local",
-      pwd/"test"/"efs",
-      pwd/"test"/"ftp",
-      pwd/"test"/"http",
-      pwd/"test"/"https",
-      pwd/"test"/"remote-ingress",
-      pwd/"test"/"ingress",
-      pwd/"test"/"remote"))
+      deleteDirectories(Seq(pwd / "test/local",
+        pwd / "test" / "efs",
+        pwd / "test" / "ftp",
+        pwd / "test" / "http",
+        pwd / "test" / "https",
+        pwd / "test" / "remote-ingress",
+        pwd / "test" / "ingress",
+        pwd / "test" / "remote"))
+    }
   }
-
-}

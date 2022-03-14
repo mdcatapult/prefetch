@@ -1,8 +1,5 @@
 package io.mdcatapult.doclib.remote.adapters
 
-import java.net.InetAddress
-import java.nio.file.Paths
-
 import akka.actor.ActorSystem
 import akka.stream.alpakka.ftp.FtpCredentials.AnonFtpCredentials
 import akka.stream.alpakka.ftp.scaladsl.{Ftp => AkkaFtp, Ftps => AkkaFtps, Sftp => AkkaSftp}
@@ -14,43 +11,36 @@ import com.typesafe.config.Config
 import io.lemonlabs.uri.Url
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, UnsupportedSchemeException}
-import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.doclib.util.Metrics._
 import io.mdcatapult.doclib.util.MimeType
+import io.mdcatapult.util.hash.Md5.md5
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import java.net.InetAddress
+import java.nio.file.Paths
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.util.{Failure, Success, Try}
 
 object Ftp extends Adapter {
 
   val protocols = List("ftp", "ftps", "sftp")
 
   /**
-    * test if supported scheme and perform download
-    * @param origin io.mdcatapult.doclib.models.Origin
-    * @param config config
-    * @return
-    */
-  def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] =
-    if (protocols.contains(origin.uri.get.schemeOption.getOrElse("")))
-      Ftp.download(origin)
-    else None
-
-  /**
-    * build FTP credentials for FTP connection
-    * @param url Url
-    * @return
-    */
+   * build FTP credentials for FTP connection
+   *
+   * @param url Url
+   * @return
+   */
   protected def getFTPCredentials(url: Url): FtpCredentials = url.user match {
     case Some(user) => FtpCredentials.create(user, url.password.getOrElse(""))
     case None => AnonFtpCredentials
   }
 
   /**
-    * build FTP config
-    * @param url Url
-    * @return
-    */
+   * build FTP config
+   *
+   * @param url Url
+   * @return
+   */
   protected def getFtpSettings(url: Url): FtpSettings =
     FtpSettings
       .create(InetAddress.getByName(url.hostOption.get.toString()))
@@ -60,10 +50,11 @@ object Ftp extends Adapter {
       .withPassiveMode(true)
 
   /**
-    * build FTPS config
-    * @param url Url
-    * @return
-    */
+   * build FTPS config
+   *
+   * @param url Url
+   * @return
+   */
   protected def getFtpsSettings(url: Url): FtpsSettings =
     FtpsSettings
       .create(InetAddress.getByName(url.hostOption.get.toString()))
@@ -73,10 +64,11 @@ object Ftp extends Adapter {
       .withPassiveMode(true)
 
   /**
-    * Build SFTP config
-    * @param url Url
-    * @return
-    */
+   * Build SFTP config
+   *
+   * @param url Url
+   * @return
+   */
   protected def getSftpSettings(url: Url): SftpSettings =
     SftpSettings
       .create(InetAddress.getByName(url.hostOption.get.toString()))
@@ -85,25 +77,33 @@ object Ftp extends Adapter {
       .withStrictHostKeyChecking(false)
 
   /**
-    * retrieve a file from the ftp source
-    * @param url Url
-    * @return
-    */
-  protected def retrieve(url: Url): Source[ByteString, Future[IOResult]] = url.schemeOption match  {
-    case Some("ftp")  => AkkaFtp.fromPath(url.path.toString, getFtpSettings(url))
-    case Some("ftps") => AkkaFtps.fromPath(url.path.toString, getFtpsSettings(url))
-    case Some("sftp") => AkkaSftp.fromPath(url.path.toString, getSftpSettings(url))
-    case Some(unknown) => throw new UnsupportedSchemeException(unknown)
-    case None => throw new UndefinedSchemeException(url)
+   * retrieve a file from the ftp source
+   *
+   * @param url Url
+   * @return
+   */
+  protected def retrieve(url: Url): Try[Source[ByteString, Future[IOResult]]] = {
+    // The Akka from Path calls can throw an exception so Try it so that it gets handled
+    // in the Future.
+    Try {
+      url.schemeOption match {
+        case Some("ftp") => AkkaFtp.fromPath(url.path.toString, getFtpSettings(url))
+        case Some("ftps") => AkkaFtps.fromPath(url.path.toString, getFtpsSettings(url))
+        case Some("sftp") => AkkaSftp.fromPath(url.path.toString, getSftpSettings(url))
+        case Some(unknown) => throw new UnsupportedSchemeException(unknown)
+        case None => throw new UndefinedSchemeException(url)
+      }
+    }
   }
 
   /**
-    * download a file from the ftp server and store it locally returning a DownloadResult
-    * @param origin io.mdcatapult.doclib.models.Origin
-    * @param config Config
-    * @return
-    */
-  def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = {
+   * download a file from the ftp server and store it locally returning a DownloadResult
+   *
+   * @param origin io.mdcatapult.doclib.models.Origin
+   * @param config Config
+   * @return
+   */
+  def download(origin: Origin)(implicit config: Config, m: Materializer): Future[Option[DownloadResult]] = {
     implicit val system: ActorSystem = ActorSystem("consumer-prefetch-ftp", config)
     implicit val executor: ExecutionContextExecutor = system.dispatcher
 
@@ -114,15 +114,20 @@ object Ftp extends Adapter {
     val tempTarget = Paths.get(s"$doclibRoot/$tempPath").toFile
     val latency = documentFetchLatency.labels("ftp").startTimer()
     tempTarget.getParentFile.mkdirs()
-    val r: Future[IOResult] = retrieve(origin.uri.get.toUrl)
-      .runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath)).recover {
-      // Something happened before fetching file, might want to do something about it....
-      case e: Exception =>
-        latency.observeDuration()
-        throw DoclibFtpRetrievalError(e.getMessage, e)
+    val r: Future[IOResult] = retrieve(origin.uri.get.toUrl).map(x =>
+
+      x.runWith(FileIO.toPath(tempTarget.toPath.toAbsolutePath)).recover {
+        // Something happened before fetching file, might want to do something about it....
+        case e: Exception =>
+          latency.observeDuration()
+          throw DoclibFtpRetrievalError(e.getMessage, e)
+      }
+    ) match {
+      case Success(value) => value
+      case Failure(exception) => Future.failed(exception)
     }
 
-    val a = r.map(_ => {
+    r.map(_ => {
       latency.observeDuration()
       documentSizeBytes.labels("ftp", MimeType.getMimetype(tempTarget.getAbsolutePath)).observe(tempTarget.length().toDouble)
       Some(DownloadResult(
@@ -132,7 +137,7 @@ object Ftp extends Adapter {
         target = Option(finalTarget.getAbsolutePath)
       ))
     }
-      )
-    Await.result(a, Duration.Inf)
+    )
   }
+
 }

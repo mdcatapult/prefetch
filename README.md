@@ -1,11 +1,11 @@
 # Document Library Prefetch consumer
 
-A document library specific consumer that will resolve document and add them to the library. 
+A Scala based application that consumes messages from RabbitMQ, processes document files, saves metadata about them in MongoDB and adds them to the file system based library. 
 
 ## Remote Documents
-The consumer will handle remote documents and pull them down, store a local copy and then add that to the library
+The consumer fetches remote documents, stores a local copy of them and adds metadata about any documents processed to the Document Library collection in MongoDB
 
-Currently supported is 
+Currently supported protocols: 
 * **HTTP/HTTPS**
 * **FTP/SFTP/FTPS**
 
@@ -18,46 +18,76 @@ identifies the remote location/s that the document was retrieved from. Each orig
 * **headers** - optional: where required will contain header data about the origin
 * **metadata** - optional: where required will contain additional data derived from the remote file that is not part of any headers
 
+## The Prefetch process
+
+The app is booted via `ConsumerPrefetch` which creates connections to rabbit queues & mongo and then creates 
+the `PrefetchHandler` which listens out for messages and does all the work. Each time it gets a new message from rabbit it gets to the `handle` method. This then finds a mongo
+record for this document (or creates one) and then starts the document process. This ends up in the method `prefetchProcess`
+which does most of the heavy lifting. The general process goes like this:
+
+1. Fetch existing mongo db record for the document or create a new one.
+2. Check that the record is valid ie that it wasn't created recently and has an origin (for remote doc).
+3. Change the "context" metadata on the db record for the document to `started`.
+4. Figure out where the document came from and where it needs to go via `generateDocumentTargets`
+5. `Ingress` the document. This moves it to the correct place in the file system and archives any existing versions via `ingressDocument` > `moveNewAndArchiveExisting`
+6. Get a BSON update for the db record which includes any new origins and the final path for the document via`getDocumentUpdate`
+7. Update the db record in `updateDatabaseRecord` and get the updated record as `newDoc`.
+8. Update the parent-child mappings if the document is a derivative
+9. Change the db record context to `finished`
+10. Return the original document (ie `foundDoc`) and the updated document (ie `newDoc`)
+
+More info available on the [wiki](https://informatics.pages.mdcatapult.io/doclib/docs/docs/introduction/).
+
 ## Execution
 
 This is a scala application that runs inside the JVM
 
 ```bash
-java -jar consumer-unarchive.jar
+java -jar consumer-prefetch.jar
 ```
+A custom config file can be passed to the app using the command line option `--config`.  
+Note that the image uses a provided version of `netty.jar` due to version conflicts with other libraries.
+There is also a Dockerfile provided to run as a container via docker or in Kubernetes.
 
 ## Runtime Configuration
 
-The app allows runtime configuration via environment variables
+The app allows runtime configuration via environment variables. Most have default values and do not need to be provided. Some have no default values and this is noted in the list.
 
-* **MONGO_USERNAME** - login username for mongodb
-* **MONGO_PASSWORD** - login password for mongodb
-* **MONGO_HOST** - host to connect to
-* **MONGO_PORT** - optional: port to connect to (default: 27017) 
-* **MONGO_DOCLIB_DATABASE** - the doclib database
-* **MONGO_AUTHSOURCE** - optional: database to authenticate against (default: admin)
-* **MONGO_DOCUMENTS_COLLECTION** - the documents collection
-* **RABBITMQ_USERNAME** - login username for rabbitmq
-* **RABBITMQ_PASSWORD** - login password for rabbitmq
-* **RABBITMQ_HOST** - host to connect to
-* **RABBITMQ_PORT** - optional: port to connect to (default: 5672)
-* **RABBITMQ_VHOST** - optional: vhost to connect to (default: /)
-* **RABBITMQ_DOCLIB_EXCHANGE** - optional: exchange that the consumer should be bound to
-* **CONSUMER_QUEUE** - optional: name of the queue to consume (default: klein.prefetch)
-* **CONSUMER_CONCURRENCY** - optional: number of messages to handle concurrently (default: 1)
-* **DOCLIB_SUPERVISOR_QUEUE** - optional: the supercisor queue
-* **DOCLIB_ROOT** - optional: The filesystem root that the document library (defaults: /)
-* **DOCLIB_REMOTE_TARGET** - The target location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
-* **DOCLIB_REMOTE_TEMP** - The temporary location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations
-* **DOCLIB_ARCHIVE_TARGET** - The location, relative to the DOCLIB_ROOT, to store remote files that are archived via prefetch
-* **DOCLIB_LOCAL_TARGET** - The location, relative to the DOCLIB_ROOT, to store local files that are managed via prefetch
-* **DOCLIB_LOCAL_TEMP** - A temp folder, relative to the DOCLIB_ROOT, for local files waiting to be added/updated to the document library
+* **MONGO_USERNAME** - login username for mongodb (default: doclib)
+* **MONGO_PASSWORD** - login password for mongodb (default: doclib)
+* **MONGO_HOST** - host to connect to (default: localhost)
+* **MONGO_PORT** - port to connect to (default: 27017) 
+* **MONGO_DOCLIB_DATABASE** - the doclib database (default: doclib)
+* **MONGO_AUTHSOURCE** - database to authenticate against (default: admin)
+* **MONGO_DOCUMENTS_COLLECTION** - the documents collection (default: documents)
+* **MONGO_DERIVATIVES_COLLECTION** - the collection where parent/child references are stored (default: documents_derivatives ie **MONGO_DOCUMENTS_COLLECTION**_derivatives)
+* **MONGO_SRV** - whether to use mongodb [DNS seed list](https://docs.mongodb.com/manual/reference/connection-string/) connection. (default: false)
+* **MONGO_READ_LIMIT** - how many mongodb simultaneous read connections (default: 50)
+* **MONGO_WRITE_LIMIT** - how many mongodb simultaneous write connections (default: 100)
+  
+* **RABBITMQ_USERNAME** - login username for rabbitmq (default: doclib)
+* **RABBITMQ_PASSWORD** - login password for rabbitmq (default: doclib)
+* **RABBITMQ_HOST** - host to connect to (optional - no default)
+* **RABBITMQ_PORT** - port to connect to (default: 5672)
+* **RABBITMQ_VHOST** - vhost to connect to (default: doclib)
+* **RABBITMQ_DOCLIB_EXCHANGE or CONSUMER_EXCHANGE** - exchange that the consumer should be bound to (optional - no default)
+* **CONSUMER_QUEUE** or **DOCLIB_PREFETCH_QUEUE** - name of the queue to consume (default: prefetch)
+* **CONSUMER_CONCURRENCY** - number of messages to handle concurrently (default: 1)
+  
+* **DOCLIB_SUPERVISOR_QUEUE** - the supervisor queue (default: supervisor)
+* **DOCLIB_ERROR_QUEUE** - the errors queue (default: errors)
+* **DOCLIB_ARCHIVER_QUEUE** - the archive queue (default: archive)
+* **DOCLIB_ROOT** - optional: The filesystem root where the documents are stored (defaults: /)
+* **DOCLIB_REMOTE_TARGET** - The target location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations before processing (default: remote-ingress)
+* **DOCLIB_REMOTE_TEMP** - The location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations after processing (default: remote)
+* **DOCLIB_ARCHIVE_TARGET** - The location, relative to the DOCLIB_ROOT, to store files that are archived via prefetch (default: archive)
+* **DOCLIB_LOCAL_TARGET** - The location, relative to the DOCLIB_ROOT, to store local files after processing (default: local)
+* **DOCLIB_LOCAL_TEMP** - A folder, relative to the DOCLIB_ROOT, for local files waiting to be processed by the document library (default: ingress)
+* **DOCLIB_DERIVATIVE_PATH** - The name of a folder within the **DOCLIB_LOCAL_TARGET** where derivatives of files (eg unzipped, raw text) should be stored (default: derivatives)
 * **ADMIN_PORT** - Port that prometheus metrics are exposed on (default: 9090)
 * **CONSUMER_NAME** - Name of the consumer (default: prefetch)
 
 ## Messages
-
-Unlike the document library the messages for the prefetch consumer do not utilise a Mongo ID
 
 Messages are composed in JSON using the following properties
 
@@ -69,7 +99,7 @@ Messages are composed in JSON using the following properties
 
 ## Results
 
-Documents on successful completion will contain the following properties
+On successful completion a document record in MongoDB will contain the following properties
 
 * **source** - location of file stored on file system
 * **origin** - an array of FQ origins (see above)
@@ -98,3 +128,13 @@ The following metrics are exposed via prometheus on port `ADMIN_PORT` (default `
 docker-compose up -d
 sbt clean test it:test
 ```
+## Dependency Scanning
+
+https://github.com/albuch/sbt-dependency-check
+
+The sbt-dependency-check plugin can be used to create a HTML report under `target/scala-x.x/dependency-check-report.html`  
+
+```bash
+sbt dependencyCheck
+```
+

@@ -8,6 +8,8 @@ import io.mdcatapult.doclib.remote.DownloadResult
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import scala.concurrent.Future
+
 class AdapterSpec extends AnyFlatSpec with Matchers {
 
   implicit val config: Config = ConfigFactory.parseString(
@@ -26,8 +28,8 @@ class AdapterSpec extends AnyFlatSpec with Matchers {
     """.stripMargin)
 
   private val dummy = new Adapter {
-    def unapply(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = None
-    def download(origin: Origin)(implicit config: Config, m: Materializer): Option[DownloadResult] = None
+    def unapply(origin: Origin): Boolean = true
+    def download(origin: Origin)(implicit config: Config, m: Materializer): Future[Option[DownloadResult]] = Future.successful(None)
   }
   import dummy.generateFilePath
 
