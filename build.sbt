@@ -78,8 +78,8 @@ lazy val root = (project in file("."))
   )
   .settings(
     assemblyJarName := "consumer.jar",
-    test in assembly := {},
-    assemblyMergeStrategy in assembly := {
+    assembly / test := {},
+    assembly / assemblyMergeStrategy := {
       case PathList("com", "sun", _*) => MergeStrategy.first
       case PathList("javax", "servlet", _*) => MergeStrategy.first
       case PathList("javax", "activation", _*) => MergeStrategy.first
@@ -98,7 +98,7 @@ lazy val root = (project in file("."))
       case n if n.startsWith("scala-collection-compat.properties") => MergeStrategy.first
       case meta(_) => MergeStrategy.first
       case x =>
-        val oldStrategy = (assemblyMergeStrategy in assembly).value
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     }
   )
