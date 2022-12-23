@@ -296,25 +296,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     // old versions of non-derivative documents
     if (newHash != oldHash) {
       // 1. It already exists at target location but is not the same file.
-      // 2. Overwrite it and continue because we don't archive derivatives.
-      // TODO delete existing archiveable db records & documents/derivatives
-      val a = foundDoc.archiveable.map(doclibDoc => {
-        // remove the files referenced in the doc
-        // remove the derivatives - done by the removeFile
-        // remove ner & occurrences
-        // remove the archiveable
-        // TODO do in a for comp
-        Future.successful(fileProcessor.removeFile(doclibDoc.source))
-        val filter: Bson = equal("_id", doclibDoc._id)
-        val parentFilter: Bson = equal("parent", doclibDoc._id)
-        // delete parent-child mappings
-        val deleteDocRecordLatency = mongoLatency.labels(consumerName, "delete_doc_record").startTimer()
-        val parentChildDeleteLatency = mongoLatency.labels(consumerName, "delete_parent_child_mappings").startTimer()
-        derivativesCollection.deleteMany(
-          filter
-        ).toFuture().andThen(_ => parentChildDeleteLatency.observeDuration())
-        collection.deleteOne(filter).toFutureOption().andThen( _ => deleteDocRecordLatency)
-      })
+      // 2. Delete existing file & derivatives
+      // 3. Delete existing parent-child derivative mappings
+      // 4. Delete existing 'archiveable' docs for the 'same' file
+      // 5. Move the 'new' file to the correct place
+      for {
+        doclibDoc <- foundDoc.archiveable
+        _ = fileProcessor.removeFile(doclibDoc.source)
+        _ = collection.deleteOne(equal("_id", doclibDoc._id))
+        _ = derivativesCollection.deleteMany(equal("parent", doclibDoc._id))
+      } yield doclibDoc
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
     } else if (!inRightLocation) {
       // It's a new file in ingress or remote-ingress so move it to the correct place
