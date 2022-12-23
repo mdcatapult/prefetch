@@ -304,8 +304,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       for {
         doclibDoc <- foundDoc.archiveable
         _ = fileProcessor.removeFile(doclibDoc.source)
-        _ = writeLimiter(collection, "") {_.deleteOne(equal("_id", doclibDoc._id)).toFutureOption()}
-        _ = writeLimiter(derivativesCollection, "") {_.deleteMany(equal("parent", doclibDoc._id)).toFutureOption()}
+        _ = writeLimiter(collection, s"Delete document ${doclibDoc._id}") {_.deleteOne(equal("_id", doclibDoc._id)).toFutureOption()}
+        _ = writeLimiter(derivativesCollection, s"Delete parent child records for ${doclibDoc._id}") {_.deleteMany(equal("parent", doclibDoc._id)).toFutureOption()}
       } yield doclibDoc
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
     } else if (!inRightLocation) {
@@ -383,13 +383,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     val filter: Bson = equal("_id", found.doc._id)
 
-    collection.updateOne(filter, update).toFutureOption()
+    writeLimiter(collection, s"Update ${found.doc._id}") {_.updateOne(filter, update).toFutureOption()}
       .andThen(_ => latency.observeDuration())
       .andThen({
         case Failure(e) => throw e
       }).flatMap({
       case Some(_) =>
-        collection.find(filter).headOption()
+        readLimiter(collection, s"Find ${found.doc._id}") {_.find(filter).headOption()}
       case None =>
         Future.successful(None)
     })
@@ -416,13 +416,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
     val latency = mongoLatency.labels(consumerName, "update_parent_child_mappings").startTimer()
-    derivativesCollection.updateMany(
+    writeLimiter(derivativesCollection, s"Update parent child mappings for child path $source to $path and id $id"){ _.updateMany(
       equal("childPath", source),
       combine(
         set("childPath", path),
         set("child", id)
       )
-    ).toFuture().andThen(_ => latency.observeDuration())
+    ).toFuture()}.andThen(_ => latency.observeDuration())
   }
 
   /**
@@ -556,14 +556,14 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    collection.find(
+    readLimiter(collection, s"Find doc with has $hash"){_.find(
       or(
         equal("hash", hash),
         query.getOrElse(combine())
       )
     )
       .sort(descending("created"))
-      .toFuture()
+      .toFuture()}
       .flatMap({
         // Already have this exact document in the db (by matching the MD5 hash) and other versions which we can archive
         case latest :: archivable if latest.hash == hash =>
@@ -599,7 +599,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     )
 
     val inserted: Future[Option[InsertOneResult]] =
-      collection.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())
+      writeLimiter(collection, s"Insert doc for source $source"){_.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())}
 
     inserted.map(_ => newDoc)
   }
