@@ -300,11 +300,12 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       // 3. Delete existing parent-child derivative mappings
       // 4. Delete existing 'archiveable' docs for the 'same' file
       // 5. Move the 'new' file to the correct place
+      // TODO remove ner & occurrences
       for {
         doclibDoc <- foundDoc.archiveable
         _ = fileProcessor.removeFile(doclibDoc.source)
-        _ = collection.deleteOne(equal("_id", doclibDoc._id))
-        _ = derivativesCollection.deleteMany(equal("parent", doclibDoc._id))
+        _ = writeLimiter(collection, "") {_.deleteOne(equal("_id", doclibDoc._id)).toFutureOption()}
+        _ = writeLimiter(derivativesCollection, "") {_.deleteMany(equal("parent", doclibDoc._id)).toFutureOption()}
       } yield doclibDoc
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
     } else if (!inRightLocation) {
