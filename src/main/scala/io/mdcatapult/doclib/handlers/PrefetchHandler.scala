@@ -18,7 +18,7 @@ import io.mdcatapult.doclib.prefetch.model.DocumentTarget
 import io.mdcatapult.doclib.prefetch.model.Exceptions._
 import io.mdcatapult.doclib.remote.adapters.{Ftp, Http}
 import io.mdcatapult.doclib.remote.{DownloadResult, UndefinedSchemeException, Client => RemoteClient}
-import io.mdcatapult.doclib.util.{Archiver, FileProcessor, PathTransformer}
+import io.mdcatapult.doclib.util.{FileProcessor, PathTransformer}
 import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
@@ -81,8 +81,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   val remoteClient = new RemoteClient()
 
   private val fileProcessor = new FileProcessor(sharedConfig.doclibRoot)
-
-  private val archiver = new Archiver(archiverQueue, fileProcessor)
 
   private val consumerName = appConfig.name
 
@@ -151,7 +149,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 3. Figure out where the document came from and where it needs to go. "generateDocumentTargets"
    *
-   * 4. Ingress the document. This moves it to the correct place in the file system and archives any existing versions. "ingressDocument" > "moveNewAndArchiveExisting
+   * 4. Ingress the document. This moves it to the correct place in the file system and overwrites existing version if it exists. "ingressDocument" > "moveNewAndArchiveExisting
    *
    * 5. Get a BSON update for the db record which includes any new origins and the final path for the document. "getDocumentUpdate"
    *
@@ -245,7 +243,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 2. Generate the file path that the document is to be moved to.
    *
-   * 3. Start the file move and archive process
+   * 3. Start the file move
    *
    * @param foundDoc            the found document
    * @param tempPath            the path of the temporary file either remote or local
@@ -262,7 +260,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       // Generate the path that the document is to be moved to using the supplied targetPathGenerator
       targetPathGenerator match {
         case Some(targetPath) => {
-          moveNewAndArchiveExisting(foundDoc, tempPath, targetPath, inRightLocation)
+          moveFile(foundDoc, tempPath, targetPath, inRightLocation)
         }
         // This file should exist so pass the failure up the chain
         case None => Future.successful(Left(new FileNotFoundException(s"This file really should exist ${foundDoc.doc._id}")))
@@ -271,7 +269,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * Moves file to the correct place and also archives old versions if appropriate. Uses MD5 hash to test
+   * Moves file to the correct place. Uses MD5 hash to test
    * whether a file is different from existing one. There are 4 possible options:
    *
    * 1. It's a new version of a derivative.
@@ -288,25 +286,28 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param inRightLocation Is the file already in the correct final location ie local or remote
    * @return
    */
-  def moveNewAndArchiveExisting(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: Boolean): Future[Either[Exception, Option[Path]]] = {
+  def moveFile(foundDoc: FoundDoc, tempPath: String, targetPath: String, inRightLocation: Boolean): Future[Either[Exception, Option[Path]]] = {
     val newHash: String = foundDoc.doc.hash
 
     val absTargetPath = Paths.get(s"$doclibRoot$targetPath").toAbsolutePath
     val oldHash = if (absTargetPath.toFile.exists()) md5(absTargetPath.toFile) else newHash
 
-    if (newHash != oldHash && foundDoc.doc.derivative) {
-      // 1. It's a derivative file ie one that we transformed from the original.
-      // 2. It already exists at target location but is not the same file.
-      // 3. Overwrite it and continue because we don't archive derivatives.
+    // If the file is a new version of any existing file we overwrite it. Up to v2.3 we used to archive
+    // old versions of non-derivative documents
+    if (newHash != oldHash) {
+      // 1. It already exists at target location but is not the same file.
+      // 2. Delete existing file & derivatives
+      // 3. Delete existing parent-child derivative mappings
+      // 4. Delete existing 'archiveable' docs for the 'same' file
+      // 5. Move the 'new' file to the correct place
+      // TODO remove ner & occurrences
+      for {
+        doclibDoc <- foundDoc.archiveable
+        _ = fileProcessor.removeFile(doclibDoc.source)
+        _ = writeLimiter(collection, s"Delete document ${doclibDoc._id}") {_.deleteOne(equal("_id", doclibDoc._id)).toFutureOption()}
+        _ = writeLimiter(derivativesCollection, s"Delete parent child records for ${doclibDoc._id}") {_.deleteMany(equal("parent", doclibDoc._id)).toFutureOption()}
+      } yield doclibDoc
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
-    } else if (newHash != oldHash) {
-      // 1. File already exists at target location but is not the same file
-      // 2. The file is not a derivative
-      // 3. Run the archiver process to move the old file to the appropriate archive path and the new one to the doclib folder
-      val archivePath = getArchivePath(targetPath, oldHash)
-      val archiveResult = archiver.archiveDocument(foundDoc, tempPath, archivePath, Some(targetPath))
-      // TODO We are not doing anything with any messages that failed to be queued at the moment. Should we?
-      archiveResult.map(res => Right(res.map(_.path)))
     } else if (!inRightLocation) {
       // It's a new file in ingress or remote-ingress so move it to the correct place
       Future.successful(Right(fileProcessor.moveFile(tempPath, targetPath)))
@@ -382,13 +383,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     val filter: Bson = equal("_id", found.doc._id)
 
-    collection.updateOne(filter, update).toFutureOption()
+    writeLimiter(collection, s"Update ${found.doc._id}") {_.updateOne(filter, update).toFutureOption()}
       .andThen(_ => latency.observeDuration())
       .andThen({
         case Failure(e) => throw e
       }).flatMap({
       case Some(_) =>
-        collection.find(filter).headOption()
+        readLimiter(collection, s"Find ${found.doc._id}") {_.find(filter).headOption()}
       case None =>
         Future.successful(None)
     })
@@ -415,13 +416,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
     val latency = mongoLatency.labels(consumerName, "update_parent_child_mappings").startTimer()
-    derivativesCollection.updateMany(
+    writeLimiter(derivativesCollection, s"Update parent child mappings for child path $source to $path and id $id"){ _.updateMany(
       equal("childPath", source),
       combine(
         set("childPath", path),
         set("child", id)
       )
-    ).toFuture().andThen(_ => latency.observeDuration())
+    ).toFuture()}.andThen(_ => latency.observeDuration())
   }
 
   /**
@@ -555,14 +556,14 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @return
    */
   def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    collection.find(
+    readLimiter(collection, s"Find doc with has $hash"){_.find(
       or(
         equal("hash", hash),
         query.getOrElse(combine())
       )
     )
       .sort(descending("created"))
-      .toFuture()
+      .toFuture()}
       .flatMap({
         // Already have this exact document in the db (by matching the MD5 hash) and other versions which we can archive
         case latest :: archivable if latest.hash == hash =>
@@ -598,7 +599,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     )
 
     val inserted: Future[Option[InsertOneResult]] =
-      collection.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())
+      writeLimiter(collection, s"Insert doc for source $source"){_.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())}
 
     inserted.map(_ => newDoc)
   }
