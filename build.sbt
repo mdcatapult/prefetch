@@ -36,10 +36,10 @@ lazy val root = (project in file("."))
       }
     },
     libraryDependencies ++= {
-      val doclibCommonVersion = "3.1.1"
+      val doclibCommonVersion = "3.1.2-SNAPSHOT"
 
       val configVersion = "1.4.1"
-      val akkaVersion = "2.6.18"
+      val akkaVersion = "2.8.1"
       val catsVersion = "2.6.1"
       val scalacticVersion = "3.2.10"
       val scalaTestVersion = "3.2.11"
