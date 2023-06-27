@@ -1,6 +1,7 @@
 package io.mdcatapult.doclib.handlers
 
 import akka.actor._
+import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
@@ -11,7 +12,7 @@ import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
-import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
+import io.mdcatapult.doclib.prefetch.model.Exceptions.{ZeroLengthFileException}
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
@@ -25,6 +26,7 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
+import org.scalatest.TryValues._
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -44,7 +46,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   import system.dispatcher
 
-  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
+  val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 
   "Derivative mappings" should "be updated wth new child info" in {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
@@ -210,7 +212,6 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val firstPrefetchMessage = PrefetchMsg(uriWithRedirect.toString())
     // create initial document
     val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
-//    val (targetPath, inCorrectPlace, docSource, origins) = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
     val documentTarget: DocumentTarget = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
     val source = Await.result(handler.ingressDocument(firstDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
     val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), documentTarget.origins)
@@ -516,13 +517,13 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       rogueFile = Some(true),
     )
 
-    val prefetchMsg = PrefetchMsg("local/rogue.txt")
+    val pfm = PrefetchMsg(source = "ingress/derivatives/raw.txt",  verify = Some(true))
+
     val emptyFlagContext = new MongoFlagContext("", new Version("", 1, 1, 1, ""), collection, nowUtc)
 
-
-    assertThrows[RogueFileException] {
-        Await.result(handler.foundDocumentProcess(prefetchMsg, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
-    }
+    val prefetchMsgCommittableReadResult = PrefetchMsgCommittableReadResult(pfm)
+    val result: (CommittableReadResult, Try[PrefetchResult]) = Await.result(handler.foundDocumentProcess(prefetchMsgCommittableReadResult, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
+    result._2.failure.exception should have message "cannot process rogue file. Source=ingress/derivatives/raw.txt, msg=PrefetchMsg(ingress/derivatives/raw.txt,None,None,None,None,Some(true))"
   }
 
   override def beforeAll(): Unit = {
