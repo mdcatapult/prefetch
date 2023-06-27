@@ -1,15 +1,16 @@
 package io.mdcatapult.doclib.handlers
 
 import akka.stream.Materializer
+import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import better.files._
 import cats.data.OptionT
 import cats.implicits._
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.consumer.HandlerLogStatus.NoDocumentError
-import io.mdcatapult.doclib.consumer.{AbstractHandler, Failed, HandlerResult}
+import io.mdcatapult.doclib.consumer.{AbstractHandler, Failed}
 import io.mdcatapult.doclib.flag.MongoFlagContext
-import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
+import io.mdcatapult.doclib.messages.{PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.metrics.Metrics._
 import io.mdcatapult.doclib.models._
 import io.mdcatapult.doclib.models.metadata._
@@ -35,6 +36,7 @@ import org.mongodb.scala.model.Filters.{equal, or}
 import org.mongodb.scala.model.Sorts._
 import org.mongodb.scala.model.Updates._
 import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
+import play.api.libs.json.Json
 
 import java.io.{FileInputStream, FileNotFoundException}
 import java.nio.file.attribute.BasicFileAttributeView
@@ -42,7 +44,7 @@ import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
 import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 /**
  * Handler to perform prefetch of source supplied in Prefetch Messages.
@@ -55,7 +57,6 @@ import scala.util.{Failure, Success}
  * hashes of existing and new version of a file it will attempt to archive the old file(s).
  *
  * @param supervisor    downstream queue to push Document Library messages onto
- * @param archiverQueue queue to push all archived documents to
  * @param readLimiter   used to limit number of concurrent reads from Mongo
  * @param writeLimiter  used to limit number of concurrent writes to Mongo
  * @param ec            ExecutionContext
@@ -64,7 +65,6 @@ import scala.util.{Failure, Success}
  * @param collection    MongoCollection[Document] to read documents from
  */
 class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
-                      archiverQueue: Sendable[DoclibMsg],
                       val readLimiter: LimitedExecution,
                       val writeLimiter: LimitedExecution)
                      (implicit ec: ExecutionContext,
@@ -73,7 +73,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
                       collection: MongoCollection[DoclibDoc],
                       derivativesCollection: MongoCollection[ParentChildMapping],
                       appConfig: AppConfig)
-  extends AbstractHandler[PrefetchMsg]
+  extends AbstractHandler[PrefetchMsg, PrefetchResult]
     with TargetPath with PathTransformer {
 
   /** Initialise Apache Tika && Remote Client * */
@@ -88,9 +88,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
   sealed case class PrefetchUri(raw: String, uri: Option[Uri])
 
-  // The result from processing the message and the document which is sent back to the postHandleProcess
-  case class PrefetchResult(doclibDoc: DoclibDoc, foundDoc: FoundDoc) extends HandlerResult
-
   /**
    * Given an incoming message the process flow is approximately the following:
    *
@@ -102,18 +99,24 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 4. Archive any existing documents for this record
    *
-   * @param msg
+   * @param prefetchMsgWrapper Container for the original message to the queue
    * @return
    */
-  override def handle(msg: PrefetchMsg): Future[Option[PrefetchResult]] = {
+  def handle(prefetchMsgWrapper: CommittableReadResult): Future[(CommittableReadResult, Try[PrefetchResult])] = {
 
+    // Deserialize the message. In the original way the message is passed in already deserialized. Here we get the raw message and
+    // then deserialize it because we need to pass back the original CommitableReadResult so that the subscribe method can
+    // ack/nack depending on what we pass back in the response ie. is Option[PrefetchResult] present or an Exception
+    // The deserializing could be handled abstractly if we change the AbstractHandler and have a generic
+    // deserialize[T](msg: CommittableReadResult) => Json.parse(msg.message.bytes.utf8String).as[T] method (probably!)
+    val msg = Json.parse(prefetchMsgWrapper.message.bytes.utf8String).as[PrefetchMsg]
     //TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
-      case Some(foundDoc) => foundDocumentProcess(msg, foundDoc, flagContext)
+      case Some(foundDoc) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
       case None =>
         // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
@@ -122,9 +125,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     }.flatten
   }
 
-  def foundDocumentProcess(msg: PrefetchMsg,
+
+  def foundDocumentProcess(prefetchMessage: CommittableReadResult,
                            foundDoc: FoundDoc,
-                           flagContext: MongoFlagContext): Future[Option[PrefetchResult]] = {
+                           flagContext: MongoFlagContext): Future[(CommittableReadResult, Try[PrefetchResult])] = {
 
     val foundDocId = foundDoc.doc._id.toHexString
     logReceived(foundDocId)
@@ -133,7 +137,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     // prefetchProcess method
     postHandleProcess(
       documentId = foundDocId,
-      handlerResult = prefetchProcess(msg, foundDoc, flagContext),
+      handlerResult = prefetchProcess(prefetchMessage, foundDoc, flagContext),
       flagContext = flagContext,
       supervisorQueue = supervisor,
       collection = collection
@@ -161,18 +165,20 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 9. Return the original document (ie foundDoc) and the updated document (ie newDoc)
    *
-   * @param msg
+   * @param prefetchMsg
    * @param foundDoc
    * @param flagContext
    * @return
    */
-  def prefetchProcess(msg: PrefetchMsg,
+  private def prefetchProcess(prefetchMsg: CommittableReadResult,
                       foundDoc: FoundDoc,
-                      flagContext: MongoFlagContext): Future[Option[PrefetchResult]] = {
+                      flagContext: MongoFlagContext): Future[(CommittableReadResult, Try[PrefetchResult])] = {
+    val msg: PrefetchMsg = Json.parse(prefetchMsg.message.bytes.utf8String).as[PrefetchMsg]
+
     if (flagContext.isRunRecently(foundDoc.doc)) {
-      Future.failed(new Exception(s"document: ${foundDoc.doc._id} run too recently")) //TODO is this exception useful?
+      Future((prefetchMsg, Failure(new Exception(s"document: ${foundDoc.doc._id} run too recently")))) //TODO is this exception useful?
     } else {
-      val prefetchResult = for {
+      val prefetchResult: OptionT[Future, PrefetchResult] = for {
         _ <- OptionT(Future(Option(valid(msg, foundDoc))))
         started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
         documentTarget = generateDocumentTargets(foundDoc, msg)
@@ -182,7 +188,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
-      prefetchResult.value
+      // If there is a result then return success. If there is an empty result or a failure then return a failure.
+      prefetchResult.value.transformWith({
+        case Success(result) => {
+          result match {
+            case Some(value: PrefetchResult) => Future((prefetchMsg, Success(value)))
+            case None => Future((prefetchMsg, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
+          }
+        }
+        case Failure(e) => Future((prefetchMsg, Failure(e)))
+      })
     }
   }
 
@@ -414,7 +429,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   /**
    * Update any existing parent child mappings
    */
-  def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
+  private def updateParentChildMappings(source: String, path: String, id: ObjectId): Future[UpdateResult] = {
     val latency = mongoLatency.labels(consumerName, "update_parent_child_mappings").startTimer()
     writeLimiter(derivativesCollection, s"Update parent child mappings for child path $source to $path and id $id"){ _.updateMany(
       equal("childPath", source),
@@ -431,7 +446,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param source Path relative path from doclib.root
    * @return Bson $set
    */
-  def getFileAttrs(source: Option[Path]): Bson = {
+  private def getFileAttrs(source: Option[Path]): Bson = {
     //Note: This is currently only used for the path for an archived document
     source match {
       case Some(path) =>
@@ -503,6 +518,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         s"^${config.getString("doclib.local.temp-dir")}",
         localDirName
       ))
+      // This will throw a FileNotFoundException if the file does not exist
+      // TODO use a more functional way of handling this error
       md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$rawURI").toFile))
       (doc, archivable) <- OptionT(findOrCreateDoc(rawURI, md5, derivative, Some(or(
         equal("source", rawURI),
@@ -520,7 +537,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param uri io.lemonlabs.uri.Uri
    * @return
    */
-  def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] = {
+  private def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] = {
     val foundDoc = for {
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
         origin: Origin = origins.head
@@ -530,7 +547,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           findOrCreateDoc(
             originUri.toString,
             downloaded.get.hash,
-            false,
+            derivative = false,
             Some(
               or(
                 equal("origin.uri", originUri.toString),
@@ -555,7 +572,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param hash   String
    * @return
    */
-  def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
+  private def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
     readLimiter(collection, s"Find doc with has $hash"){_.find(
       or(
         equal("hash", hash),
@@ -582,7 +599,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param derivative Is it a parent or a child
    * @return
    */
-  def createDoc(source: String, hash: String, derivative: Boolean = false): Future[DoclibDoc] = {
+  private def createDoc(source: String, hash: String, derivative: Boolean = false): Future[DoclibDoc] = {
     val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
     val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()
@@ -672,7 +689,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param msg   PrefetchMsg
    * @return
    */
-  def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
+  private def consolidateOrigins(found: FoundDoc, msg: PrefetchMsg): List[Origin] = (
     found.doc.origin.getOrElse(List[Origin]()) :::
       found.origins :::
       msg.origins.getOrElse(List[Origin]())
@@ -683,7 +700,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param origins
    * @return
    */
-  def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
+  private def getRemoteOrigins(origins: List[Origin]): List[Origin] = origins.filter(o => {
     Ftp.protocols.contains(o.scheme) || Http.protocols.contains(o.scheme)
   })
 
