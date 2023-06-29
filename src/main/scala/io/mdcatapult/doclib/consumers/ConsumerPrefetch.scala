@@ -41,7 +41,7 @@ object ConsumerPrefetch extends AbstractConsumer[PrefetchMsg, PrefetchResult]() 
 
     // Note that the SupervisorHandlerResult is because the Queue expects the type of response from the "business logic"
     // In reality we don't care here because we are just sending and not subscribing.
-    val downstream: Queue[SupervisorMsg, SupervisorHandlerResult] = Queue[SupervisorMsg, SupervisorHandlerResult]("doclib.supervisor.queue")
+    val downstream: Queue[SupervisorMsg, SupervisorHandlerResult] = Queue[SupervisorMsg, SupervisorHandlerResult](config.getString("doclib.supervisor.queue"))
     // 'queue' is just a convenience method from older versions which didn't use Alpakka AMQP.
     // TODO Remove 'queue' method to avoid confusion
     val upstream: Queue[PrefetchMsg, PrefetchResult] = queue("consumer.queue")

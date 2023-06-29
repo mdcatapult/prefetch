@@ -116,12 +116,19 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
 
     findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
-      case Some(foundDoc) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
-      case None =>
+      case Right(Some(foundDoc)) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
+      case Right(None) =>
         // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
         logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
-        Future.failed(new Exception(s"no document found for URI: $prefetchUri"))
+        Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
+//        Future.failed(new Exception(s"no document found for URI: $prefetchUri"))
+      case Left(e) =>
+        // if we can't identify a document by a document id, log error
+        incrementHandlerCount(NoDocumentError)
+        logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
+        Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
+//        Future.failed(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))
     }.flatten
   }
 
@@ -189,16 +196,30 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
       // If there is a result then return success. If there is an empty result or a failure then return a failure.
-      prefetchResult.value.transformWith({
-        case Success(result) => {
-          result match {
-            case Some(value: PrefetchResult) => Future((prefetchMsg, Success(value)))
-            case None => Future((prefetchMsg, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
-          }
-        }
-        case Failure(e) => Future((prefetchMsg, Failure(e)))
-      })
+      finalResult(prefetchResult.value, prefetchMsg, foundDoc)
+
+//        .transformWith({
+//        case Success(result) => {
+//          result match {
+//            case Some(value: PrefetchResult) => Future((prefetchMsg, Success(value)))
+//            case None => Future((prefetchMsg, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
+//          }
+//        }
+//        case Failure(e) => Future((prefetchMsg, Failure(e)))
+//      })
     }
+  }
+
+  def finalResult(result: Future[Option[PrefetchResult]], originalMessage: CommittableReadResult, foundDoc: FoundDoc): Future[(CommittableReadResult, Try[PrefetchResult])] = {
+    result.transformWith({
+      case result => {
+        result match {
+          case Success(Some(value: PrefetchResult)) => Future((originalMessage, Success(value)))
+          case Success(None) => Future((originalMessage, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
+        }
+      }
+      case Failure(e) => Future((originalMessage, Failure(e)))
+    })
   }
 
   /**
@@ -490,12 +511,12 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param URI PrefetchUri
    * @return
    */
-  def findDocument(URI: PrefetchUri, derivative: Boolean = false): Future[Option[FoundDoc]] = {
+  def findDocument(URI: PrefetchUri, derivative: Boolean = false): Future[Either[Throwable, Option[FoundDoc]]] = {
     // TODO don't throw exceptions, use Either instead
     URI.uri match {
       case Some(uri) =>
         uri.schemeOption match {
-          case None => throw new UndefinedSchemeException(uri)
+          case None => Future(Left(new UndefinedSchemeException(uri)))
           case Some("file") => findLocalDocument(URI, derivative)
           case _ => findRemoteDocument(uri)
         }
@@ -511,7 +532,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param source PrefetchUri
    * @return
    */
-  def findLocalDocument(source: PrefetchUri, derivative: Boolean = false): Future[Option[FoundDoc]] = {
+  def findLocalDocument(source: PrefetchUri, derivative: Boolean = false): Future[Either[Throwable, Option[FoundDoc]]] = {
     val rawURI = source.raw
     val foundDoc = for {
       target: String <- OptionT.some[Future](rawURI.replaceFirst(
@@ -526,7 +547,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         equal("source", target)
       ))))
     } yield FoundDoc(doc, archivable)
-    foundDoc.value
+    foundDoc.value.map({
+      result => Right(result)
+    }).recover({
+      e => Left(e)
+    })
   }
 
 
@@ -537,7 +562,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param uri io.lemonlabs.uri.Uri
    * @return
    */
-  private def findRemoteDocument(uri: Uri): Future[Option[FoundDoc]] = {
+  private def findRemoteDocument(uri: Uri): Future[Either[Throwable, Option[FoundDoc]]] = {
     val foundDoc = for {
         origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
         origin: Origin = origins.head
@@ -557,7 +582,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           )
         )
     } yield FoundDoc(doc, archivable, origins = origins, download = downloaded)
-    foundDoc.value
+    foundDoc.value.map({
+      result => Right(result)
+    }).recover({
+      e => Left(e)
+    })
   }
 
 
