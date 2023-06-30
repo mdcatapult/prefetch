@@ -127,7 +127,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
         }.flatten
       }
-      case Failure(e: Exception) => Future((prefetchMsgWrapper, Failure(new Exception(s"Unable to decode message received. ${e.getMessage}"))))
+      case Failure(x: Throwable) => Future((prefetchMsgWrapper, Failure(new Exception(s"Unable to decode message received. ${x.getMessage}"))))
     }
   }
 
