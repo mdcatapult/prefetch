@@ -38,18 +38,18 @@ lazy val root = (project in file("."))
     libraryDependencies ++= {
       val doclibCommonVersion = "3.1.2-SNAPSHOT"
 
-      val configVersion = "1.4.1"
+      val configVersion = "1.4.2"
       val akkaVersion = "2.8.1"
-      val catsVersion = "2.6.1"
-      val scalacticVersion = "3.2.10"
-      val scalaTestVersion = "3.2.11"
+      val catsVersion = "2.9.0"
+      val scalacticVersion = "3.2.15"
+      val scalaTestVersion = "3.2.15"
       val scalaMockVersion = "5.2.0"
-      val scalaLoggingVersion = "3.9.4"
-      val logbackClassicVersion = "1.2.10"
-      val betterFilesVersion = "3.9.1"
+      val scalaLoggingVersion = "3.9.5"
+      val logbackClassicVersion = "1.4.7"
+      val betterFilesVersion = "3.9.2"
       val jaiImageJPEG2000Version = "1.4.0"
-      val akkaHttpVersion = "10.2.8"
-      val akkaStreamAlpakkaFTPVersion = "3.0.4"
+      val akkaHttpVersion = "10.5.0"
+      val akkaStreamAlpakkaFTPVersion = "5.0.0"
 
       Seq(
       "org.scalactic" %% "scalactic" % scalacticVersion,
