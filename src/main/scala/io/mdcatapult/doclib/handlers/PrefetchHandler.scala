@@ -97,18 +97,12 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 3. Move the document to the appropriate place in the doclib file structure and add metadata to the db record.
    *
-   * 4. Archive any existing documents for this record
    *
    * @param prefetchMsgWrapper Container for the original message to the queue
    * @return
    */
   def handle(prefetchMsgWrapper: CommittableReadResult): Future[(CommittableReadResult, Try[PrefetchResult])] = {
 
-    // Deserialize the message. In the original way the message is passed in already deserialized. Here we get the raw message and
-    // then deserialize it because we need to pass back the original CommitableReadResult so that the subscribe method can
-    // ack/nack depending on what we pass back in the response ie. is Option[PrefetchResult] present or an Exception
-    // The deserializing could be handled abstractly if we change the AbstractHandler and have a generic
-    // deserialize[T](msg: CommittableReadResult) => Json.parse(msg.message.bytes.utf8String).as[T] method (probably!)
     val msg = Json.parse(prefetchMsgWrapper.message.bytes.utf8String).as[PrefetchMsg]
     //TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
     val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
@@ -122,13 +116,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         incrementHandlerCount(NoDocumentError)
         logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
         Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
-//        Future.failed(new Exception(s"no document found for URI: $prefetchUri"))
       case Left(e) =>
         // if we can't identify a document by a document id, log error
         incrementHandlerCount(NoDocumentError)
         logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
         Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
-//        Future.failed(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))
     }.flatten
   }
 
@@ -172,6 +164,10 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    *
    * 9. Return the original document (ie foundDoc) and the updated document (ie newDoc)
    *
+   * 10. Return final result containing the original message and either a Success containing newDoc & foundDoc or a Failure containing an exception
+   *
+   * 11. The final result is then processed by the Queue "business logic" which acks, nacks or retries the message based on Success/Failure and the number of retries left
+   *
    * @param prefetchMsg
    * @param foundDoc
    * @param flagContext
@@ -195,30 +191,22 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
-      // If there is a result then return success. If there is an empty result or a failure then return a failure.
       finalResult(prefetchResult.value, prefetchMsg, foundDoc)
-
-//        .transformWith({
-//        case Success(result) => {
-//          result match {
-//            case Some(value: PrefetchResult) => Future((prefetchMsg, Success(value)))
-//            case None => Future((prefetchMsg, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
-//          }
-//        }
-//        case Failure(e) => Future((prefetchMsg, Failure(e)))
-//      })
     }
   }
 
+  /**
+   * If there is a result then return success. If there is an empty result or a failure then return a failure.
+   * @param result
+   * @param originalMessage
+   * @param foundDoc
+   * @return
+   */
   def finalResult(result: Future[Option[PrefetchResult]], originalMessage: CommittableReadResult, foundDoc: FoundDoc): Future[(CommittableReadResult, Try[PrefetchResult])] = {
     result.transformWith({
-      case result => {
-        result match {
           case Success(Some(value: PrefetchResult)) => Future((originalMessage, Success(value)))
           case Success(None) => Future((originalMessage, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
-        }
-      }
-      case Failure(e) => Future((originalMessage, Failure(e)))
+          case Failure(e) => Future((originalMessage, Failure(e)))
     })
   }
 

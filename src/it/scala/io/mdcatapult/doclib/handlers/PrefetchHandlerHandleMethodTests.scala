@@ -15,7 +15,6 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.TryValues._
 import org.scalatest.time.SpanSugar
 
-import java.io.FileNotFoundException
 import java.nio.file.{Files, Paths}
 import java.time.LocalDateTime
 import scala.concurrent.{Await, Future}
@@ -66,8 +65,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
-      intercept[FileNotFoundException] {
-        Await.result(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), awaitDuration)
+      whenReady(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), timeout(awaitDuration)) { result =>
+        assert(result._2.failure.exception.getMessage.contains("no document found for URI: PrefetchUri(bingress/blah.csv,Some(file:bingress/blah.csv))."))
       }
     }
 
@@ -78,6 +77,24 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
         assert(result._2.get.foundDoc.doc.source == "ingress/test_1.csv")
       }
     }
+
+  it should "find a doc in the final result" in {
+    val doclibDoc = DoclibDoc(
+      _id = new ObjectId("5fce14191ba6254dea8dcb83"),
+      source = "blah",
+      hash = "7fb875d2de06a19591efbd6327be4685",
+      mimetype = "",
+      created = LocalDateTime.now(),
+      updated = LocalDateTime.now()
+    )
+    val foundDoc = FoundDoc(doc = doclibDoc)
+    val prefetchResult = PrefetchResult(doclibDoc = doclibDoc,foundDoc = foundDoc)
+    val prefetchMsg = PrefetchMsg("blah")
+    val committableReadResult = PrefetchMsgCommittableReadResult(prefetchMsg)
+    whenReady(handler.finalResult(Future.successful(Some(prefetchResult)), committableReadResult, foundDoc), timeout(awaitDuration)) { result =>
+      assert(result._2.get.foundDoc.doc.source == "blah")
+    }
+  }
 
   override def beforeEach(): Unit = {
     Await.result(collection.drop().toFuture(), awaitDuration)
