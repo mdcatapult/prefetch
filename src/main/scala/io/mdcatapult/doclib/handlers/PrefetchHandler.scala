@@ -103,25 +103,32 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def handle(prefetchMsgWrapper: CommittableReadResult): Future[(CommittableReadResult, Try[PrefetchResult])] = {
 
-    val msg = Json.parse(prefetchMsgWrapper.message.bytes.utf8String).as[PrefetchMsg]
-    //TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
-    val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
+    Try {
+      Json.parse(prefetchMsgWrapper.message.bytes.utf8String).as[PrefetchMsg]
+    } match {
+      case Success(msg:PrefetchMsg) => {
 
-    val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
+        //TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
+        val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
 
-    findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
-      case Right(Some(foundDoc)) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
-      case Right(None) =>
-        // if we can't identify a document by a document id, log error
-        incrementHandlerCount(NoDocumentError)
-        logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
-        Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
-      case Left(e) =>
-        // if we can't identify a document by a document id, log error
-        incrementHandlerCount(NoDocumentError)
-        logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
-        Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
-    }.flatten
+        val prefetchUri = toUri(msg.source.replaceFirst(s"^$doclibRoot", ""))
+
+        findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
+          case Right(Some(foundDoc)) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
+          case Right(None) =>
+            // if we can't identify a document by a document id, log error
+            incrementHandlerCount(NoDocumentError)
+            logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
+            Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
+          case Left(e) =>
+            // if we can't identify a document by a document id, log error
+            incrementHandlerCount(NoDocumentError)
+            logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
+            Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
+        }.flatten
+      }
+      case Failure(e: Exception) => Future((prefetchMsgWrapper, Failure(new Exception(s"Unable to decode message received. ${e.getMessage}"))))
+    }
   }
 
 
