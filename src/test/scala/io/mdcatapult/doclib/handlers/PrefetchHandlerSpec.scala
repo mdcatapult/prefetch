@@ -102,7 +102,7 @@ class PrefetchHandlerSpec extends TestKit(ActorSystem("PrefetchHandlerSpec", Con
       Try(config.getString("consumer.exchange")).toOption
     )
 
-  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
+  val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 
   def createNewDoc(source: String): DoclibDoc = {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)

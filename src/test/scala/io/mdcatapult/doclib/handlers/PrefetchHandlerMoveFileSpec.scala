@@ -101,7 +101,7 @@ class PrefetchHandlerMoveFileSpec extends TestKit(ActorSystem("PrefetchHandlerSp
     )
 
 
-  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
+  val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 
   "The handler" should {
 

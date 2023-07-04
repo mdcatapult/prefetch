@@ -75,8 +75,8 @@ The app allows runtime configuration via environment variables. Most have defaul
 * **CONSUMER_CONCURRENCY** - number of messages to handle concurrently (default: 1)
   
 * **DOCLIB_SUPERVISOR_QUEUE** - the supervisor queue (default: supervisor)
-* **DOCLIB_ERROR_QUEUE** - the errors queue (default: errors)
-* **DOCLIB_ARCHIVER_QUEUE** - the archive queue (default: archive)
+* **DOCLIB_ERROR_QUEUE** - the errors queue (default: errors) - note this is retained for legacy purposes but is not currently used
+* **DOCLIB_ARCHIVER_QUEUE** - the archive queue (default: archive) - note this is retained for legacy purposes but is not currently used
 * **DOCLIB_ROOT** - optional: The filesystem root where the documents are stored (defaults: /)
 * **DOCLIB_REMOTE_TARGET** - The target location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations before processing (default: remote-ingress)
 * **DOCLIB_REMOTE_TEMP** - The location, relative to the DOCLIB_ROOT, to store files retrieved from remote locations after processing (default: remote)

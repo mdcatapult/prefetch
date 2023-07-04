@@ -1,6 +1,7 @@
 package io.mdcatapult.doclib.handlers
 
 import akka.actor._
+import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import akka.testkit.{ImplicitSender, TestKit}
 import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
@@ -11,7 +12,7 @@ import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
-import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
+import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
@@ -25,6 +26,7 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
+import org.scalatest.TryValues._
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -44,7 +46,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
   import system.dispatcher
 
-  val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
+  val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 
   "Derivative mappings" should "be updated wth new child info" in {
     val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
@@ -180,14 +182,14 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
     val fetchedDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
 
-    def docId(d: FoundDoc) = d.doc._id
+    def docId(d: Option[FoundDoc]): ObjectId = d.get.doc._id
 
-    def uuid(d: FoundDoc) = d.doc.uuid
+    def uuid(d: Option[FoundDoc]): Option[UUID] = d.get.doc.uuid
 
     origDoc.map(docId) should be(fetchedDoc.map(docId))
-    origDoc.flatMap(uuid) should be(fetchedDoc.flatMap(uuid))
+    origDoc.map(uuid) should be(fetchedDoc.map(uuid))
 
-    fetchedDoc.flatMap(uuid).nonEmpty should be(true)
+    fetchedDoc.map(uuid).getOrElse(None).nonEmpty should be(true)
   }
 
   "A redirected url" should "be persisted in the origin" in {
@@ -209,8 +211,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     val firstPrefetchMessage = PrefetchMsg(uriWithRedirect.toString())
     // create initial document
-    val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).value
-//    val (targetPath, inCorrectPlace, docSource, origins) = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
+    val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).getOrElse(None).get
     val documentTarget: DocumentTarget = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
     val source = Await.result(handler.ingressDocument(firstDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
     val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), documentTarget.origins)
@@ -223,7 +224,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       case _ => fail("Expected origins to be a list")
     }
 
-    val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).get
+    val secondDoc = Await.result(handler.findDocument(handler.PrefetchUri(similarUri, Some(similarUriUriWithRedirect))), Duration.Inf).getOrElse(None).get
     assert(secondDoc.doc._id == firstDoc.doc._id)
 
     firstDoc.doc.uuid should not be None
@@ -252,12 +253,12 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     // @todo: depends on previous tests output, needs refactor to isolate with test fixture
     val source = "http://github.com/nginx/nginx/raw/master/conf/fastcgi.conf"
     val similarUri = Uri.parse(source)
-    val doc = Await.result(handler.findDocument(handler.PrefetchUri(source, Some(similarUri))), Duration.Inf).get
+    val doc = Await.result(handler.findDocument(handler.PrefetchUri(source, Some(similarUri))), Duration.Inf).getOrElse(None).get
     assert(doc.origins.size == 3)
   }
 
   "Adding the derivative value" should "result in a derivative document" in {
-    val doc = Await.result(handler.findDocument(handler.PrefetchUri("ingress/derivative-test.txt", None), derivative = true), Duration.Inf).get
+    val doc = Await.result(handler.findDocument(handler.PrefetchUri("ingress/derivative-test.txt", None), derivative = true), Duration.Inf).getOrElse(None).get
     assert(doc.doc.derivative)
   }
 
@@ -395,8 +396,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val prefetchUri = handler.PrefetchUri(docLocation, None)
     val docLocation2 = "ingress/zero_length_file2.txt"
     val prefetchUri2 = handler.PrefetchUri(docLocation2, None)
-    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds).get
-    val fetchedDoc = Await.result(handler.findLocalDocument(prefetchUri2), 5.seconds).get
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds).getOrElse(None).get
+    val fetchedDoc = Await.result(handler.findLocalDocument(prefetchUri2), 5.seconds).getOrElse(None).get
     assert(origDoc.doc._id == fetchedDoc.doc._id)
   }
 
@@ -409,8 +410,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val docFile2: ScalaFile = ScalaFile(s"$doclibRoot/$ingressDir/second/$secondDoc").createFileIfNotExists(createParents = true)
     docFile.appendLine("Some contents")
     docFile2.appendLine("Different contents")
-    val origDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "first", firstDoc).toString, None)), 5.seconds).get
-    val fetchedDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "second", firstDoc).toString, None)), 5.seconds).get
+    val origDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "first", firstDoc).toString, None)), 5.seconds).getOrElse(None).get
+    val fetchedDoc = Await.result(handler.findLocalDocument(handler.PrefetchUri(Paths.get(ingressDir, "second", firstDoc).toString, None)), 5.seconds).getOrElse(None).get
     assert(origDoc.doc._id != fetchedDoc.doc._id)
   }
 
@@ -516,13 +517,13 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       rogueFile = Some(true),
     )
 
-    val prefetchMsg = PrefetchMsg("local/rogue.txt")
+    val pfm = PrefetchMsg(source = "ingress/derivatives/raw.txt",  verify = Some(true))
+
     val emptyFlagContext = new MongoFlagContext("", new Version("", 1, 1, 1, ""), collection, nowUtc)
 
-
-    assertThrows[RogueFileException] {
-        Await.result(handler.foundDocumentProcess(prefetchMsg, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
-    }
+    val prefetchMsgCommittableReadResult = PrefetchMsgCommittableReadResult(pfm)
+    val result: (CommittableReadResult, Try[PrefetchResult]) = Await.result(handler.foundDocumentProcess(prefetchMsgCommittableReadResult, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
+    result._2.failure.exception should have message "cannot process rogue file. Source=ingress/derivatives/raw.txt, msg=PrefetchMsg(ingress/derivatives/raw.txt,None,None,None,None,Some(true))"
   }
 
   override def beforeAll(): Unit = {
