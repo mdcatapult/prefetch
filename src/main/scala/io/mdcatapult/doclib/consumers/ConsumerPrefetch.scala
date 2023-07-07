@@ -2,9 +2,8 @@ package io.mdcatapult.doclib.consumers
 
 import akka.actor.ActorSystem
 import akka.stream.Materializer
-import com.spingo.op_rabbit.SubscriptionRef
 import io.mdcatapult.doclib.consumer.AbstractConsumer
-import io.mdcatapult.doclib.handlers.PrefetchHandler
+import io.mdcatapult.doclib.handlers.{PrefetchHandler, PrefetchResult, SupervisorHandlerResult}
 import io.mdcatapult.doclib.messages._
 import io.mdcatapult.doclib.models.{AppConfig, DoclibDoc, ParentChildMapping}
 import io.mdcatapult.klein.mongo.Mongo
@@ -15,9 +14,9 @@ import org.mongodb.scala.MongoCollection
 
 import scala.util.Try
 
-object ConsumerPrefetch extends AbstractConsumer() {
+object ConsumerPrefetch extends AbstractConsumer[PrefetchMsg, PrefetchResult]() {
 
-  def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): SubscriptionRef = {
+  def start()(implicit as: ActorSystem, m: Materializer, mongo: Mongo): Unit = {
 
     import as.dispatcher
 
@@ -40,14 +39,17 @@ object ConsumerPrefetch extends AbstractConsumer() {
     val readLimiter: SemaphoreLimitedExecution = SemaphoreLimitedExecution.create(config.getInt("mongo.read-limit"))
     val writeLimiter = SemaphoreLimitedExecution.create(config.getInt("mongo.write-limit"))
 
-    val downstream: Queue[SupervisorMsg] = queue("doclib.supervisor.queue")
-    val upstream: Queue[PrefetchMsg] = queue("consumer.queue")
-    val archiver: Queue[DoclibMsg] = queue("doclib.archive.queue")
+    // Note that the SupervisorHandlerResult is because the Queue expects the type of response from the "business logic"
+    // In reality we don't care here because we are just sending and not subscribing.
+    val downstream: Queue[SupervisorMsg, SupervisorHandlerResult] = Queue[SupervisorMsg, SupervisorHandlerResult](config.getString("doclib.supervisor.queue"))
+    // 'queue' is just a convenience method from older versions which didn't use Alpakka AMQP.
+    // TODO Remove 'queue' method to avoid confusion
+    val upstream: Queue[PrefetchMsg, PrefetchResult] = queue("consumer.queue")
 
     adminServer.start()
 
     upstream.subscribe(
-      new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter).handle,
+      new PrefetchHandler(downstream, readLimiter, writeLimiter).handle,
       config.getInt("consumer.concurrency"))
   }
 }

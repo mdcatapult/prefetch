@@ -1,24 +1,23 @@
 package io.mdcatapult.doclib.handlers
 
 import akka.actor._
+import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.DoclibDoc
-import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.TryValues._
+import org.scalatest.time.SpanSugar
 
-import java.io.FileNotFoundException
 import java.nio.file.{Files, Paths}
 import java.time.LocalDateTime
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import scala.language.postfixOps
+import scala.concurrent.{Await, Future}
 import scala.util.Try
 
 class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHandlerHandleMethodTest", ConfigFactory.parseString(
@@ -30,13 +29,14 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   with BeforeAndAfterEach
   with MockFactory
   with ScalaFutures
-  with PrefetchHandlerBaseTest {
+  with PrefetchHandlerBaseTest
+  with SpanSugar {
 
   import system.dispatcher
 
-  private val handler = new PrefetchHandler(downstream, archiver, readLimiter, writeLimiter)
+  private val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
-  private val awaitDuration = 5 seconds
+  private val awaitDuration = 5.seconds
 
   "The PrefetchHandler handle method" should
     "return a SilentValidationException given a db record exists from the previous day" in {
@@ -49,37 +49,56 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
         created = currentTimeMinusOneDay,
         updated = currentTimeMinusOneDay,
       )
+      val prefetchMsg = PrefetchMsg(source = ingressFilenameWithPath, verify = Some(true))
 
-      val futureResult = for {
-        _ <- collection.insertOne(doclibDoc).toFuture()
-        inputMessage = PrefetchMsg(ingressFilenameWithPath, verify = Option(true))
-        handlerRes <- handler.handle(inputMessage)
-      } yield handlerRes
+    val futureResult: Future[(CommittableReadResult, Try[PrefetchResult])] = for {
+      _ <- collection.insertOne(doclibDoc).toFuture()
+      handlerRes <- handler.handle(PrefetchMsgCommittableReadResult(prefetchMsg))
+    } yield handlerRes
 
-      intercept[SilentValidationException] {
-        Await.result(futureResult, awaitDuration)
-      }
-
+    whenReady(futureResult, timeout(awaitDuration)) { result =>
+      result._2.failure.exception should have message "Suppressed exception for Validation"
+    }
   }
 
     it should "return a FileNotFoundException given an incorrect file path" in {
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
-      intercept[FileNotFoundException] {
-        Await.result(handler.handle(inputMessage), awaitDuration)
+      whenReady(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), timeout(awaitDuration)) { result =>
+        assert(result._2.failure.exception.getMessage.contains("no document found for URI: PrefetchUri(bingress/blah.csv,Some(file:bingress/blah.csv))."))
       }
     }
 
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
       val inputMessage = PrefetchMsg(ingressFilenameWithPath)
-      val result = Await.result(handler.handle(inputMessage), awaitDuration).get
-      assert(result.foundDoc.doc.source == "ingress/test_1.csv")
+      val futureResult = handler.handle(PrefetchMsgCommittableReadResult(inputMessage))
+      whenReady(futureResult, timeout(awaitDuration)) { result =>
+        assert(result._2.get.foundDoc.doc.source == "ingress/test_1.csv")
+      }
     }
 
+  it should "find a doc in the final result" in {
+    val doclibDoc = DoclibDoc(
+      _id = new ObjectId("5fce14191ba6254dea8dcb83"),
+      source = "blah",
+      hash = "7fb875d2de06a19591efbd6327be4685",
+      mimetype = "",
+      created = LocalDateTime.now(),
+      updated = LocalDateTime.now()
+    )
+    val foundDoc = FoundDoc(doc = doclibDoc)
+    val prefetchResult = PrefetchResult(doclibDoc = doclibDoc,foundDoc = foundDoc)
+    val prefetchMsg = PrefetchMsg("blah")
+    val committableReadResult = PrefetchMsgCommittableReadResult(prefetchMsg)
+    whenReady(handler.finalResult(Future.successful(Some(prefetchResult)), committableReadResult, foundDoc), timeout(awaitDuration)) { result =>
+      assert(result._2.get.foundDoc.doc.source == "blah")
+    }
+  }
+
   override def beforeEach(): Unit = {
-    Await.result(collection.drop().toFuture(), 5 seconds)
-    Await.result(derivativesCollection.drop().toFuture(), 5 seconds)
+    Await.result(collection.drop().toFuture(), awaitDuration)
+    Await.result(derivativesCollection.drop().toFuture(), awaitDuration)
 
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
