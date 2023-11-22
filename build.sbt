@@ -23,20 +23,20 @@ lazy val root = (project in file("."))
       //      in the mongo libs that we stub in the tests.
     ),
     useCoursier := false,
-    resolvers ++= Seq(
-      "MDC Nexus Releases" at "https://nexus.wopr.inf.mdc/repository/maven-releases/",
-      "MDC Nexus Snapshots" at "https://nexus.wopr.inf.mdc/repository/maven-snapshots/"),
-    updateOptions := updateOptions.value.withLatestSnapshots(latestSnapshots = false),
-    credentials += {
-      sys.env.get("NEXUS_PASSWORD") match {
+    resolvers         ++= Seq(
+      "gitlab" at "https://gitlab.com/api/v4/projects/50550924/packages/maven",
+      "Maven Public" at "https://repo1.maven.org/maven2"),
+    updateOptions     := updateOptions.value.withLatestSnapshots(latestSnapshots = false),
+    credentials       += {
+      sys.env.get("CI_JOB_TOKEN") match {
         case Some(p) =>
-          Credentials("Sonatype Nexus Repository Manager", "nexus.wopr.inf.mdc", "gitlab", p)
+          Credentials("GitLab Packages Registry", "gitlab.com", "gitlab-ci-token", p)
         case None =>
           Credentials(Path.userHome / ".sbt" / ".credentials")
       }
     },
     libraryDependencies ++= {
-      val doclibCommonVersion = "4.0.0"
+      val doclibCommonVersion = "4.0.1"
 
       val configVersion = "1.4.2"
       val akkaVersion = "2.8.1"
