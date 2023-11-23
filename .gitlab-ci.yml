@@ -17,6 +17,8 @@ variables:
   RABBITMQ_DEFAULT_USER: doclib
   RABBITMQ_DEFAULT_PASS: doclib
   RABBITMQ_DEFAULT_VHOST: doclib
+  MONGO_PORT: 27017
+  RABBITMQ_PORT: 5672
 
 
 cache:
@@ -29,12 +31,10 @@ cache:
     - "sbt-cache/target"
 
 default:
-  image: registry.mdcatapult.io/informatics/docker-images/ci/scala
+  image: registry.gitlab.com/medicines-discovery-catapult/informatics/docker-images/ci/sbt:latest
 
 test:
   stage: test
-  tags:
-    - wopr
   variables:
     MONGO_HOST: mongo
     RABBITMQ_HOST: rabbitmq
@@ -52,8 +52,6 @@ test:
 
 assemble:
   stage: build
-  tags:
-    - wopr
   script:
     - sbt assembly
     - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
@@ -67,8 +65,6 @@ assemble:
 
 publish:
   stage: publish
-  tags:
-    - wopr
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -78,29 +74,24 @@ publish:
     - /kaniko/executor --context $CI_PROJECT_DIR --build-arg VERSION_HASH=$CI_COMMIT_SHORT_SHA --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   except:
     refs:
-      - master
+      - main
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
 release:
   stage: release
-  tags:
-    - wopr
   script:
-    - /scripts/release.sh -b -r develop
+    - cictl exec release sbt
   only:
-    - master
+    - main
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
-assemble-master:
+assemble-main:
   stage: build
-  tags:
-    - wopr
   script:
     - sbt assembly
-    - /scripts/upload-files.sh 'target/scala-2.13/consumer.jar' $CI_COMMIT_REF_NAME
     - curl https://repo1.maven.org/maven2/io/netty/netty-all/4.1.49.Final/netty-all-4.1.49.Final.jar -o target/netty.jar
   artifacts:
     paths:
@@ -112,10 +103,8 @@ assemble-master:
     variables:
       - $CI_COMMIT_MESSAGE =~ /^Setting version to.*/
 
-publish-master:
+publish-main:
   stage: publish
-  tags:
-    - wopr
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
