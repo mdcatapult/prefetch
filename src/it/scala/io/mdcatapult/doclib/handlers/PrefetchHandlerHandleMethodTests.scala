@@ -15,6 +15,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.TryValues._
 import org.scalatest.time.SpanSugar
 
+import java.io.FileNotFoundException
 import java.nio.file.{Files, Paths}
 import java.time.LocalDateTime
 import scala.concurrent.{Await, Future}
@@ -65,8 +66,8 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
-      whenReady(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), timeout(awaitDuration)) { result =>
-        assert(result._2.failure.exception.getMessage.contains("no document found for URI: PrefetchUri(bingress/blah.csv,Some(file:bingress/blah.csv))."))
+      intercept[FileNotFoundException] {
+        Await.result(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), awaitDuration)
       }
     }
 
