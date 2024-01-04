@@ -19,7 +19,7 @@ import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.OptionValues._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
@@ -42,6 +42,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   """))) with ImplicitSender
   with AnyFlatSpecLike
   with Matchers
+  with BeforeAndAfterEach
   with BeforeAndAfterAll with MockFactory with ScalaFutures with PrefetchHandlerBaseTest {
 
   import system.dispatcher
@@ -190,6 +191,162 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     origDoc.map(uuid) should be(fetchedDoc.map(uuid))
 
     fetchedDoc.map(uuid).getOrElse(None).nonEmpty should be(true)
+  }
+
+  "A local doc that already exists and the new one is the same" should "not have any archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "local/archiveable-test.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/archiveable-test.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(0))
+  }
+
+  "A local doc that already exists and the new one is different" should "have archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "local/archiveable-test-2.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/archiveable-test-2.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(1))
+  }
+
+  "A zero length file which has been ingressed" should "be returned in the archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "ingress/archiveable-test-3.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/archiveable-test-3.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(1))
+  }
+
+  "A local to remote file" should "be returned in the archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "remote/https/www.somewhere.com/local-remote-test.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/remote/https/www.somewhere.com/local-remote-test.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(1))
+  }
+
+  "If multiple records exist for a document they" should "be returned in the archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    // This first one represents a file that didn't ingress possibly due to being zero length. There is always the chance
+    // that the code has changed and this use case is no longer valid.
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "ingress/archiveable-test-4.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val parentIdTwo = new ObjectId()
+    val parentDocTwo = DoclibDoc(
+      _id = parentIdTwo,
+      source = "local/archiveable-test-4.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/archiveable-test-4.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(2))
+  }
+
+  "If multiple records exist for a local to remote document they" should "be returned in the archiveable records" in {
+    val parentIdOne = new ObjectId()
+    val createdTime = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    // This first one represents a file that didn't ingress possibly due to being zero length. There is always the chance
+    // that the code has changed and this use case is no longer valid.
+    val parentDocOne = DoclibDoc(
+      _id = parentIdOne,
+      source = "ingress/remote/https/www.somewhere.com/local-remote-test-2.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocOne).toFutureOption(), 5 seconds)
+    val parentIdTwo = new ObjectId()
+    val parentDocTwo = DoclibDoc(
+      _id = parentIdTwo,
+      source = "remote/https/www.somewhere.com/local-remote-test-2.txt",
+      hash = "2d282102fa671256327d4767ec23bc6b",
+      derivative = false,
+      derivatives = None,
+      created = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      updated = LocalDateTime.ofInstant(createdTime, ZoneOffset.UTC),
+      mimetype = "text/plain",
+      tags = Some(List[String]())
+    )
+    Await.result(collection.insertOne(parentDocTwo).toFutureOption(), 5 seconds)
+    val docLocation = "ingress/remote/https/www.somewhere.com/local-remote-test-2.txt"
+    val prefetchUri = handler.PrefetchUri(docLocation, None)
+    val origDoc = Await.result(handler.findLocalDocument(prefetchUri), 5.seconds)
+    origDoc.map(doc => doc.get.archiveable.length) should be(Right(2))
   }
 
   "A redirected url" should "be persisted in the origin" in {
@@ -527,11 +684,11 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   }
 
   override def beforeAll(): Unit = {
-    Await.result(collection.drop().toFuture(), 5.seconds)
-    Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
     Try {
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/remote/https/www.somewhere.com").toAbsolutePath)
+      Files.createDirectories(Paths.get("test/prefetch-test/ingress/remote/https/www.somewhere.com").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/metadata-tags-test").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/derivatives/raw.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/test file.txt").toAbsolutePath)
@@ -544,6 +701,24 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/origins-test.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/metadata-test.txt").toAbsolutePath)
       Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/rogue.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/archiveable-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/archiveable-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/archiveable-test-2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/test_1.csv").toAbsolutePath, Paths.get("test/prefetch-test/ingress/archiveable-test-2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/archiveable-test-3.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/archiveable-test-3.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/local/archiveable-test-4.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/zero_length_file.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/archiveable-test-4.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/remote/https/www.somewhere.com/local-remote-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/test_1.csv").toAbsolutePath, Paths.get("test/prefetch-test/ingress/remote/https/www.somewhere.com/local-remote-test.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/remote/https/www.somewhere.com/local-remote-test-2.txt").toAbsolutePath)
+      Files.copy(Paths.get("test/test_1.csv").toAbsolutePath, Paths.get("test/prefetch-test/ingress/remote/https/www.somewhere.com/local-remote-test-2.txt").toAbsolutePath)
     }
   }
+
+  override def beforeEach(): Unit = {
+    Await.result(collection.drop().toFuture(), 5.seconds)
+    Await.result(derivativesCollection.drop().toFuture(), 5.seconds)
+  }
+
 }

@@ -107,6 +107,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       Json.parse(prefetchMsgWrapper.message.bytes.utf8String).as[PrefetchMsg]
     } match {
       case Success(msg:PrefetchMsg) => {
+        logger.info(s"At start of process. Prefetch message received for ${msg.source}")
 
         //TODO investigate why declaring MongoFlagStore outside of this fn causes large numbers DoclibDoc objects on the heap
         val flagContext = new MongoFlagContext(appConfig.name, version, collection, nowUtc)
@@ -115,15 +116,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
         findDocument(prefetchUri, msg.derivative.getOrElse(false)).map {
           case Right(Some(foundDoc)) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
+          // TODO This Right(None) doesn't feel the right way to do this. Not sure the log message or exception are actually correct
           case Right(None) =>
             // if we can't identify a document by a document id, log error
             incrementHandlerCount(NoDocumentError)
-            logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}")
+            logger.error(s"$Failed to find document without an exception - $NoDocumentError, prefetch message source ${msg.source}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
           case Left(e) =>
             // if we can't identify a document by a document id, log error
             incrementHandlerCount(NoDocumentError)
-            logger.error(s"$Failed - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
+            logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
         }.flatten
       }
@@ -198,6 +200,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         _ <- OptionT.liftF(processParent(newDoc, msg))
         _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
+      logger.info(s"Prefetch process run for ${foundDoc.doc._id}")
       finalResult(prefetchResult.value, prefetchMsg, foundDoc)
     }
   }
@@ -211,9 +214,18 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def finalResult(result: Future[Option[PrefetchResult]], originalMessage: CommittableReadResult, foundDoc: FoundDoc): Future[(CommittableReadResult, Try[PrefetchResult])] = {
     result.transformWith({
-          case Success(Some(value: PrefetchResult)) => Future((originalMessage, Success(value)))
-          case Success(None) => Future((originalMessage, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
-          case Failure(e) => Future((originalMessage, Failure(e)))
+          case Success(Some(value: PrefetchResult)) => {
+            logger.debug(s"Final result was success for ${foundDoc.doc._id}")
+            Future((originalMessage, Success(value)))
+          }
+          case Success(None) => {
+            logger.debug(s"Final result was failure for ${foundDoc.doc._id}. No prefetch result was present for ${foundDoc.doc._id}")
+            Future((originalMessage, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
+          }
+          case Failure(e) => {
+            logger.debug(s"Final result was failure for ${foundDoc.doc._id} with exception ${e.getMessage}")
+            Future((originalMessage, Failure(e)))
+          }
     })
   }
 
@@ -286,6 +298,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   def ingressDocument(foundDoc: FoundDoc, tempPath: String, targetPathGenerator: Option[String], inRightLocation: Boolean): Future[Either[Exception, Option[Path]]] = {
     // First check if the file has any length - this has happened in the past
     if (zeroLength(tempPath)) {
+      //TODO There is no point having a mongo record for a zero length file. We should delete it
       Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
     } else {
       // Generate the path that the document is to be moved to using the supplied targetPathGenerator
@@ -332,9 +345,13 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       // 4. Delete existing 'archiveable' docs for the 'same' file
       // 5. Move the 'new' file to the correct place
       // TODO remove ner & occurrences
+      // Note the fileProcessor.removeFile line is no longer used. This is because of the edge case where it was a zero
+      // length file previously being ingressed. This would mean that the last record for this document was pointing to the file in
+      // the ingress directory and would therefore have been deleted. There are comments elsewhere in the zero length check bit that
+      // we should remove any mongo records for zero length files.
       for {
         doclibDoc <- foundDoc.archiveable
-        _ = fileProcessor.removeFile(doclibDoc.source)
+//        _ = fileProcessor.removeFile(doclibDoc.source)
         _ = writeLimiter(collection, s"Delete document ${doclibDoc._id}") {_.deleteOne(equal("_id", doclibDoc._id)).toFutureOption()}
         _ = writeLimiter(derivativesCollection, s"Delete parent child records for ${doclibDoc._id}") {_.deleteMany(equal("parent", doclibDoc._id)).toFutureOption()}
       } yield doclibDoc
@@ -529,11 +546,20 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    */
   def findLocalDocument(source: PrefetchUri, derivative: Boolean = false): Future[Either[Throwable, Option[FoundDoc]]] = {
     val rawURI = source.raw
-    val foundDoc = for {
-      target: String <- OptionT.some[Future](rawURI.replaceFirst(
+    val localToRemoteTargetDir = s"${config.getString("doclib.local.temp-dir")}/${config.getString("doclib.remote.target-dir")}"
+
+    val target = if (rawURI.startsWith(localToRemoteTargetDir)) {
+      rawURI.replaceFirst(
+        s"^${localToRemoteTargetDir}",
+        remoteDirName
+      )
+    } else {
+      rawURI.replaceFirst(
         s"^${config.getString("doclib.local.temp-dir")}",
         localDirName
-      ))
+      )
+    }
+    val foundDoc = for {
       // This will throw a FileNotFoundException if the file does not exist
       // TODO use a more functional way of handling this error
       md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$rawURI").toFile))
