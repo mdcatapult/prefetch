@@ -1,18 +1,18 @@
 package io.mdcatapult.doclib.handlers
 
 import akka.actor._
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
 import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.DoclibDoc
+import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
+import org.scalatest.RecoverMethods.recoverToSucceededIf
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
-import org.scalatest.TryValues._
 import org.scalatest.time.SpanSugar
 
 import java.io.FileNotFoundException
@@ -52,13 +52,11 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       )
       val prefetchMsg = PrefetchMsg(source = ingressFilenameWithPath, verify = Some(true))
 
-    val futureResult: Future[(CommittableReadResult, Try[PrefetchResult])] = for {
-      _ <- collection.insertOne(doclibDoc).toFuture()
-      handlerRes <- handler.handle(PrefetchMsgCommittableReadResult(prefetchMsg))
-    } yield handlerRes
-
-    whenReady(futureResult, timeout(awaitDuration)) { result =>
-      result._2.failure.exception should have message "Suppressed exception for Validation"
+    recoverToSucceededIf[SilentValidationException] {
+      for {
+        _ <- collection.insertOne(doclibDoc).toFuture()
+        handlerRes <- handler.handle(PrefetchMsgCommittableReadResult(prefetchMsg))
+      } yield handlerRes
     }
   }
 
@@ -67,7 +65,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
       intercept[FileNotFoundException] {
-        Await.result(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), awaitDuration)
+        handler.handle(PrefetchMsgCommittableReadResult(inputMessage))
       }
     }
 
@@ -92,7 +90,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
     val prefetchResult = PrefetchResult(doclibDoc = doclibDoc,foundDoc = foundDoc)
     val prefetchMsg = PrefetchMsg("blah")
     val committableReadResult = PrefetchMsgCommittableReadResult(prefetchMsg)
-    whenReady(handler.finalResult(Future.successful(Some(prefetchResult)), committableReadResult, foundDoc), timeout(awaitDuration)) { result =>
+    whenReady(handler.finalResult(Future.successful(Right(prefetchResult)), committableReadResult, foundDoc), timeout(awaitDuration)) { result =>
       assert(result._2.get.foundDoc.doc.source == "blah")
     }
   }

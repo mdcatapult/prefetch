@@ -3,7 +3,7 @@ package io.mdcatapult.doclib.handlers
 import akka.stream.Materializer
 import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
 import better.files._
-import cats.data.OptionT
+import cats.data.{EitherT, OptionT}
 import cats.implicits._
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
@@ -190,15 +190,20 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     if (flagContext.isRunRecently(foundDoc.doc)) {
       Future((prefetchMsg, Failure(new Exception(s"document: ${foundDoc.doc._id} run too recently")))) //TODO is this exception useful?
     } else {
-      val prefetchResult: OptionT[Future, PrefetchResult] = for {
-        _ <- OptionT(Future(Option(valid(msg, foundDoc))))
-        started: UpdatedResult <- OptionT.liftF(flagContext.start(foundDoc.doc))
-        documentTarget = generateDocumentTargets(foundDoc, msg)
-        source <- OptionT.liftF(ingressDocument(foundDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation))
-        documentUpdate = getDocumentUpdate(foundDoc, source, documentTarget.origins)
-        newDoc <- OptionT(updateDatabaseRecord(foundDoc, msg, documentUpdate))
-        _ <- OptionT.liftF(processParent(newDoc, msg))
-        _ <- OptionT.liftF(flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
+      val prefetchResult: EitherT[Future, Exception, PrefetchResult]  = for {
+          _ <- EitherT.liftF(Future.successful(valid(msg, foundDoc)))
+          started <- EitherT.liftF(flagContext.start(foundDoc.doc))
+          documentTarget = generateDocumentTargets(foundDoc, msg)
+          source <- EitherT(ingressDocument(foundDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation))
+          documentUpdate = getDocumentUpdate(foundDoc, source, documentTarget.origins)
+          maybeNewDoc: Future[Either[Exception, DoclibDoc]] = updateDatabaseRecord(foundDoc, msg, documentUpdate)
+          .map {
+            case Right(value) => Right(value)
+            case Left(_) => Left(new Exception("No document was found to update"))
+          }
+         newDoc <- EitherT(maybeNewDoc)
+        _ <- EitherT.liftF[Future, Exception, Any](processParent(newDoc, msg))
+        _ <- EitherT.liftF[Future, Exception, UpdatedResult](flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
       logger.info(s"Prefetch process run for ${foundDoc.doc._id}")
       finalResult(prefetchResult.value, prefetchMsg, foundDoc)
@@ -212,21 +217,22 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param foundDoc
    * @return
    */
-  def finalResult(result: Future[Option[PrefetchResult]], originalMessage: CommittableReadResult, foundDoc: FoundDoc): Future[(CommittableReadResult, Try[PrefetchResult])] = {
-    result.transformWith({
-          case Success(Some(value: PrefetchResult)) => {
-            logger.debug(s"Final result was success for ${foundDoc.doc._id}")
-            Future((originalMessage, Success(value)))
+  def finalResult(result: Future[Either[Exception, PrefetchResult]], originalMessage: CommittableReadResult, foundDoc: FoundDoc): Future[(CommittableReadResult, Try[PrefetchResult])] = {
+    result.map{
+          case Right(value: PrefetchResult) => {
+            logger.info(s"Final result was success for ${foundDoc.doc._id}")
+            (originalMessage, Success(value))
           }
-          case Success(None) => {
-            logger.debug(s"Final result was failure for ${foundDoc.doc._id}. No prefetch result was present for ${foundDoc.doc._id}")
-            Future((originalMessage, Failure(new Exception(s"No prefetch result was present for ${foundDoc.doc._id}"))))
+          case Left(e: ZeroLengthFileException) => {
+            logger.error(s"Zero length file exception", e)
+            //TODO The prefetch result here doesn't really matter but just return it anyway to satisfy the return type
+            (originalMessage, Success(PrefetchResult(foundDoc.doc, foundDoc)))
           }
-          case Failure(e) => {
-            logger.debug(s"Final result was failure for ${foundDoc.doc._id} with exception ${e.getMessage}")
-            Future((originalMessage, Failure(e)))
+          case Left(e) => {
+            logger.error(s"Final result was failure for ${foundDoc.doc._id}", e)
+            (originalMessage, Failure(e))
           }
-    })
+    }
   }
 
   /**
@@ -382,7 +388,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param origin
    * @return
    */
-  def getDocumentUpdate(foundDoc: FoundDoc, source: Either[Exception, Option[Path]], origin: List[Origin]): Bson = {
+  def getDocumentUpdate(foundDoc: FoundDoc, source: Option[Path], origin: List[Origin]): Bson = {
 
     // Note that this is not actually used but at one point we nearly switched to UUIDs instead of ObjectIds for DoclibDoc records
     val uuidAssignment: List[Bson] =
@@ -395,22 +401,18 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
 
     // If the archive process failed then use the foundDoc, otherwise use the path that the document was moved to via the
     // Right(None) means that it is the same file (probably!)
-    val archivedPath: Option[Path] = source match {
-      case Right(Some(path: Path)) => Some(path)
-      case Right(None) => None
-      case Left(_) => None
-    }
+
     // Fancy name for remove the full path up to the doclib root which is used in the metadata in the mongo record as the "source"
     val normalisedDoclibPath = source match {
-      case Right(Some(path: Path)) => path.toString.replaceFirst(s"^$doclibRoot", "")
-      case Right(None) => foundDoc.doc.source
-      case Left(_) => foundDoc.doc.source
+      case Some(path: Path) => path.toString.replaceFirst(s"^$doclibRoot", "")
+      case None => foundDoc.doc.source
+      case _ => foundDoc.doc.source
     }
     val changes = List(
       set("source", normalisedDoclibPath),
       set("origin", origin),
-      getFileAttrs(archivedPath),
-      getMimetype(archivedPath)
+      getFileAttrs(source),
+      getMimetype(source)
     )
 
     combine(uuidAssignment ::: changes: _*)
@@ -423,7 +425,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param msg   PrefetchMsg
    * @return
    */
-  def updateDatabaseRecord(found: FoundDoc, msg: PrefetchMsg, bsonChanges: Bson): Future[Option[DoclibDoc]] = {
+  def updateDatabaseRecord(found: FoundDoc, msg: PrefetchMsg, bsonChanges: Bson): Future[Either[Exception, DoclibDoc]] = {
     // Note: derivatives has to be added since unarchive (and maybe others) expect this to exist in the record
     //TODO: tags and metadata are optional in a doc. addEachToSet fails if they are null. Tags is set to an empty list
     // during the prefetch process. Changed it to 'set' just in case...
@@ -442,12 +444,16 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     writeLimiter(collection, s"Update ${found.doc._id}") {_.updateOne(filter, update).toFutureOption()}
       .andThen(_ => latency.observeDuration())
       .andThen({
-        case Failure(e) => throw e
+        case Failure(e) => Left(e)
       }).flatMap({
       case Some(_) =>
-        readLimiter(collection, s"Find ${found.doc._id}") {_.find(filter).headOption()}
+        readLimiter(collection, s"Find ${found.doc._id}") {_.find(filter).first().toFutureOption()}
+          .map({
+            case Some(doc) => Right(doc)
+            case None => Left(new Exception(s"Failed to find document ${found.doc._id} after update"))
+          })
       case None =>
-        Future.successful(None)
+        Future.successful(Left(new Exception(s"Failed to update document ${found.doc._id}")))
     })
   }
 
