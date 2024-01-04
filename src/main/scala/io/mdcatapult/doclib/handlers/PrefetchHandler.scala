@@ -299,7 +299,15 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     // First check if the file has any length - this has happened in the past
     if (zeroLength(tempPath)) {
       //TODO There is no point having a mongo record for a zero length file. We should delete it
-      Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
+      writeLimiter(collection, s"Delete document ${foundDoc.doc._id}") {_.deleteOne(equal("_id", foundDoc.doc._id)).toFuture().flatMap({ deleteResult =>
+              if (deleteResult.wasAcknowledged())
+                // Return an exception as the future result if the file has zero length
+                Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
+              else
+                // If the delete operation fails we return a different exception
+                Future.successful(Left(new Exception("Failed to Delete File Record From Mongo Database")))
+            })}
+//        Future.successful(Left(new ZeroLengthFileException(tempPath, foundDoc.doc)))
     } else {
       // Generate the path that the document is to be moved to using the supplied targetPathGenerator
       targetPathGenerator match {
