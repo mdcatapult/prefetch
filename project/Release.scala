@@ -22,7 +22,7 @@ object Release {
   def runAssembly: ReleaseStep = ReleaseStep(action = (st: State) => {
     val extracted = Project.extract(st)
     val ref = extracted.get(thisProjectRef)
-    extracted.runAggregated(assembly in Global in ref, st)
+    extracted.runAggregated(ref / assembly in Global, st)
   })
 
   def commitAllRelease: ReleaseStep = ReleaseStep(action = (st: State) => commitAll(st, releaseCommitMessage))
