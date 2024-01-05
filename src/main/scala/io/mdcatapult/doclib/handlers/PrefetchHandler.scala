@@ -117,12 +117,18 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           case Right(Some(foundDoc)) => foundDocumentProcess(prefetchMsgWrapper, foundDoc, flagContext)
           // TODO This Right(None) doesn't feel the right way to do this. Not sure the log message or exception are actually correct
           case Right(None) =>
+            //TODO check if this this path through the code is actually possible?
             // if we can't identify a document by a document id, log error
             incrementHandlerCount(NoDocumentError)
             logger.error(s"$Failed to find document without an exception - $NoDocumentError, prefetch message source ${msg.source}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri"))))
-          case Left(e) =>
-            // if we can't identify a document by a document id, log error
+          case Left(e: FileNotFoundException) =>
+            // if we can't find the file
+            incrementHandlerCount(NoDocumentError)
+            logger.error(s"$Failed to find file ${msg.source}. ${e.getMessage}")
+            Future((prefetchMsgWrapper, Failure(e)))
+          case Left(e: Exception) =>
+            // Any other error eg. if we can't identify a document by a document id
             incrementHandlerCount(NoDocumentError)
             logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
@@ -195,12 +201,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
           documentTarget = generateDocumentTargets(foundDoc, msg)
           source <- EitherT(ingressDocument(foundDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation))
           documentUpdate = getDocumentUpdate(foundDoc, source, documentTarget.origins)
-          maybeNewDoc = updateDatabaseRecord(foundDoc, msg, documentUpdate)
-          .map {
-            case Right(value) => Right(value)
-            case Left(e) => Left(new Exception(s"Failed to update database record: ${e.getMessage}"))
-          }
-         newDoc <- EitherT(maybeNewDoc)
+          newDoc <- EitherT(updateDatabaseRecord(foundDoc, msg, documentUpdate))
         _ <- EitherT.right[Exception](processParent(newDoc, msg))
         _ <- EitherT.right[Exception](flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
@@ -572,18 +573,29 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         localDirName
       )
     }
-    val foundDoc = for {
+    // The md5 method in the utils lib doesn't have any error handling so we need to wrap it in a Try
+    val calculateMD5: Future[Either[Exception, String]] =  Future {
+      Try {
+        md5(Paths.get(s"$doclibRoot$rawURI").toFile)
+      }  match {
+        case Success(hash) => Right(hash)
+        case Failure(e:FileNotFoundException) => Left(e)
+        case Failure(e) => Left(new Exception(e))
+      }
+      }
+    val foundDoc: EitherT[Future, Exception, FoundDoc] = for {
       // This will throw a FileNotFoundException if the file does not exist
-      // TODO use a more functional way of handling this error
-      md5 <- OptionT.some[Future](md5(Paths.get(s"$doclibRoot$rawURI").toFile))
-      (doc, archivable) <- OptionT(findOrCreateDoc(rawURI, md5, derivative, Some(or(
-        equal("source", rawURI),
-        equal("source", target)
-      ))))
-    } yield FoundDoc(doc, archivable)
+      md5 <- EitherT(calculateMD5)
+      a <- EitherT.right[Exception](findOrCreateDoc(rawURI, md5, derivative, Some(or(
+            equal("source", rawURI),
+           equal("source", target)
+       ))))
+    } yield FoundDoc(a.get._1, a.get._2)
     foundDoc.value.map({
-      result => Right(result)
+      case Right(value: FoundDoc) => Right(Some(value))
+      case Left(e: Exception) => Left(e)
     }).recover({
+      //TODO IS this needed or are all exceptions caught by the EitherT and map above?
       e => Left(e)
     })
   }

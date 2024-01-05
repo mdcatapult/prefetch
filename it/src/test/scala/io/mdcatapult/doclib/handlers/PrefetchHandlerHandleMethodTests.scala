@@ -65,9 +65,11 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val nonExistentFile = "bingress/blah.csv"
       val inputMessage = PrefetchMsg(nonExistentFile, verify = Option(true))
 
-      intercept[FileNotFoundException] {
-        handler.handle(PrefetchMsgCommittableReadResult(inputMessage))
+      whenReady(handler.handle(PrefetchMsgCommittableReadResult(inputMessage)), timeout(awaitDuration)) { result =>
+        assert(result._2.isFailure)
+        assert(result._2.failed.get.isInstanceOf[FileNotFoundException])
       }
+
     }
 
     it should "return an instance of NewAndFoundDoc given a valid message and file exists in the ingress path" in {
