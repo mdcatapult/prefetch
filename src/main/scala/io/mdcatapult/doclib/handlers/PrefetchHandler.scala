@@ -192,18 +192,18 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     } else {
       val prefetchResult: EitherT[Future, Exception, PrefetchResult]  = for {
           _ <- EitherT.liftF(Future.successful(valid(msg, foundDoc)))
-          started <- EitherT.liftF(flagContext.start(foundDoc.doc))
+          started <- EitherT.right[Exception](flagContext.start(foundDoc.doc))
           documentTarget = generateDocumentTargets(foundDoc, msg)
           source <- EitherT(ingressDocument(foundDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation))
           documentUpdate = getDocumentUpdate(foundDoc, source, documentTarget.origins)
-          maybeNewDoc: Future[Either[Exception, DoclibDoc]] = updateDatabaseRecord(foundDoc, msg, documentUpdate)
+          maybeNewDoc = updateDatabaseRecord(foundDoc, msg, documentUpdate)
           .map {
             case Right(value) => Right(value)
-            case Left(_) => Left(new Exception("No document was found to update"))
+            case Left(e) => Left(new Exception(s"Failed to update database record: ${e.getMessage}"))
           }
          newDoc <- EitherT(maybeNewDoc)
-        _ <- EitherT.liftF[Future, Exception, Any](processParent(newDoc, msg))
-        _ <- EitherT.liftF[Future, Exception, UpdatedResult](flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
+        _ <- EitherT.right[Exception](processParent(newDoc, msg))
+        _ <- EitherT.right[Exception](flagContext.end(foundDoc.doc, noCheck = started.modifiedCount > 0))
       } yield PrefetchResult(newDoc, foundDoc)
       logger.info(s"Prefetch process run for ${foundDoc.doc._id}")
       finalResult(prefetchResult.value, prefetchMsg, foundDoc)
