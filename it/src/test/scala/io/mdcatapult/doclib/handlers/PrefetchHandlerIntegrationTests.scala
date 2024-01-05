@@ -12,14 +12,14 @@ import io.mdcatapult.doclib.messages.PrefetchMsg
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
-import io.mdcatapult.doclib.prefetch.model.Exceptions.ZeroLengthFileException
+import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues}
 import org.scalatest.OptionValues._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
@@ -43,6 +43,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   with AnyFlatSpecLike
   with Matchers
   with BeforeAndAfterEach
+  with EitherValues
   with BeforeAndAfterAll with MockFactory with ScalaFutures with PrefetchHandlerBaseTest {
 
   import system.dispatcher
@@ -167,8 +168,9 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/derivatives/raw.txt", Some(origin), Some(List("a-tag")), Some(metadataMap), Some(true))
     val documentTarget:DocumentTarget = handler.generateDocumentTargets(FoundDoc(doc = parentDocOne), prefetchMsg)
     val source = Await.result(handler.ingressDocument(FoundDoc(doc = parentDocOne), documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
-    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(parentDocOne), source.map(path => path), documentTarget.origins)
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(parentDocOne), prefetchMsg, bsonUpdate), 5.seconds)
+
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(parentDocOne), source.value, documentTarget.origins)
+    val docUpdate: Either[Exception, DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(parentDocOne), prefetchMsg, bsonUpdate), 5.seconds)
 
     docUpdate.value.derivative should be(true)
     Files.exists(Paths.get("test/prefetch-test/local/derivatives/raw.txt").toAbsolutePath) should be(true)
@@ -371,10 +373,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val firstDoc = Await.result(handler.findDocument(handler.PrefetchUri(sourceRedirect, Some(uriWithRedirect))), Duration.Inf).getOrElse(None).get
     val documentTarget: DocumentTarget = handler.generateDocumentTargets(firstDoc, firstPrefetchMessage)
     val source = Await.result(handler.ingressDocument(firstDoc, documentTarget.source, documentTarget.targetPath, documentTarget.correctLocation), 5.seconds)
-    val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.map(path => path), documentTarget.origins)
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(firstDoc, firstPrefetchMessage, bsonUpdate), 5.seconds)
+    val bsonUpdate = handler.getDocumentUpdate(firstDoc, source.value, documentTarget.origins)
+    val docUpdate: Either[Exception, DoclibDoc] = Await.result(handler.updateDatabaseRecord(firstDoc, firstPrefetchMessage, bsonUpdate), 5.seconds)
 
-    docUpdate.get.origin.get match {
+    docUpdate.value.origin.get match {
       case canonical :: rest =>
         assert(canonical.uri.get == canonicalUri)
         assert(rest.head.uri.get == uriWithRedirect)
@@ -389,14 +391,15 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     val documentTarget2: DocumentTarget = handler.generateDocumentTargets(secondDoc, firstPrefetchMessage)
     val source2 = Await.result(handler.ingressDocument(secondDoc, documentTarget2.source, documentTarget2.targetPath, documentTarget2.correctLocation), 5.seconds)
-    val bsonUpdate2 = handler.getDocumentUpdate(secondDoc, source2.map(path => path), documentTarget2.origins)
-    val updatedDocLibDoc: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(secondDoc, firstPrefetchMessage, bsonUpdate2), 5.seconds)
+    val bsonUpdate2 = handler.getDocumentUpdate(secondDoc, source2.value, documentTarget2.origins)
+    val updatedDocLibDoc: Either[Exception, DoclibDoc] = Await.result(handler.updateDatabaseRecord(secondDoc, firstPrefetchMessage, bsonUpdate2), 5.seconds)
 
-    assert(updatedDocLibDoc.get.origin.get.size == 3)
+    val updatedDoclibDocValue = updatedDocLibDoc.value
+    assert(updatedDoclibDocValue.origin.get.size == 3)
 
-    updatedDocLibDoc.get.uuid should be(firstDoc.doc.uuid)
+    updatedDoclibDocValue.uuid should be(firstDoc.doc.uuid)
 
-    updatedDocLibDoc.get.origin.get match {
+    updatedDoclibDocValue.origin.get match {
       case canonical :: rest =>
         assert(canonical.uri.get == canonicalUri)
         assert(rest.head.uri.get == uriWithRedirect)
@@ -480,8 +483,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     result.value.wasAcknowledged() should be(true)
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
-    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Right(Some(Paths.get("local/metadata-test.txt"))), origin)
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Some(Paths.get("local/metadata-test.txt")), origin)
+    val docUpdate: Either[Exception, DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (doclibDoc.metadata.getOrElse(Nil) ::: metadataMap: _*)
     docUpdate.value.tags.value should contain only (doclibDoc.tags.getOrElse(Nil) ::: extraTags: _*)
@@ -519,8 +522,8 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
 
     val prefetchMsg: PrefetchMsg = PrefetchMsg("ingress/metadata-tags-test/file2.txt", Some(origin), Some(extraTags), Some(metadataMap), Some(false))
 
-    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Right(Some(Paths.get("ingress/metadata-tags-test/file2.txt"))), origin)
-    val docUpdate: Option[DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
+    val bsonUpdate = handler.getDocumentUpdate(FoundDoc(doclibDoc), Some(Paths.get("ingress/metadata-tags-test/file2.txt")), origin)
+    val docUpdate: Either[Exception, DoclibDoc] = Await.result(handler.updateDatabaseRecord(FoundDoc(doclibDoc), prefetchMsg, bsonUpdate), 5 seconds)
 
     docUpdate.value.metadata.value should contain only (metadataMap: _*)
     docUpdate.value.tags.value should contain only (extraTags: _*)
@@ -679,8 +682,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     val emptyFlagContext = new MongoFlagContext("", new Version("", 1, 1, 1, ""), collection, nowUtc)
 
     val prefetchMsgCommittableReadResult = PrefetchMsgCommittableReadResult(pfm)
-    val result: (CommittableReadResult, Try[PrefetchResult]) = Await.result(handler.foundDocumentProcess(prefetchMsgCommittableReadResult, FoundDoc(rogueDoc), emptyFlagContext), 5.seconds)
-    result._2.failure.exception should have message "cannot process rogue file. Source=ingress/derivatives/raw.txt, msg=PrefetchMsg(ingress/derivatives/raw.txt,None,None,None,None,Some(true))"
+    val exception = intercept[RogueFileException] {
+      handler.foundDocumentProcess(prefetchMsgCommittableReadResult, FoundDoc(rogueDoc), emptyFlagContext)
+    }
+    exception should have message "cannot process rogue file. Source=ingress/derivatives/raw.txt, msg=PrefetchMsg(ingress/derivatives/raw.txt,None,None,None,None,Some(true))"
   }
 
   override def beforeAll(): Unit = {

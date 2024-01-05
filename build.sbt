@@ -3,13 +3,13 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
 val meta = """META.INF/(blueprint|cxf).*""".r
 
-lazy val IntegrationTest = config("it") extend Test
+//lazy val IntegrationTest = config("it") extend Test
 concurrentRestrictions in Global += Tags.limit(Tags.Test, max = 1)
 
 lazy val root = (project in file("."))
-  .configs(IntegrationTest)
+//  .configs(IntegrationTest)
   .settings(
-    Defaults.itSettings,
+//    Defaults.itSettings,
     name := "consumer-prefetch",
     scalaVersion := "2.13.3",
     scalacOptions ++= Seq(
@@ -53,9 +53,9 @@ lazy val root = (project in file("."))
 
       Seq(
       "org.scalactic" %% "scalactic" % scalacticVersion,
-      "org.scalatest" %% "scalatest" % scalaTestVersion % "it,test",
-      "org.scalamock" %% "scalamock" % scalaMockVersion % "it,test",
-      "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "it,test",
+      "org.scalatest" %% "scalatest" % scalaTestVersion % "test",
+      "org.scalamock" %% "scalamock" % scalaMockVersion % "test",
+      "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test",
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
       "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % akkaStreamAlpakkaFTPVersion,
@@ -120,3 +120,45 @@ lazy val root = (project in file("."))
       pushChanges
     )
   )
+
+lazy val it = project
+  .in(file("it"))  //it test located in a directory named "it"
+  .settings(
+      name := "consumer-prefetch-it",
+    scalaVersion := "2.13.3",
+    libraryDependencies ++= {
+      val doclibCommonVersion = "4.0.1"
+
+      val configVersion = "1.4.2"
+      val akkaVersion = "2.8.1"
+      val catsVersion = "2.9.0"
+      val scalacticVersion = "3.2.15"
+      val scalaTestVersion = "3.2.15"
+      val scalaMockVersion = "5.2.0"
+      val scalaLoggingVersion = "3.9.5"
+      val logbackClassicVersion = "1.4.7"
+      val betterFilesVersion = "3.9.2"
+      val jaiImageJPEG2000Version = "1.4.0"
+      val akkaHttpVersion = "10.5.0"
+      val akkaStreamAlpakkaFTPVersion = "5.0.0"
+
+      Seq(
+//        "org.scalactic" %% "scalactic" % scalacticVersion,
+        "org.scalatest" %% "scalatest" % scalaTestVersion,
+        "org.scalamock" %% "scalamock" % scalaMockVersion,
+        "com.typesafe.akka" %% "akka-testkit" % akkaVersion
+//        "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
+//        "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
+//        "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % akkaStreamAlpakkaFTPVersion,
+//        "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
+//        "com.typesafe" % "config" % configVersion,
+//        "ch.qos.logback" % "logback-classic" % logbackClassicVersion,
+//        "org.typelevel" %% "cats-kernel" % catsVersion,
+//        "org.typelevel" %% "cats-core" % catsVersion,
+//        "io.mdcatapult.doclib" %% "common" % doclibCommonVersion,
+//        "com.github.pathikrit" %% "better-files" % betterFilesVersion,
+//        "com.github.jai-imageio" % "jai-imageio-jpeg2000" % jaiImageJPEG2000Version
+      )
+    }
+  )
+  .dependsOn(root)

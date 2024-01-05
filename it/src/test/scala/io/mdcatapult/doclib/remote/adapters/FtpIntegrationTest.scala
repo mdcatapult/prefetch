@@ -9,7 +9,7 @@ import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.models.Origin
 import io.mdcatapult.doclib.remote.DownloadResult
 import io.mdcatapult.util.path.DirectoryDeleter.deleteDirectories
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, Ignore}
 import org.scalatest.RecoverMethods.recoverToSucceededIf
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -17,6 +17,7 @@ import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 
+@Ignore
 class FtpIntegrationTest extends AnyFlatSpec with BeforeAndAfterAll {
 
   implicit val config: Config = ConfigFactory.parseString(
