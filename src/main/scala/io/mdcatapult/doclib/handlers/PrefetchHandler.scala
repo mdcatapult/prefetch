@@ -24,7 +24,6 @@ import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.concurrency.LimitedExecution
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
-import io.mdcatapult.util.models.result.UpdatedResult
 import io.mdcatapult.util.time.nowUtc
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
