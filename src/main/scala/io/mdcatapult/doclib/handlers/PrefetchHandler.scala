@@ -38,6 +38,7 @@ import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 import play.api.libs.json.Json
 
 import java.io.{FileInputStream, FileNotFoundException}
+import java.io.{File => JFile}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -532,7 +533,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * retrieves a db record for a document based on url or filepath
+   * Is the document in 'ingress' or is it ah http or ftp document?
+   * Retrieve a db record for a document based on url or filepath
    *
    * @param URI PrefetchUri
    * @return
@@ -551,18 +553,104 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     }
   }
 
-
   /**
-   * Retrieves db record for a "file:" ingested from the local file system
+   * Retrieves db record for a "file:" ingested from the local file system. If the document is in 'ingress/remote' then
+   * it is a 'local to remote' document ie it is an http(s) file that has been downloadded already and placed into ingress.
    *
    * @param source PrefetchUri
    * @return
    */
   def findLocalDocument(source: PrefetchUri, derivative: Boolean = false): Future[Either[Throwable, Option[FoundDoc]]] = {
     val rawURI = source.raw
+    val target = targetDir(rawURI)
+    val filePath = Paths.get(s"$doclibRoot$rawURI").toFile
+
+    val foundDoc: EitherT[Future, Exception, FoundDoc] = for {
+      md5 <- EitherT(calculateMD5(filePath))
+      a <- EitherT.right[Exception](findOrCreateDoc(rawURI, md5, derivative, Some(or(
+        equal("source", rawURI),
+        equal("source", target)
+      ))))
+    } yield FoundDoc(a.get._1, a.get._2)
+    foundDoc.value.map({
+      case Right(value: FoundDoc) => Right(Some(value))
+      case Left(e: Exception) => Left(e)
+    }).recover({
+      //TODO IS this needed or are all exceptions caught by the EitherT and map above?
+      e => Left(e)
+    })
+  }
+
+  /**
+   * Wraps supplied string in a PrefetchUri object with an optional Lemonlabs Uri property
+   * If unable to convert the url or no scheme/protocol identified then assumes file path and not URL
+   *
+   * @param source String
+   * @return
+   */
+  def toUri(source: String): PrefetchUri = {
+    Uri.parseTry(source) match {
+      case Success(uri) => uri.schemeOption match {
+        case Some(_) => PrefetchUri(source, Some(uri))
+        case None => PrefetchUri(source, Some(uri.withScheme("file")))
+      }
+      case Failure(_) => PrefetchUri(source, None)
+    }
+  }
+
+  /**
+   * Perform validation of the document in a message via the existing db record metadata
+   *
+   * 1. If prefetch message is just verifying document then test to ensure is not a new doc (default is more than 10
+   * seconds old). If it is an old doc, and verifying, then throw SilentValidationException.
+   *
+   * 2. Test that the Origin is not Missing for Ftp/Sftp/Https(s)
+   *
+   * 3. It could be some legacy Orign scheme so just shrug and move on
+   *
+   * @param msg      PrefetchMsg
+   * @param foundDoc FoundDoc
+   * @return
+   */
+  def valid(msg: PrefetchMsg, foundDoc: FoundDoc): Boolean = {
+    val timeSinceCreated = Math.abs(java.time.Duration.between(foundDoc.doc.created, LocalDateTime.now()).getSeconds)
+
+    // TODO don't throw exceptions, use Either instead
+    if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
+      throw new SilentValidationException(foundDoc.doc)
+
+    if (foundDoc.doc.rogueFile.contains(true)) {
+      throw new RogueFileException(msg, foundDoc.doc.source)
+    }
+
+    val origins = msg.origins.getOrElse(List())
+
+    origins.forall(origin =>
+      if (Ftp.protocols.contains(origin.scheme) || Http.protocols.contains(origin.scheme)) {
+        origin.uri match {
+          case None =>
+            throw new MissingOriginSchemeException(msg, origin)
+          case Some(x) if x.schemeOption.isEmpty =>
+            throw new InvalidOriginSchemeException(msg)
+          case Some(_) =>
+            true
+        }
+      } else {
+        // mongodb or something else that we probably don't care too much about
+        true
+      }
+    )
+  }
+
+  /**
+   * Find the target directory for a 'local' document based on whether it is in 'ingress' or 'ingress/remote'
+   * @param rawURI
+   * @return
+   */
+  private def targetDir(rawURI: String): String = {
     val localToRemoteTargetDir = s"${config.getString("doclib.local.temp-dir")}/${config.getString("doclib.remote.target-dir")}"
 
-    val target = if (rawURI.startsWith(localToRemoteTargetDir)) {
+    if (rawURI.startsWith(localToRemoteTargetDir)) {
       rawURI.replaceFirst(
         s"^${localToRemoteTargetDir}",
         remoteDirName
@@ -573,31 +661,23 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         localDirName
       )
     }
-    // The md5 method in the utils lib doesn't have any error handling so we need to wrap it in a Try
-    val calculateMD5: Future[Either[Exception, String]] =  Future {
+  }
+
+  /**
+   * The md5 method in the utils lib doesn't have any error handling so we need to wrap it in a Try
+   * @param path
+   * @return
+   */
+  private def calculateMD5(path: JFile): Future[Either[Exception, String]] = {
+    Future {
       Try {
-        md5(Paths.get(s"$doclibRoot$rawURI").toFile)
+        md5(path)
       }  match {
         case Success(hash) => Right(hash)
         case Failure(e:FileNotFoundException) => Left(e)
         case Failure(e) => Left(new Exception(e))
       }
-      }
-    val foundDoc: EitherT[Future, Exception, FoundDoc] = for {
-      // This will throw a FileNotFoundException if the file does not exist
-      md5 <- EitherT(calculateMD5)
-      a <- EitherT.right[Exception](findOrCreateDoc(rawURI, md5, derivative, Some(or(
-            equal("source", rawURI),
-           equal("source", target)
-       ))))
-    } yield FoundDoc(a.get._1, a.get._2)
-    foundDoc.value.map({
-      case Right(value: FoundDoc) => Right(Some(value))
-      case Left(e: Exception) => Left(e)
-    }).recover({
-      //TODO IS this needed or are all exceptions caught by the EitherT and map above?
-      e => Left(e)
-    })
+    }
   }
 
 
@@ -694,67 +774,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       writeLimiter(collection, s"Insert doc for source $source"){_.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())}
 
     inserted.map(_ => newDoc)
-  }
-
-  /**
-   * Wraps supplied string in a PrefetchUri object with an optional Lemonlabs Uri property
-   * If unable to convert the url or no scheme/protocol identified then assumes file path and not URL
-   *
-   * @param source String
-   * @return
-   */
-  def toUri(source: String): PrefetchUri = {
-    Uri.parseTry(source) match {
-      case Success(uri) => uri.schemeOption match {
-        case Some(_) => PrefetchUri(source, Some(uri))
-        case None => PrefetchUri(source, Some(uri.withScheme("file")))
-      }
-      case Failure(_) => PrefetchUri(source, None)
-    }
-  }
-
-  /**
-   * Perform validation of the document in a message via the existing db record metadata
-   *
-   * 1. If prefetch message is just verifying document then test to ensure is not a new doc (default is more than 10
-   * seconds old). If it is an old doc, and verifying, then throw SilentValidationException.
-   *
-   * 2. Test that the Origin is not Missing for Ftp/Sftp/Https(s)
-   *
-   * 3. It could be some legacy Orign scheme so just shrug and move on
-   *
-   * @param msg      PrefetchMsg
-   * @param foundDoc FoundDoc
-   * @return
-   */
-  def valid(msg: PrefetchMsg, foundDoc: FoundDoc): Boolean = {
-    val timeSinceCreated = Math.abs(java.time.Duration.between(foundDoc.doc.created, LocalDateTime.now()).getSeconds)
-
-    // TODO don't throw exceptions, use Either instead
-    if (msg.verify.getOrElse(false) && (timeSinceCreated > config.getInt("prefetch.verificationTimeout")))
-      throw new SilentValidationException(foundDoc.doc)
-
-    if (foundDoc.doc.rogueFile.contains(true)) {
-      throw new RogueFileException(msg, foundDoc.doc.source)
-    }
-
-    val origins = msg.origins.getOrElse(List())
-
-    origins.forall(origin =>
-      if (Ftp.protocols.contains(origin.scheme) || Http.protocols.contains(origin.scheme)) {
-        origin.uri match {
-          case None =>
-            throw new MissingOriginSchemeException(msg, origin)
-          case Some(x) if x.schemeOption.isEmpty =>
-            throw new InvalidOriginSchemeException(msg)
-          case Some(_) =>
-            true
-        }
-      } else {
-        // mongodb or something else that we probably don't care too much about
-        true
-      }
-    )
   }
 
   /**
