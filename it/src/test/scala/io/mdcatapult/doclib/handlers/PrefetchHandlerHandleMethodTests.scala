@@ -37,7 +37,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
 
   private val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"
-  private val ingressFilenameWithPath2 = "ingress/test_2.csv"
+  private val ingressFilenameWithPath2 = "ingress/test_2.txt"
   private val awaitDuration = 5.seconds
 
   "The PrefetchHandler handle method" should
@@ -76,7 +76,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       val inputMessage = PrefetchMsg(ingressFilenameWithPath2)
       val futureResult = handler.handle(PrefetchMsgCommittableReadResult(inputMessage))
       whenReady(futureResult, timeout(awaitDuration)) { result =>
-        assert(result._2.get.foundDoc.doc.source == "ingress/test_2.csv")
+        assert(result._2.get.foundDoc.doc.source == "ingress/test_2.txt")
       }
     }
 
@@ -106,7 +106,7 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
       Files.createDirectories(Paths.get("test/prefetch-test/ingress/derivatives").toAbsolutePath)
       Files.createDirectories(Paths.get("test/prefetch-test/local").toAbsolutePath)
       Files.copy(Paths.get("test/test_1.csv").toAbsolutePath, Paths.get("test/prefetch-test/ingress/test_1.csv").toAbsolutePath)
-      Files.copy(Paths.get("test/test_1.csv").toAbsolutePath, Paths.get("test/prefetch-test/ingress/test_2.csv").toAbsolutePath)
+      Files.copy(Paths.get("test/raw.txt").toAbsolutePath, Paths.get("test/prefetch-test/ingress/test_2.txt").toAbsolutePath)
     }
   }
 }
