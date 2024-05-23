@@ -19,13 +19,11 @@ package io.mdcatapult.doclib.remote.adapters
 import java.net.{CookieManager, CookiePolicy}
 import java.util.Collections.{emptyMap => emptyJavaMap}
 import java.util.{HashMap => JHashMap, List => JList}
-
-import akka.http.scaladsl.model.HttpHeader
-import akka.http.scaladsl.model.headers.{Cookie, HttpCookiePair, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.HttpHeader
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookiePair, `Set-Cookie`}
 import io.lemonlabs.uri.Uri
 import org.apache.commons.collections4.multimap.ArrayListValuedHashMap
 
-import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
 
 trait CookieJar {

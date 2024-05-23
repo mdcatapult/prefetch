@@ -16,12 +16,12 @@
 
 package io.mdcatapult.doclib.remote.adapters
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.`Set-Cookie`
-import akka.http.scaladsl.{Http => AkkaHttp}
-import akka.stream.scaladsl.FileIO
-import akka.stream.{IOResult, Materializer, StreamTcpException}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers.`Set-Cookie`
+import org.apache.pekko.http.scaladsl.{Http => AkkaHttp}
+import org.apache.pekko.stream.scaladsl.FileIO
+import org.apache.pekko.stream.{IOResult, Materializer, StreamTcpException}
 import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
@@ -69,21 +69,23 @@ object Http extends Adapter {
         ).flatMap {
           case HttpResponse(StatusCodes.OK, headers, entity, _) =>
             Future.successful(Result(Headers.filename(headers), Headers.contentType(headers), entity))
-          case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
-            resp.discardEntityBytes()
-            val location = resp.headers.find(_.lowercaseName == "location")
-
-            location match {
-              case Some(x) =>
-                retrieve(
-                  Uri.parse(x.value),
-                  cookieJar.addCookies(uri, resp.headers[`Set-Cookie`]),
-                  uri :: redirections)
-              case None => throw new UnableToFollow(x)
-            }
           case resp @ HttpResponse(status, _, _, _) =>
-            resp.discardEntityBytes()
-            throw new Exception(s"Unable to process $uri with status code $status")
+            if (status.isRedirection()) {
+              resp.discardEntityBytes()
+              val location = resp.headers.find(_.lowercaseName == "location")
+
+              location match {
+                case Some(x) =>
+                  retrieve(
+                    Uri.parse(x.value),
+                    cookieJar.addCookies(uri, resp.headers[`Set-Cookie`]),
+                    uri :: redirections)
+                case None => throw new UnableToFollow("Expected location header not found")
+              }
+            } else {
+              throw new Exception(s"Unable to process $uri with status code $status")
+            }
+          case _ => throw new Exception(s"Unable to process $uri. Error is unknown")
         }
       case Some(unknown) => throw new UnsupportedSchemeException(unknown)
       case None => throw new UndefinedSchemeException(uri)
@@ -151,4 +153,5 @@ object Http extends Adapter {
       })
     }
   }
+
 }

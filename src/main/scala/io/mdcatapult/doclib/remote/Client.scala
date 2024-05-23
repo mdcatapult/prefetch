@@ -16,7 +16,7 @@
 
 package io.mdcatapult.doclib.remote
 
-import akka.stream.Materializer
+import org.apache.pekko.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin

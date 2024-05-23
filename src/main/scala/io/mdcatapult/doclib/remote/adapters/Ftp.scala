@@ -16,13 +16,13 @@
 
 package io.mdcatapult.doclib.remote.adapters
 
-import akka.actor.ActorSystem
-import akka.stream.alpakka.ftp.FtpCredentials.AnonFtpCredentials
-import akka.stream.alpakka.ftp.scaladsl.{Ftp => AkkaFtp, Ftps => AkkaFtps, Sftp => AkkaSftp}
-import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, FtpsSettings, SftpSettings}
-import akka.stream.scaladsl.{FileIO, Source}
-import akka.stream.{IOResult, Materializer}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.connectors.ftp.FtpCredentials.AnonFtpCredentials
+import org.apache.pekko.stream.connectors.ftp.scaladsl.{Ftp => AkkaFtp, Ftps => AkkaFtps, Sftp => AkkaSftp}
+import org.apache.pekko.stream.connectors.ftp.{FtpCredentials, FtpSettings, FtpsSettings, SftpSettings}
+import org.apache.pekko.stream.scaladsl.{FileIO, Source}
+import org.apache.pekko.stream.{IOResult, Materializer}
+import org.apache.pekko.util.ByteString
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Url
 import io.mdcatapult.doclib.models.Origin

@@ -18,7 +18,7 @@ package io.mdcatapult.doclib.remote.adapters
 
 import java.io.File
 import java.nio.file.Paths
-import akka.stream.Materializer
+import org.apache.pekko.stream.Materializer
 import com.typesafe.config.Config
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin

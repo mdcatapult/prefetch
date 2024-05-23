@@ -16,7 +16,7 @@
 
 package io.mdcatapult.doclib.remote.adapters
 
-import akka.http.javadsl.model.HttpHeader
+import org.apache.pekko.http.javadsl.model.HttpHeader
 
 /** Extracting information from Http headers. */
 object Headers {
