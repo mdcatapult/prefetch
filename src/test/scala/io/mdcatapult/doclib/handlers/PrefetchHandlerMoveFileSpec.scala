@@ -17,9 +17,9 @@
 package io.mdcatapult.doclib.handlers
 
 import java.time.{LocalDateTime, ZoneOffset}
-import akka.actor.ActorSystem
-import akka.stream.Materializer
-import akka.testkit.{ImplicitSender, TestKit}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
 import better.files.File.Attributes
 import better.files.{File => ScalaFile}

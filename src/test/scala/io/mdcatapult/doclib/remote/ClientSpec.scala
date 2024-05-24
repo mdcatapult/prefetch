@@ -18,8 +18,8 @@ package io.mdcatapult.doclib.remote
 
 import java.net.URL
 
-import akka.actor.ActorSystem
-import akka.stream.Materializer
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.Materializer
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri._
 import io.mdcatapult.doclib.models.Origin
@@ -40,7 +40,15 @@ class ClientSpec extends AnyFlatSpec {
       |    temp-dir: "./test"
       |  }
       |}
-    """.stripMargin).withFallback(wsConfig)
+      |play {
+      |  ws {
+      |    ahc {
+      |        connectionPoolCleanerPeriod: 1 second
+      |    }
+      |  }
+      |}
+    """.stripMargin)
+    .withFallback(wsConfig)
   private val system: ActorSystem = ActorSystem("scalatest", config)
   private implicit val m: Materializer = Materializer(system)
 
