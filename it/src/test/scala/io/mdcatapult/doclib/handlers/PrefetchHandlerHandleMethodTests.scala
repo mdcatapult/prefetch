@@ -16,12 +16,13 @@
 
 package io.mdcatapult.doclib.handlers
 
-import akka.actor._
-import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
-import io.mdcatapult.doclib.messages.PrefetchMsg
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
+import io.mdcatapult.klein.queue.Sendable
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
@@ -50,6 +51,10 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   with SpanSugar {
 
   import system.dispatcher
+
+  implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
+  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"

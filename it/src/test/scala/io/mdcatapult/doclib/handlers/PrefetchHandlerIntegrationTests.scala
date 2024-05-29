@@ -16,19 +16,19 @@
 
 package io.mdcatapult.doclib.handlers
 
-import akka.actor._
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
-import akka.testkit.{ImplicitSender, TestKit}
+import org.apache.pekko.actor._
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.flag.MongoFlagContext
-import io.mdcatapult.doclib.messages.PrefetchMsg
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
 import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
+import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
@@ -42,7 +42,6 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
-import org.scalatest.TryValues._
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -63,6 +62,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   with BeforeAndAfterAll with MockFactory with ScalaFutures with PrefetchHandlerBaseTest {
 
   import system.dispatcher
+
+  implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
+  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 

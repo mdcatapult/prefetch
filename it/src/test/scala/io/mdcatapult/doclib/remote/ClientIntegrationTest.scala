@@ -18,9 +18,9 @@ package io.mdcatapult.doclib.remote
 
 import java.nio.file.{Files, Paths}
 
-import akka.actor.ActorSystem
-import akka.stream.{Materializer, StreamTcpException}
-import akka.testkit.{ImplicitSender, TestKit}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.{Materializer, StreamTcpException}
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import better.files.Dsl._
 import com.typesafe.config.{Config, ConfigFactory}
 import io.lemonlabs.uri.Uri
