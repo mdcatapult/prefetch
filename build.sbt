@@ -7,7 +7,7 @@ val meta = """META.INF/(blueprint|cxf).*""".r
 
 concurrentRestrictions in Global += Tags.limit(Tags.Test, max = 1)
 
-val doclibCommonVersion = "4.0.2-SNAPSHOT"
+val doclibCommonVersion = "5.0.0"
 
 val configVersion = "1.4.3"
 val pekkoVersion = "1.0.2"
