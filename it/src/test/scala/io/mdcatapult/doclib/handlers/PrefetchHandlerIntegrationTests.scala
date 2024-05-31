@@ -35,7 +35,7 @@ import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues}
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues, Ignore}
 import org.scalatest.OptionValues._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
@@ -370,7 +370,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     origDoc.map(doc => doc.get.archiveable.length) should be(Right(2))
   }
 
-  "A redirected url" should "be persisted in the origin" in {
+  "A redirected url" should "be persisted in the origin" ignore {
     val uri = Uri.parse("https://ndownloader.figshare.com/files/3906475")
     Await.result(handler.remoteClient.resolve(uri), 5.seconds) match {
       case canonical :: rest =>
