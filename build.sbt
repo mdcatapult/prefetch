@@ -7,7 +7,7 @@ val meta = """META.INF/(blueprint|cxf).*""".r
 
 concurrentRestrictions in Global += Tags.limit(Tags.Test, max = 1)
 
-val doclibCommonVersion = "5.0.0"
+val doclibCommonVersion = "5.0.1"
 
 val configVersion = "1.4.3"
 val pekkoVersion = "1.0.2"
@@ -19,7 +19,7 @@ val scalacticVersion = "3.2.18"
 val scalaTestVersion = "3.2.18"
 val scalaMockVersion = "6.0.0"
 val scalaLoggingVersion = "3.9.5"
-val logbackClassicVersion = "1.4.7"
+val logbackClassicVersion = "1.5.6"
 val betterFilesVersion = "3.9.2"
 val jaiImageJPEG2000Version = "1.4.0"
 val akkaHttpVersion = "10.5.0"
@@ -130,7 +130,7 @@ lazy val it = project
   .in(file("it"))  //it test located in a directory named "it"
   .settings(
       name := "consumer-prefetch-it",
-    scalaVersion := "2.13.3",
+    scalaVersion := "2.13.14",
     libraryDependencies ++= {
       Seq(
         "org.scalatest" %% "scalatest" % scalaTestVersion,
