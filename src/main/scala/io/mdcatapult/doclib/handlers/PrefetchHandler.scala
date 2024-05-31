@@ -1,7 +1,23 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.handlers
 
-import akka.stream.Materializer
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.connectors.amqp.scaladsl.CommittableReadResult
 import better.files._
 import cats.data.{EitherT, OptionT}
 import cats.implicits._
@@ -27,7 +43,7 @@ import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
-import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.apache.tika.metadata.{Metadata, TikaCoreProperties}
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
@@ -130,6 +146,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             Future((prefetchMsgWrapper, Failure(e)))
           case Left(e: Exception) =>
             // Any other error eg. if we can't identify a document by a document id
+            incrementHandlerCount(NoDocumentError)
+            logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
+            Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
+          case Left(e: Throwable) =>
+            // Could be a throwable - could it?
             incrementHandlerCount(NoDocumentError)
             logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
@@ -523,7 +544,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       case Some(path) =>
         val absPath = (doclibRoot / path.toString).path
         val metadata = new Metadata()
-        metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, absPath.getFileName.toString)
+        metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, absPath.getFileName.toString)
         set("mimetype", tika.getDetector.detect(
           TikaInputStream.get(new FileInputStream(absPath.toString)),
           metadata
@@ -727,7 +748,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param hash   String
    * @return
    */
-  private def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
+  private def findOrCreateDoc(source: String, hash: String, derivative: Boolean, query: Option[Bson]): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
     readLimiter(collection, s"Find doc with has $hash"){_.find(
       or(
         equal("hash", hash),
@@ -754,7 +775,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
    * @param derivative Is it a parent or a child
    * @return
    */
-  private def createDoc(source: String, hash: String, derivative: Boolean = false): Future[DoclibDoc] = {
+  private def createDoc(source: String, hash: String, derivative: Boolean): Future[DoclibDoc] = {
     val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
     val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
     val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()

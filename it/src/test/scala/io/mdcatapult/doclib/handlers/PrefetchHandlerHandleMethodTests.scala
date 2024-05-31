@@ -1,11 +1,28 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.handlers
 
-import akka.actor._
-import akka.testkit.{ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
-import io.mdcatapult.doclib.messages.PrefetchMsg
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.DoclibDoc
 import io.mdcatapult.doclib.prefetch.model.Exceptions.SilentValidationException
+import io.mdcatapult.klein.queue.Sendable
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import org.bson.types.ObjectId
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.BeforeAndAfterEach
@@ -34,6 +51,10 @@ class PrefetchHandlerHandleMethodTests extends TestKit(ActorSystem("PrefetchHand
   with SpanSugar {
 
   import system.dispatcher
+
+  implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
+  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   private val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
   private val ingressFilenameWithPath = "ingress/test_1.csv"

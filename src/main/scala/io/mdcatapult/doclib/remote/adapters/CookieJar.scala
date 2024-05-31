@@ -1,15 +1,29 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.remote.adapters
 
 import java.net.{CookieManager, CookiePolicy}
 import java.util.Collections.{emptyMap => emptyJavaMap}
 import java.util.{HashMap => JHashMap, List => JList}
-
-import akka.http.scaladsl.model.HttpHeader
-import akka.http.scaladsl.model.headers.{Cookie, HttpCookiePair, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.HttpHeader
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookiePair, `Set-Cookie`}
 import io.lemonlabs.uri.Uri
 import org.apache.commons.collections4.multimap.ArrayListValuedHashMap
 
-import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
 
 trait CookieJar {

@@ -1,11 +1,27 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.remote.adapters
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.`Set-Cookie`
-import akka.http.scaladsl.{Http => AkkaHttp}
-import akka.stream.scaladsl.FileIO
-import akka.stream.{IOResult, Materializer, StreamTcpException}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers.`Set-Cookie`
+import org.apache.pekko.http.scaladsl.{Http => AkkaHttp}
+import org.apache.pekko.stream.scaladsl.FileIO
+import org.apache.pekko.stream.{IOResult, Materializer, StreamTcpException}
 import better.files.{File => ScalaFile}
 import com.typesafe.config.Config
 import io.lemonlabs.uri.Uri
@@ -53,21 +69,23 @@ object Http extends Adapter {
         ).flatMap {
           case HttpResponse(StatusCodes.OK, headers, entity, _) =>
             Future.successful(Result(Headers.filename(headers), Headers.contentType(headers), entity))
-          case resp @ HttpResponse(status, _, _, _) if status.isRedirection() =>
-            resp.discardEntityBytes()
-            val location = resp.headers.find(_.lowercaseName == "location")
-
-            location match {
-              case Some(x) =>
-                retrieve(
-                  Uri.parse(x.value),
-                  cookieJar.addCookies(uri, resp.headers[`Set-Cookie`]),
-                  uri :: redirections)
-              case None => throw new UnableToFollow(x)
-            }
           case resp @ HttpResponse(status, _, _, _) =>
-            resp.discardEntityBytes()
-            throw new Exception(s"Unable to process $uri with status code $status")
+            if (status.isRedirection()) {
+              resp.discardEntityBytes()
+              val location = resp.headers.find(_.lowercaseName == "location")
+
+              location match {
+                case Some(x) =>
+                  retrieve(
+                    Uri.parse(x.value),
+                    cookieJar.addCookies(uri, resp.headers[`Set-Cookie`]),
+                    uri :: redirections)
+                case None => throw new UnableToFollow("Expected location header not found")
+              }
+            } else {
+              throw new Exception(s"Unable to process $uri with status code $status")
+            }
+          case _ => throw new Exception(s"Unable to process $uri. Error is unknown")
         }
       case Some(unknown) => throw new UnsupportedSchemeException(unknown)
       case None => throw new UndefinedSchemeException(uri)
@@ -135,4 +153,5 @@ object Http extends Adapter {
       })
     }
   }
+
 }
