@@ -1,7 +1,23 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.handlers
 
-import akka.stream.Materializer
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.connectors.amqp.scaladsl.CommittableReadResult
 import better.files._
 import cats.data.{EitherT, OptionT}
 import cats.implicits._
@@ -27,7 +43,7 @@ import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
 import org.apache.tika.Tika
 import org.apache.tika.io.TikaInputStream
-import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.apache.tika.metadata.{Metadata, TikaCoreProperties}
 import org.mongodb.scala.MongoCollection
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.conversions.Bson
@@ -38,6 +54,7 @@ import org.mongodb.scala.result.{InsertOneResult, UpdateResult}
 import play.api.libs.json.Json
 
 import java.io.{FileInputStream, FileNotFoundException}
+import java.io.{File => JFile}
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -129,6 +146,11 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
             Future((prefetchMsgWrapper, Failure(e)))
           case Left(e: Exception) =>
             // Any other error eg. if we can't identify a document by a document id
+            incrementHandlerCount(NoDocumentError)
+            logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
+            Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
+          case Left(e: Throwable) =>
+            // Could be a throwable - could it?
             incrementHandlerCount(NoDocumentError)
             logger.error(s"$Failed to find document with an exception - $NoDocumentError, prefetch message source ${msg.source}. ${e.getMessage}")
             Future((prefetchMsgWrapper, Failure(new Exception(s"no document found for URI: $prefetchUri. ${e.getMessage}"))))
@@ -522,7 +544,7 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       case Some(path) =>
         val absPath = (doclibRoot / path.toString).path
         val metadata = new Metadata()
-        metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, absPath.getFileName.toString)
+        metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, absPath.getFileName.toString)
         set("mimetype", tika.getDetector.detect(
           TikaInputStream.get(new FileInputStream(absPath.toString)),
           metadata
@@ -532,7 +554,8 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
   }
 
   /**
-   * retrieves a db record for a document based on url or filepath
+   * Is the document in 'ingress' or is it ah http or ftp document?
+   * Retrieve a db record for a document based on url or filepath
    *
    * @param URI PrefetchUri
    * @return
@@ -551,45 +574,24 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
     }
   }
 
-
   /**
-   * Retrieves db record for a "file:" ingested from the local file system
+   * Retrieves db record for a "file:" ingested from the local file system. If the document is in 'ingress/remote' then
+   * it is a 'local to remote' document ie it is an http(s) file that has been downloadded already and placed into ingress.
    *
    * @param source PrefetchUri
    * @return
    */
   def findLocalDocument(source: PrefetchUri, derivative: Boolean = false): Future[Either[Throwable, Option[FoundDoc]]] = {
     val rawURI = source.raw
-    val localToRemoteTargetDir = s"${config.getString("doclib.local.temp-dir")}/${config.getString("doclib.remote.target-dir")}"
+    val target = targetDir(rawURI)
+    val filePath = Paths.get(s"$doclibRoot$rawURI").toFile
 
-    val target = if (rawURI.startsWith(localToRemoteTargetDir)) {
-      rawURI.replaceFirst(
-        s"^${localToRemoteTargetDir}",
-        remoteDirName
-      )
-    } else {
-      rawURI.replaceFirst(
-        s"^${config.getString("doclib.local.temp-dir")}",
-        localDirName
-      )
-    }
-    // The md5 method in the utils lib doesn't have any error handling so we need to wrap it in a Try
-    val calculateMD5: Future[Either[Exception, String]] =  Future {
-      Try {
-        md5(Paths.get(s"$doclibRoot$rawURI").toFile)
-      }  match {
-        case Success(hash) => Right(hash)
-        case Failure(e:FileNotFoundException) => Left(e)
-        case Failure(e) => Left(new Exception(e))
-      }
-      }
     val foundDoc: EitherT[Future, Exception, FoundDoc] = for {
-      // This will throw a FileNotFoundException if the file does not exist
-      md5 <- EitherT(calculateMD5)
+      md5 <- EitherT(calculateMD5(filePath))
       a <- EitherT.right[Exception](findOrCreateDoc(rawURI, md5, derivative, Some(or(
-            equal("source", rawURI),
-           equal("source", target)
-       ))))
+        equal("source", rawURI),
+        equal("source", target)
+      ))))
     } yield FoundDoc(a.get._1, a.get._2)
     foundDoc.value.map({
       case Right(value: FoundDoc) => Right(Some(value))
@@ -598,102 +600,6 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
       //TODO IS this needed or are all exceptions caught by the EitherT and map above?
       e => Left(e)
     })
-  }
-
-
-  /**
-   * Retrieves document from mongo based on supplied uri being for a remote source.
-   * The FoundDoc also contains db records for existing versions of the document that need to be archived
-   *
-   * @param uri io.lemonlabs.uri.Uri
-   * @return
-   */
-  private def findRemoteDocument(uri: Uri): Future[Either[Throwable, Option[FoundDoc]]] = {
-    val foundDoc = for {
-        origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
-        origin: Origin = origins.head
-        originUri: Uri = origin.uri.get //TODO .get
-        downloaded: Option[DownloadResult] <- OptionT.liftF(remoteClient.download(origin))
-        (doc, archivable) <- OptionT(
-          findOrCreateDoc(
-            originUri.toString,
-            downloaded.get.hash,
-            derivative = false,
-            Some(
-              or(
-                equal("origin.uri", originUri.toString),
-                equal("source", originUri.toString)
-              )
-            )
-          )
-        )
-    } yield FoundDoc(doc, archivable, origins = origins, download = downloaded)
-    foundDoc.value.map({
-      result => Right(result)
-    }).recover({
-      e => Left(e)
-    })
-  }
-
-
-  /**
-   * 1. Retrieves existing db records for a document from mongo based on the MD5 hash and query params from calling function eg origin.
-   *
-   * 2. If no db record found will ask createDoc to create and persist a new record
-   *
-   * 3. The query will also find existing versions of the document and return them as a list of docs to be archived
-   *
-   * @param source String
-   * @param hash   String
-   * @return
-   */
-  private def findOrCreateDoc(source: String, hash: String, derivative: Boolean = false, query: Option[Bson] = None): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
-    readLimiter(collection, s"Find doc with has $hash"){_.find(
-      or(
-        equal("hash", hash),
-        query.getOrElse(combine())
-      )
-    )
-      .sort(descending("created"))
-      .toFuture()}
-      .flatMap({
-        // Already have this exact document in the db (by matching the MD5 hash) and other versions which we can archive
-        case latest :: archivable if latest.hash == hash =>
-          Future.successful(latest -> archivable)
-        // Have existing versions of this document but not this exact one so create a new record for it
-        case archivable =>
-          createDoc(source, hash, derivative).map(doc => doc -> archivable.toList)
-      })
-      .map(Option.apply)
-  }
-
-  /**
-   * Create a new db record for a document
-   * @param source String version of a file path or a URI for a "local" or "remote" document
-   * @param hash
-   * @param derivative Is it a parent or a child
-   * @return
-   */
-  private def createDoc(source: String, hash: String, derivative: Boolean = false): Future[DoclibDoc] = {
-    val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
-    val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
-    val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()
-    val newDoc = DoclibDoc(
-      _id = new ObjectId(),
-      source = source,
-      hash = hash,
-      derivative = derivative,
-      created = createdTime,
-      updated = createdTime,
-      mimetype = "",
-      tags = Some(List[String]()),
-      uuid = Some(UUID.randomUUID())
-    )
-
-    val inserted: Future[Option[InsertOneResult]] =
-      writeLimiter(collection, s"Insert doc for source $source"){_.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())}
-
-    inserted.map(_ => newDoc)
   }
 
   /**
@@ -755,6 +661,140 @@ class PrefetchHandler(supervisor: Sendable[SupervisorMsg],
         true
       }
     )
+  }
+
+  /**
+   * Find the target directory for a 'local' document based on whether it is in 'ingress' or 'ingress/remote'
+   * @param rawURI
+   * @return
+   */
+  private def targetDir(rawURI: String): String = {
+    val localToRemoteTargetDir = s"${config.getString("doclib.local.temp-dir")}/${config.getString("doclib.remote.target-dir")}"
+
+    if (rawURI.startsWith(localToRemoteTargetDir)) {
+      rawURI.replaceFirst(
+        s"^${localToRemoteTargetDir}",
+        remoteDirName
+      )
+    } else {
+      rawURI.replaceFirst(
+        s"^${config.getString("doclib.local.temp-dir")}",
+        localDirName
+      )
+    }
+  }
+
+  /**
+   * The md5 method in the utils lib doesn't have any error handling so we need to wrap it in a Try
+   * @param path
+   * @return
+   */
+  private def calculateMD5(path: JFile): Future[Either[Exception, String]] = {
+    Future {
+      Try {
+        md5(path)
+      }  match {
+        case Success(hash) => Right(hash)
+        case Failure(e:FileNotFoundException) => Left(e)
+        case Failure(e) => Left(new Exception(e))
+      }
+    }
+  }
+
+
+  /**
+   * Retrieves document from mongo based on supplied uri being for a remote source.
+   * The FoundDoc also contains db records for existing versions of the document that need to be archived
+   *
+   * @param uri io.lemonlabs.uri.Uri
+   * @return
+   */
+  private def findRemoteDocument(uri: Uri): Future[Either[Throwable, Option[FoundDoc]]] = {
+    val foundDoc = for {
+        origins: List[Origin] <- OptionT.liftF(remoteClient.resolve(uri))
+        origin: Origin = origins.head
+        originUri: Uri = origin.uri.get //TODO .get
+        downloaded: Option[DownloadResult] <- OptionT.liftF(remoteClient.download(origin))
+        (doc, archivable) <- OptionT(
+          findOrCreateDoc(
+            originUri.toString,
+            downloaded.get.hash,
+            derivative = false,
+            Some(
+              or(
+                equal("origin.uri", originUri.toString),
+                equal("source", originUri.toString)
+              )
+            )
+          )
+        )
+    } yield FoundDoc(doc, archivable, origins = origins, download = downloaded)
+    foundDoc.value.map({
+      result => Right(result)
+    }).recover({
+      e => Left(e)
+    })
+  }
+
+
+  /**
+   * 1. Retrieves existing db records for a document from mongo based on the MD5 hash and query params from calling function eg origin.
+   *
+   * 2. If no db record found will ask createDoc to create and persist a new record
+   *
+   * 3. The query will also find existing versions of the document and return them as a list of docs to be archived
+   *
+   * @param source String
+   * @param hash   String
+   * @return
+   */
+  private def findOrCreateDoc(source: String, hash: String, derivative: Boolean, query: Option[Bson]): Future[Option[(DoclibDoc, List[DoclibDoc])]] = {
+    readLimiter(collection, s"Find doc with has $hash"){_.find(
+      or(
+        equal("hash", hash),
+        query.getOrElse(combine())
+      )
+    )
+      .sort(descending("created"))
+      .toFuture()}
+      .flatMap({
+        // Already have this exact document in the db (by matching the MD5 hash) and other versions which we can archive
+        case latest :: archivable if latest.hash == hash =>
+          Future.successful(latest -> archivable)
+        // Have existing versions of this document but not this exact one so create a new record for it
+        case archivable =>
+          createDoc(source, hash, derivative).map(doc => doc -> archivable.toList)
+      })
+      .map(Option.apply)
+  }
+
+  /**
+   * Create a new db record for a document
+   * @param source String version of a file path or a URI for a "local" or "remote" document
+   * @param hash
+   * @param derivative Is it a parent or a child
+   * @return
+   */
+  private def createDoc(source: String, hash: String, derivative: Boolean): Future[DoclibDoc] = {
+    val createdInstant = LocalDateTime.now().toInstant(ZoneOffset.UTC)
+    val createdTime = LocalDateTime.ofInstant(createdInstant, ZoneOffset.UTC)
+    val latency = mongoLatency.labels(consumerName, "insert_document").startTimer()
+    val newDoc = DoclibDoc(
+      _id = new ObjectId(),
+      source = source,
+      hash = hash,
+      derivative = derivative,
+      created = createdTime,
+      updated = createdTime,
+      mimetype = "",
+      tags = Some(List[String]()),
+      uuid = Some(UUID.randomUUID())
+    )
+
+    val inserted: Future[Option[InsertOneResult]] =
+      writeLimiter(collection, s"Insert doc for source $source"){_.insertOne(newDoc).toFutureOption().andThen(_ => latency.observeDuration())}
+
+    inserted.map(_ => newDoc)
   }
 
   /**

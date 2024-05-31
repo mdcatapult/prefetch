@@ -10,7 +10,7 @@ services:
       RABBITMQ_DEFAULT_PASS: doclib
       RABBITMQ_DEFAULT_VHOST: doclib
   mongo:
-    image: mongo:4.2
+    image: mongo:5.0.26
     ports:
       - "27017:27017"
     environment:

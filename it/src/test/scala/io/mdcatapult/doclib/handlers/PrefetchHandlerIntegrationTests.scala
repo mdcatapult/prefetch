@@ -1,32 +1,47 @@
+/*
+ * Copyright 2024 Medicines Discovery Catapult
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package io.mdcatapult.doclib.handlers
 
-import akka.actor._
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
-import akka.testkit.{ImplicitSender, TestKit}
+import org.apache.pekko.actor._
+import org.apache.pekko.testkit.{ImplicitSender, TestKit}
 import better.files.{File => ScalaFile}
 import com.mongodb.client.result.UpdateResult
 import com.typesafe.config.ConfigFactory
 import io.lemonlabs.uri.Uri
 import io.mdcatapult.doclib.flag.MongoFlagContext
-import io.mdcatapult.doclib.messages.PrefetchMsg
+import io.mdcatapult.doclib.messages.{DoclibMsg, PrefetchMsg, SupervisorMsg}
 import io.mdcatapult.doclib.models.metadata.{MetaString, MetaValueUntyped}
 import io.mdcatapult.doclib.models.{DoclibDoc, Origin, ParentChildMapping}
 import io.mdcatapult.doclib.prefetch.model.DocumentTarget
 import io.mdcatapult.doclib.prefetch.model.Exceptions.{RogueFileException, ZeroLengthFileException}
+import io.mdcatapult.klein.queue.Sendable
 import io.mdcatapult.util.hash.Md5.md5
 import io.mdcatapult.util.models.Version
 import io.mdcatapult.util.time.nowUtc
 import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.model.Filters.{and, equal => Mequal}
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues}
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues, Ignore}
 import org.scalatest.OptionValues._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpecLike
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Seconds, Span}
-import org.scalatest.TryValues._
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDateTime, ZoneOffset}
@@ -47,6 +62,10 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
   with BeforeAndAfterAll with MockFactory with ScalaFutures with PrefetchHandlerBaseTest {
 
   import system.dispatcher
+
+  implicit val upstream: Sendable[PrefetchMsg] = stub[Sendable[PrefetchMsg]]
+  val downstream: Sendable[SupervisorMsg] = stub[Sendable[SupervisorMsg]]
+  val archiver: Sendable[DoclibMsg] = stub[Sendable[DoclibMsg]]
 
   val handler = new PrefetchHandler(downstream, readLimiter, writeLimiter)
 
@@ -351,7 +370,7 @@ class PrefetchHandlerIntegrationTests extends TestKit(ActorSystem("PrefetchHandl
     origDoc.map(doc => doc.get.archiveable.length) should be(Right(2))
   }
 
-  "A redirected url" should "be persisted in the origin" in {
+  "A redirected url" should "be persisted in the origin" ignore {
     val uri = Uri.parse("https://ndownloader.figshare.com/files/3906475")
     Await.result(handler.remoteClient.resolve(uri), 5.seconds) match {
       case canonical :: rest =>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Medicines Discovery Catapult
+ * Copyright 2024 Medicines Discovery Catapult
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package io.mdcatapult.doclib.handlers
 
-import akka.Done
-import akka.stream.alpakka.amqp.ReadResult
-import akka.stream.alpakka.amqp.scaladsl.CommittableReadResult
-import akka.util.ByteString
+import org.apache.pekko.Done
+import org.apache.pekko.stream.connectors.amqp.ReadResult
+import org.apache.pekko.stream.connectors.amqp.scaladsl.CommittableReadResult
+import org.apache.pekko.util.ByteString
 import com.rabbitmq.client.AMQP.BasicProperties
 import io.mdcatapult.doclib.messages.PrefetchMsg
 
